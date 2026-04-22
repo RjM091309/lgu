@@ -21,8 +21,12 @@ import {
   User,
   LogIn,
   MoreHorizontal,
+  Sparkles,
+  Users,
+  Landmark,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { LegislativeOrgChart } from '@/components/public/LegislativeOrgChart';
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -662,6 +666,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           <nav className="hidden lg:flex items-center gap-8 text-sm font-medium text-text-main">
             <a href="#legislation" className="hover:text-primary transition-colors">Legislation</a>
             <a href="#city-council" className="hover:text-primary transition-colors">City Council</a>
+            <a href="#legislative-org-chart" className="hover:text-primary transition-colors">Organization</a>
             <a href="#public-sessions" className="hover:text-primary transition-colors">Public Sessions</a>
             <a href="#resources" className="hover:text-primary transition-colors">Resources</a>
           </nav>
@@ -1090,7 +1095,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       </section>
 
       {/* City Council */}
-      <section id="city-council" className="relative scroll-mt-24 border-y border-white/10 py-20 overflow-hidden">
+      <section id="city-council" className="relative scroll-mt-24 overflow-hidden border-y border-white/10 py-24">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{
@@ -1099,52 +1104,55 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           }}
           aria-hidden
         />
-        <div className="absolute inset-0 bg-primary/85" aria-hidden />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_60%)]" aria-hidden />
+        <div className="absolute inset-0 bg-primary/88" aria-hidden />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.16),transparent_60%)]" aria-hidden />
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(15,23,42,0.28),transparent_45%,rgba(96,165,250,0.22))]" aria-hidden />
 
         <div className="container relative z-10 mx-auto px-6">
-          <div className="mb-10">
-            <h2 className="text-3xl font-bold text-white">City Council</h2>
-            <p className="mt-2 text-white/70">Know your elected representatives and their legislative roles.</p>
+          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-white/90">
+            <Sparkles className="h-3.5 w-3.5" />
+            Representative Directory
           </div>
-          <div className="grid gap-5 md:grid-cols-3">
-            <article className="border border-white/15 bg-white/95 p-6 shadow-sm">
-              <div className="text-xs uppercase tracking-wider text-text-muted">District 1</div>
-              <h3 className="mt-2 text-lg font-bold">Councilor Maria Santos</h3>
-              <p className="mt-2 text-sm text-text-muted">Committee on Appropriations and Finance.</p>
-            </article>
-            <article className="border border-white/15 bg-white/95 p-6 shadow-sm">
-              <div className="text-xs uppercase tracking-wider text-text-muted">District 2</div>
-              <h3 className="mt-2 text-lg font-bold">Councilor Jose Reyes</h3>
-              <p className="mt-2 text-sm text-text-muted">Committee on Public Works and Infrastructure.</p>
-            </article>
-            <article className="border border-white/15 bg-white/95 p-6 shadow-sm">
-              <div className="text-xs uppercase tracking-wider text-text-muted">District 3</div>
-              <h3 className="mt-2 text-lg font-bold">Councilor Ana Cruz</h3>
-              <p className="mt-2 text-sm text-text-muted">Committee on Health, Education, and Social Services.</p>
-            </article>
-          </div>
-          <div className="mt-10">
-            <h3 className="text-xl font-bold text-white">Committees (Public View)</h3>
-            <p className="mt-2 text-sm text-white/70">Mock committee directory for public viewing and inquiry filtering.</p>
-            <div className="mt-5 grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-              {[
-                { name: 'Appropriations and Finance', chair: 'Councilor Maria Santos', schedule: 'Every Tuesday • 2:00 PM' },
-                { name: 'Public Works and Infrastructure', chair: 'Councilor Jose Reyes', schedule: 'Every Thursday • 10:00 AM' },
-                { name: 'Health, Education, and Social Services', chair: 'Councilor Ana Cruz', schedule: 'Every Monday • 1:00 PM' },
-                { name: 'ICT and Innovation', chair: 'Hon. Maria Santos', schedule: 'Every Friday • 9:00 AM' },
-              ].map((c) => (
-                <article key={c.name} className="border border-white/15 bg-white/95 p-6 shadow-sm">
-                  <div className="text-xs font-bold uppercase tracking-wider text-secondary">Committee</div>
-                  <h4 className="mt-2 text-base font-bold text-primary">{c.name}</h4>
-                  <p className="mt-2 text-sm text-text-muted">
-                    Chair: <span className="font-semibold text-text-main">{c.chair}</span>
-                  </p>
-                  <p className="mt-1 text-xs text-text-muted">{c.schedule}</p>
-                </article>
-              ))}
+
+          <div className="mb-10 grid gap-6 lg:grid-cols-[1.05fr_minmax(300px,0.95fr)] lg:items-end">
+            <div>
+              <h2 className="text-4xl font-bold leading-tight text-white">City Council</h2>
+              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/75 md:text-base">
+                Know your elected representatives, council leadership, and support structure in one interactive organizational view.
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              <article className="rounded-xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+                <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white">
+                  <Users className="h-4 w-4" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">Council Members</p>
+                <p className="mt-1 text-2xl font-bold text-white">8</p>
+              </article>
+              <article className="rounded-xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+                <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white">
+                  <Landmark className="h-4 w-4" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">Legislative Units</p>
+                <p className="mt-1 text-2xl font-bold text-white">4</p>
+              </article>
+              <article className="rounded-xl border border-white/20 bg-white/10 p-4 backdrop-blur-sm">
+                <div className="mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 text-white">
+                  <Shield className="h-4 w-4" />
+                </div>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/70">Leadership Office</p>
+                <p className="mt-1 text-2xl font-bold text-white">1</p>
+              </article>
             </div>
           </div>
+
+          <LegislativeOrgChart />
+
+          <p className="mt-4 text-xs text-white/65">
+            Tip: Use the zoom controls and drag interaction to inspect each office and staff cluster.
+          </p>
+
         </div>
       </section>
 
