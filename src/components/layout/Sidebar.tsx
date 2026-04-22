@@ -342,85 +342,6 @@ export function Sidebar({ activeTab, setActiveTab, className, compact = false }:
         <div className="relative">
           <button
             type="button"
-            aria-label="Access"
-            aria-expanded={accessOpen}
-            className={cn(
-              "w-full flex items-center text-left cursor-pointer transition-all duration-200",
-              compact
-                ? "h-11 px-0 text-white/75 hover:text-white hover:bg-white/5"
-                : "justify-start gap-3 px-6 py-3 text-sm font-medium opacity-80 hover:opacity-100 hover:bg-white/5",
-              accessActive &&
-                (compact
-                  ? "text-white bg-white/10"
-                  : "bg-white/10 opacity-100")
-            )}
-            onClick={handleAccessToggle}
-          >
-            <span className={cn(compact ? "w-20 flex justify-center shrink-0" : "shrink-0")}>
-              <ShieldCheck className={cn("shrink-0", compact ? "h-[17px] w-[17px]" : "h-4 w-4")} />
-            </span>
-            <span
-              className={cn(
-                "block flex-1 leading-snug",
-                compact
-                  ? "pr-4 max-w-0 opacity-0 overflow-hidden whitespace-nowrap pointer-events-none group-hover:max-w-44 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200"
-                  : ""
-              )}
-            >
-              Access
-            </span>
-            <ChevronRight
-              className={cn(
-                "h-4 w-4 shrink-0 transition-transform duration-200 opacity-70",
-                compact
-                  ? "mr-4 max-w-0 opacity-0 overflow-hidden pointer-events-none group-hover:max-w-4 group-hover:opacity-70"
-                  : "mr-2",
-                accessOpen && "rotate-90"
-              )}
-            />
-          </button>
-
-          <div
-            className={cn(
-              "relative space-y-1 pt-1 overflow-hidden transition-all duration-200",
-              compact
-                ? cn(
-                    "absolute left-full top-0 ml-2 w-64 p-2 border border-white/10 bg-primary shadow-xl max-h-[70vh] overflow-y-auto z-20",
-                    accessOpen ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 translate-x-4 pointer-events-none"
-                  )
-                : cn(
-                    "ml-14 pr-4 pl-4",
-                    accessOpen ? "max-h-40 opacity-100 pointer-events-auto" : "max-h-0 opacity-0 pointer-events-none"
-                  )
-            )}
-          >
-            <span
-              aria-hidden
-              className={cn(
-                "absolute top-1 bottom-1 left-1 w-px bg-white/40",
-                compact && "hidden"
-              )}
-            />
-            {accessItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-label={item.label}
-                className={cn(
-                  "w-full flex items-center gap-3 text-left text-xs cursor-pointer opacity-80 transition-all duration-200 hover:opacity-100 hover:bg-white/5 px-3 py-2.5",
-                  activeTab === item.id && "bg-white/10 opacity-100"
-                )}
-                onClick={() => handleAccessItemSelect(item.id)}
-              >
-                <span className="leading-snug">{item.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative">
-          <button
-            type="button"
             aria-label="Reports"
             aria-expanded={reportsOpen}
             className={cn(
@@ -608,6 +529,85 @@ export function Sidebar({ activeTab, setActiveTab, className, compact = false }:
             </span>
           </button>
         ))}
+
+        <div className={cn("border-t border-white/10 relative", compact ? "pt-3 mt-3" : "pt-4 mt-4")}>
+          <button
+            type="button"
+            aria-label="Access"
+            aria-expanded={accessOpen}
+            className={cn(
+              "w-full flex items-center text-left cursor-pointer transition-all duration-200",
+              compact
+                ? "h-11 px-0 text-white/75 hover:text-white hover:bg-white/5"
+                : "justify-start gap-3 px-6 py-3 text-sm font-medium opacity-80 hover:opacity-100 hover:bg-white/5",
+              accessActive &&
+                (compact
+                  ? "text-white bg-white/10"
+                  : "bg-white/10 opacity-100")
+            )}
+            onClick={handleAccessToggle}
+          >
+            <span className={cn(compact ? "w-20 flex justify-center shrink-0" : "shrink-0")}>
+              <ShieldCheck className={cn("shrink-0", compact ? "h-[17px] w-[17px]" : "h-4 w-4")} />
+            </span>
+            <span
+              className={cn(
+                "block flex-1 leading-snug",
+                compact
+                  ? "pr-4 max-w-0 opacity-0 overflow-hidden whitespace-nowrap pointer-events-none group-hover:max-w-44 group-hover:opacity-100 group-hover:pointer-events-auto transition-all duration-200"
+                  : ""
+              )}
+            >
+              Access
+            </span>
+            <ChevronRight
+              className={cn(
+                "h-4 w-4 shrink-0 transition-transform duration-200 opacity-70",
+                compact
+                  ? "mr-4 max-w-0 opacity-0 overflow-hidden pointer-events-none group-hover:max-w-4 group-hover:opacity-70"
+                  : "mr-2",
+                accessOpen && "rotate-90"
+              )}
+            />
+          </button>
+
+          <div
+            className={cn(
+              "relative space-y-1 pt-1 overflow-hidden transition-all duration-200",
+              compact
+                ? cn(
+                    "absolute left-full top-0 ml-2 w-64 p-2 border border-white/10 bg-primary shadow-xl max-h-[70vh] overflow-y-auto z-20",
+                    accessOpen ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 translate-x-4 pointer-events-none"
+                  )
+                : cn(
+                    "ml-14 pr-4 pl-4",
+                    accessOpen ? "max-h-40 opacity-100 pointer-events-auto" : "max-h-0 opacity-0 pointer-events-none"
+                  )
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "absolute top-1 bottom-1 left-1 w-px bg-white/40",
+                compact && "hidden"
+              )}
+            />
+            {accessItems.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={item.label}
+                className={cn(
+                  "w-full flex items-center gap-3 text-left text-xs cursor-pointer opacity-80 transition-all duration-200 hover:opacity-100 hover:bg-white/5 px-3 py-2.5",
+                  activeTab === item.id && "bg-white/10 opacity-100"
+                )}
+                onClick={() => handleAccessItemSelect(item.id)}
+              >
+                <span className="leading-snug">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className={cn("border-t border-white/10 relative", compact ? "pt-3 mt-3" : "pt-4 mt-4")}>
           <button

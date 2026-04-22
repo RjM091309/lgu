@@ -819,7 +819,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
                   <Button type="submit" className="h-11 w-full bg-primary text-base font-bold hover:bg-primary-light">
                     <LogIn className="mr-2 h-4 w-4" />
-                    Sign in to portal
+                    Sign in to Admin
                   </Button>
 
                   <p className="text-center text-[11px] text-text-muted">
