@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/DataTable';
+import { Input } from '@/components/ui/input';
 import {
   Table,
   TableBody,
@@ -31,6 +32,12 @@ const mockControlPanels = [
   { module: 'Authentication', owner: 'System Admin', mode: 'Strict', health: 'Healthy' },
   { module: 'Permissions Matrix', owner: 'IT Governance', mode: 'Review Needed', health: 'Warning' },
   { module: 'Audit Trail', owner: 'Compliance Unit', mode: 'Enabled', health: 'Healthy' },
+];
+
+const mockAuditTrail = [
+  { timestamp: '2026-04-23 09:14', user: 'admin', activity: 'Approved ordinance workflow item', source: 'Web Portal' },
+  { timestamp: '2026-04-23 09:22', user: 'secretariat.clerk', activity: 'Uploaded minutes attachment', source: 'Session Module' },
+  { timestamp: '2026-04-23 09:37', user: 'committee.head', activity: 'Returned document as incomplete', source: 'Approval Queue' },
 ];
 
 export function AccessView({ activeTab }: AccessViewProps) {
@@ -119,34 +126,78 @@ export function AccessView({ activeTab }: AccessViewProps) {
       )}
 
       {activeTab === 'access-control-panel' && (
-        <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-base font-semibold text-primary">Control Panel</h2>
+        <div className="space-y-4">
+          <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-primary">Control Panel</h2>
+            </div>
+            <div className="space-y-0">
+              {mockControlPanels.map((item) => (
+                <div key={item.module} className="px-6 py-4 border-b border-border last:border-b-0 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+                  <div>
+                    <p className="font-semibold text-sm">{item.module}</p>
+                    <p className="text-xs text-text-muted">Owner: {item.owner}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-text-main">
+                      {item.mode}
+                    </Badge>
+                    <Badge
+                      variant="outline"
+                      className={
+                        item.health === 'Healthy'
+                          ? 'text-[#2e7d32] border-[#c8e6c9] bg-[#e8f5e9]'
+                          : 'text-[#ef6c00] border-[#ffe0b2] bg-[#fff3e0]'
+                      }
+                    >
+                      {item.health}
+                    </Badge>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="space-y-0">
-            {mockControlPanels.map((item) => (
-              <div key={item.module} className="px-6 py-4 border-b border-border last:border-b-0 flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-                <div>
-                  <p className="font-semibold text-sm">{item.module}</p>
-                  <p className="text-xs text-text-muted">Owner: {item.owner}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-text-main">
-                    {item.mode}
-                  </Badge>
-                  <Badge
-                    variant="outline"
-                    className={
-                      item.health === 'Healthy'
-                        ? 'text-[#2e7d32] border-[#c8e6c9] bg-[#e8f5e9]'
-                        : 'text-[#ef6c00] border-[#ffe0b2] bg-[#fff3e0]'
-                    }
-                  >
-                    {item.health}
-                  </Badge>
-                </div>
+          <div className="bg-white rounded-lg border border-border shadow-sm p-5">
+            <h3 className="text-sm font-semibold text-primary">Security Policies (UI Layout)</h3>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div className="space-y-2 rounded border border-border p-3 text-sm">
+                <div className="font-medium">Multi-Factor Authentication</div>
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" defaultChecked /> SMS/Text OTP</label>
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" defaultChecked /> Authenticator App</label>
+                <label className="flex items-center gap-2 text-xs"><input type="checkbox" /> Physical Token</label>
               </div>
-            ))}
+              <div className="space-y-2 rounded border border-border p-3 text-sm">
+                <div className="font-medium">Captcha and Session Policy</div>
+                <div className="rounded border border-dashed border-border p-2 text-xs text-text-muted">Captcha placeholder</div>
+                <Input placeholder="Session timeout (minutes)" defaultValue="30" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-border">
+              <h3 className="text-base font-semibold text-primary">Audit Trail (UI Layout)</h3>
+            </div>
+            <Table>
+              <TableHeader className="bg-[#fafafa]">
+                <TableRow className="border-border">
+                  <TableHead className="px-6 text-[12px] font-semibold text-text-muted">TIMESTAMP</TableHead>
+                  <TableHead className="px-6 text-[12px] font-semibold text-text-muted">USER</TableHead>
+                  <TableHead className="px-6 text-[12px] font-semibold text-text-muted">ACTIVITY</TableHead>
+                  <TableHead className="px-6 text-[12px] font-semibold text-text-muted">SOURCE</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mockAuditTrail.map((row) => (
+                  <TableRow key={`${row.timestamp}-${row.user}`} className="border-border">
+                    <TableCell className="px-6 py-3.5 text-xs">{row.timestamp}</TableCell>
+                    <TableCell className="px-6 py-3.5 text-xs">{row.user}</TableCell>
+                    <TableCell className="px-6 py-3.5 text-xs">{row.activity}</TableCell>
+                    <TableCell className="px-6 py-3.5 text-xs">{row.source}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         </div>
       )}

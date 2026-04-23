@@ -666,7 +666,6 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           <nav className="hidden lg:flex items-center gap-8 text-sm font-medium text-text-main">
             <a href="#legislation" className="hover:text-primary transition-colors">Legislation</a>
             <a href="#city-council" className="hover:text-primary transition-colors">City Council</a>
-            <a href="#legislative-org-chart" className="hover:text-primary transition-colors">Organization</a>
             <a href="#public-sessions" className="hover:text-primary transition-colors">Public Sessions</a>
             <a href="#resources" className="hover:text-primary transition-colors">Resources</a>
           </nav>
@@ -1486,7 +1485,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
           
           <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-white/40">
-            <p>© 2024 City Government. All Rights Reserved.</p>
+            <p>© 2026 City Government. All Rights Reserved.</p>
             <div className="flex gap-6">
               <a href="#" className="hover:text-white transition-colors">Privacy Policy</a>
               <a href="#" className="hover:text-white transition-colors">Terms of Use</a>

@@ -20,6 +20,7 @@ const tabToGroupTitle: Record<string, string> = {
   'req-public-inquiry': 'Public Viewing and Inquiry',
   'req-reports-analytics': 'Reports and Analytics',
   'req-e-session-signature': 'E-Session and Digital Signature',
+  'req-workflow-security-compliance': 'Workflow, Security, and Compliance',
   'esig-platform': 'E-Session and Digital Signature',
   'esig-electronic-signature': 'E-Session and Digital Signature',
   'esig-session-files': 'E-Session and Digital Signature',
@@ -269,6 +270,90 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
       { file: 'Committee Hearing Audio - Finance.mp3', type: 'Audio', action: 'Play / Download' },
       { file: 'Plenary Highlights - April 2024.mp4', type: 'Video', action: 'Play / Download' },
       { file: 'Session Minutes Draft.docx', type: 'Minutes', action: 'View / Print' },
+    ],
+    []
+  );
+
+  const assessmentQueue = useMemo(
+    () => [
+      {
+        refNo: 'APP-2026-011',
+        applicant: 'Barangay ICT Council',
+        compliance: '8/10',
+        evaluation: 'For Revision',
+        evaluator: 'SB Secretariat',
+      },
+      {
+        refNo: 'APP-2026-014',
+        applicant: 'Public Safety Office',
+        compliance: '10/10',
+        evaluation: 'Ready for Approval',
+        evaluator: 'Committee Clerk',
+      },
+      {
+        refNo: 'APP-2026-016',
+        applicant: 'Citizen Transport Coalition',
+        compliance: '6/10',
+        evaluation: 'Incomplete Requirements',
+        evaluator: 'Records Officer',
+      },
+    ],
+    []
+  );
+
+  const approvalQueue = useMemo(
+    () => [
+      {
+        documentNo: 'ORD-2026-021',
+        title: 'Traffic Signal Compliance Ordinance',
+        currentStage: 'For Mayor Review',
+        action: 'Approve / Return / Disapprove',
+        timeline: 'Filed: 2026-04-08 | Last action: 2026-04-20',
+      },
+      {
+        documentNo: 'RES-2026-078',
+        title: 'Resolution Adopting Digital Minutes Workflow',
+        currentStage: 'For Issuance',
+        action: 'Issue Signed Copy',
+        timeline: 'Filed: 2026-04-03 | Last action: 2026-04-22',
+      },
+    ],
+    []
+  );
+
+  const notificationTriggers = useMemo(
+    () => [
+      { event: 'Approval', channels: 'System, Email', recipients: 'Author, Secretariat, Concerned Office' },
+      { event: 'Disapproval', channels: 'System, Email', recipients: 'Author, Committee Chair' },
+      { event: 'Returned/Incomplete', channels: 'System', recipients: 'Originating Office' },
+      { event: 'Publication/Posting', channels: 'System, Email', recipients: 'Public Subscribers, PIO' },
+    ],
+    []
+  );
+
+  const auditTrailRows = useMemo(
+    () => [
+      { time: '2026-04-23 09:14', user: 'admin', action: 'Approved ordinance workflow item', source: 'Web Portal' },
+      { time: '2026-04-23 09:22', user: 'secretariat.clerk', action: 'Uploaded minutes attachment', source: 'Session Module' },
+      { time: '2026-04-23 09:37', user: 'committee.head', action: 'Returned document as incomplete', source: 'Approval Queue' },
+    ],
+    []
+  );
+
+  const governanceRows = useMemo(
+    () => [
+      {
+        measure: 'ORD-2026-021',
+        duplicateRisk: 'Possible match with ORD-2026-009',
+        budgetAllocation: 'PHP 2,500,000',
+        implementationDate: '2026-07-01',
+      },
+      {
+        measure: 'RES-2026-078',
+        duplicateRisk: 'No similar subject detected',
+        budgetAllocation: 'PHP 450,000',
+        implementationDate: '2026-06-15',
+      },
     ],
     []
   );
@@ -594,6 +679,144 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                 <div className="mt-1 text-2xl font-bold text-primary">{reports.byStatus[stage] ?? 0}</div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {selectedTitle === 'Workflow, Security, and Compliance' && (
+        <div className="space-y-4">
+          <div className="border border-border bg-white p-6 shadow-sm space-y-4">
+            <h4 className="text-lg font-bold">Assessment and Evaluation (UI Layout)</h4>
+            <p className="text-sm text-text-muted">
+              Review queue, compliance score, and evaluator remarks layout for pre-approval processing.
+            </p>
+            <div className="border border-border">
+              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+                <div className="col-span-2">Reference</div>
+                <div className="col-span-3">Applicant/Office</div>
+                <div className="col-span-2">Compliance</div>
+                <div className="col-span-3">Evaluation</div>
+                <div className="col-span-2">Evaluator</div>
+              </div>
+              {assessmentQueue.map((row) => (
+                <div key={row.refNo} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                  <div className="col-span-2">{row.refNo}</div>
+                  <div className="col-span-3">{row.applicant}</div>
+                  <div className="col-span-2">{row.compliance}</div>
+                  <div className="col-span-3">{row.evaluation}</div>
+                  <div className="col-span-2">{row.evaluator}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border border-border bg-white p-6 shadow-sm space-y-4">
+            <h4 className="text-lg font-bold">Approval and Issuance (UI Layout)</h4>
+            <div className="border border-border">
+              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+                <div className="col-span-2">Document No.</div>
+                <div className="col-span-4">Title</div>
+                <div className="col-span-2">Current Stage</div>
+                <div className="col-span-2">Action</div>
+                <div className="col-span-2">Timeline</div>
+              </div>
+              {approvalQueue.map((row) => (
+                <div key={row.documentNo} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                  <div className="col-span-2">{row.documentNo}</div>
+                  <div className="col-span-4">{row.title}</div>
+                  <div className="col-span-2">{row.currentStage}</div>
+                  <div className="col-span-2">{row.action}</div>
+                  <div className="col-span-2">{row.timeline}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border border-border bg-white p-6 shadow-sm space-y-4">
+            <h4 className="text-lg font-bold">Notifications and Alerts (UI Layout)</h4>
+            <div className="border border-border">
+              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+                <div className="col-span-3">Event Trigger</div>
+                <div className="col-span-3">Channel</div>
+                <div className="col-span-6">Recipients</div>
+              </div>
+              {notificationTriggers.map((row) => (
+                <div key={row.event} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                  <div className="col-span-3">{row.event}</div>
+                  <div className="col-span-3">{row.channels}</div>
+                  <div className="col-span-6">{row.recipients}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border border-border bg-white p-6 shadow-sm space-y-4">
+            <h4 className="text-lg font-bold">Security Controls and Audit Trail (UI Layout)</h4>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="border border-border p-4 space-y-3">
+                <div className="text-sm font-semibold">MFA Configuration</div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" defaultChecked />
+                  SMS/Text OTP
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" defaultChecked />
+                  Authenticator App
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" />
+                  Physical Token
+                </label>
+                <Button variant="outline" size="sm">Save Security Policy</Button>
+              </div>
+              <div className="border border-border p-4 space-y-3">
+                <div className="text-sm font-semibold">Captcha and Password Policy</div>
+                <div className="text-xs text-text-muted">Minimum 12 chars | Uppercase | Numeric | Symbol</div>
+                <div className="border border-dashed border-border p-3 text-sm">
+                  Captcha preview placeholder: [ I am not a robot ]
+                </div>
+                <Input placeholder="Session timeout (minutes)" defaultValue="30" />
+              </div>
+            </div>
+            <div className="border border-border">
+              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+                <div className="col-span-3">Timestamp</div>
+                <div className="col-span-2">User</div>
+                <div className="col-span-5">Activity</div>
+                <div className="col-span-2">Source</div>
+              </div>
+              {auditTrailRows.map((row) => (
+                <div key={`${row.time}-${row.user}`} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                  <div className="col-span-3">{row.time}</div>
+                  <div className="col-span-2">{row.user}</div>
+                  <div className="col-span-5">{row.action}</div>
+                  <div className="col-span-2">{row.source}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="border border-border bg-white p-6 shadow-sm space-y-4">
+            <h4 className="text-lg font-bold">Governance Monitoring (UI Layout)</h4>
+            <p className="text-sm text-text-muted">
+              Duplicate measure checks, budget monitoring, and implementation date tracking preview.
+            </p>
+            <div className="border border-border">
+              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+                <div className="col-span-2">Measure</div>
+                <div className="col-span-4">Duplicate Check</div>
+                <div className="col-span-3">Budget Allocation</div>
+                <div className="col-span-3">Implementation Date</div>
+              </div>
+              {governanceRows.map((row) => (
+                <div key={row.measure} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                  <div className="col-span-2">{row.measure}</div>
+                  <div className="col-span-4">{row.duplicateRisk}</div>
+                  <div className="col-span-3">{row.budgetAllocation}</div>
+                  <div className="col-span-3">{row.implementationDate}</div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

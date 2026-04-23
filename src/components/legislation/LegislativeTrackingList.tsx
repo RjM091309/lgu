@@ -123,6 +123,7 @@ export function LegislativeTrackingList() {
     fullTextRef: '',
     committeeReportRef: '',
   });
+  const [createWarning, setCreateWarning] = useState('');
   const pageSize = 25;
 
   const stageFlow: LifecycleStatus[] = [
@@ -267,6 +268,15 @@ export function LegislativeTrackingList() {
 
   const createRecord = () => {
     if (!newRecord.number.trim() || !newRecord.title.trim() || !newRecord.author.trim()) return;
+    const duplicate = records.find(
+      (record) =>
+        record.number.trim().toLowerCase() === newRecord.number.trim().toLowerCase() ||
+        record.title.trim().toLowerCase() === newRecord.title.trim().toLowerCase()
+    );
+    if (duplicate) {
+      setCreateWarning(`Possible duplicate with ${duplicate.number}: "${duplicate.title}"`);
+      return;
+    }
     const newId = `${records.length + 1}`;
     const attachments: AttachmentRef[] = [];
     if (newRecord.fullTextRef.trim()) {
@@ -321,6 +331,7 @@ export function LegislativeTrackingList() {
       committeeReportRef: '',
     });
     setIsCreateOpen(false);
+    setCreateWarning('');
     setCurrentPage(1);
   };
 
@@ -547,6 +558,24 @@ export function LegislativeTrackingList() {
           </div>
       </div>
 
+      <div className="bg-white rounded-lg border border-border shadow-sm p-5 space-y-3">
+        <h3 className="text-base font-bold text-primary">Governance Monitoring (UI Layout)</h3>
+        <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+          <div className="col-span-2">Measure</div>
+          <div className="col-span-4">Duplicate Risk</div>
+          <div className="col-span-3">Budget Allocation</div>
+          <div className="col-span-3">Implementation Date</div>
+        </div>
+        {records.slice(0, 6).map((record, index) => (
+          <div key={`gov-${record.id}`} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+            <div className="col-span-2">{record.number}</div>
+            <div className="col-span-4">{index === 0 ? 'Possible similar subject detected' : 'No similar subject detected'}</div>
+            <div className="col-span-3">PHP {(index + 1) * 350000}</div>
+            <div className="col-span-3">{record.trackingDate}</div>
+          </div>
+        ))}
+      </div>
+
       <Dialog
         open={selectedRecordId !== null}
         onOpenChange={(open) => {
@@ -601,6 +630,11 @@ export function LegislativeTrackingList() {
         onSave={createRecord}
       >
         <div className="space-y-4">
+          {createWarning ? (
+            <div className="rounded border border-[#ffe0b2] bg-[#fff3e0] px-3 py-2 text-xs text-[#8a4b08]">
+              {createWarning}
+            </div>
+          ) : null}
           <div className="space-y-1">
             <label className="text-xs font-semibold text-text-muted">Record No.</label>
             <Input

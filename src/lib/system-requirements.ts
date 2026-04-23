@@ -140,4 +140,53 @@ export const mockSystemRequirements: RequirementGroup[] = [
       },
     ],
   },
+  {
+    title: "Workflow, Security, and Compliance",
+    description: "Assessment, approval, notifications, security controls, and governance monitoring layouts.",
+    blocks: [
+      {
+        heading: "Assessment and Evaluation",
+        details: [
+          "Review and verification screen for incoming applications and submissions.",
+          "Compliance checklist with remarks and evaluator notes fields.",
+          "UI-level evaluation score/status tagging for document readiness.",
+        ],
+      },
+      {
+        heading: "Approval and Issuance",
+        details: [
+          "Workflow queue with approve, disapprove, return, and route actions.",
+          "Issuance panel for ordinance/resolution letters and attachments.",
+          "Status board for incoming/outgoing documents and processing timeline.",
+        ],
+      },
+      {
+        heading: "Notifications and Alerts",
+        details: [
+          "Template layout for system notifications and email notices.",
+          "Trigger matrix for approval, disapproval, incomplete return, and publication/posting events.",
+          "Recipient selection by office, role, committee, and registered public users.",
+        ],
+      },
+      {
+        heading: "User Management, Security, and Audit",
+        details: [
+          "Role-based dashboard mockups for administrator and standard users.",
+          "Password policy, account lockout, and session security settings panel.",
+          "MFA setup UI for SMS, authenticator app, and physical token options.",
+          "Captcha challenge layout for login and registration forms.",
+          "Audit trail grid for user activities, transaction history, and login traces.",
+        ],
+      },
+      {
+        heading: "Governance and Monitoring",
+        details: [
+          "Duplicate measure detection preview panel by same title/subject matter.",
+          "Minutes and journals database form layout with attachment support.",
+          "Budget allocation and implementation date monitoring dashboard.",
+          "LGU-to-LGU information exchange cards and action tracker.",
+        ],
+      },
+    ],
+  },
 ];

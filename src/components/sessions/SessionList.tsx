@@ -14,6 +14,21 @@ export function SessionList() {
     { id: 'TR-004', item: 'Transmittal letter generation and monitoring', status: 'Ready to Transmit' },
   ]);
   const statusFlow = ['In Routing', 'For Committee', 'For Agenda Build', 'Ready to Transmit', 'Completed'];
+  const assessmentQueue = [
+    { refNo: 'APP-2026-011', applicant: 'Barangay ICT Council', compliance: '8/10', evaluation: 'For Revision' },
+    { refNo: 'APP-2026-014', applicant: 'Public Safety Office', compliance: '10/10', evaluation: 'Ready for Approval' },
+    { refNo: 'APP-2026-016', applicant: 'Citizen Transport Coalition', compliance: '6/10', evaluation: 'Incomplete Requirements' },
+  ];
+  const approvalQueue = [
+    { docNo: 'ORD-2026-021', title: 'Traffic Signal Compliance Ordinance', stage: 'For Mayor Review', action: 'Approve / Return / Disapprove' },
+    { docNo: 'RES-2026-078', title: 'Resolution Adopting Digital Minutes Workflow', stage: 'For Issuance', action: 'Issue Signed Copy' },
+  ];
+  const notificationMatrix = [
+    { event: 'Approval', channel: 'System + Email', recipients: 'Author, Secretariat, Concerned Office' },
+    { event: 'Disapproval', channel: 'System + Email', recipients: 'Author, Committee Chair' },
+    { event: 'Returned/Incomplete', channel: 'System', recipients: 'Originating Office' },
+    { event: 'Publication/Posting', channel: 'System + Email', recipients: 'Public Subscribers, PIO' },
+  ];
 
   const advanceQueue = (id: string) => {
     setRoutingQueue((prev) =>
@@ -62,6 +77,44 @@ export function SessionList() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="border border-border bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-primary">Assessment and Evaluation Queue</h3>
+          <div className="mt-3 space-y-2">
+            {assessmentQueue.map((item) => (
+              <div key={item.refNo} className="rounded border border-border px-3 py-2 text-xs">
+                <div className="font-semibold">{item.refNo} - {item.applicant}</div>
+                <div className="text-text-muted">Compliance: {item.compliance} | Status: {item.evaluation}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="border border-border bg-white p-4 shadow-sm">
+          <h3 className="text-sm font-bold text-primary">Approval and Issuance Queue</h3>
+          <div className="mt-3 space-y-2">
+            {approvalQueue.map((item) => (
+              <div key={item.docNo} className="rounded border border-border px-3 py-2 text-xs">
+                <div className="font-semibold">{item.docNo} - {item.title}</div>
+                <div className="text-text-muted">Stage: {item.stage} | Action: {item.action}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="border border-border bg-white p-4 shadow-sm">
+        <h3 className="text-sm font-bold text-primary">Notifications and Alerts Matrix</h3>
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {notificationMatrix.map((item) => (
+            <div key={item.event} className="rounded border border-border px-3 py-2 text-xs">
+              <div className="font-semibold">{item.event}</div>
+              <div className="text-text-muted">Channel: {item.channel}</div>
+              <div className="text-text-muted">Recipients: {item.recipients}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-6">
