@@ -12,10 +12,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { type Bill, mockBills } from '@/lib/mock-data';
-import { Search, Filter, Plus, FileDown, MoreHorizontal } from 'lucide-react';
+import { Search, Plus, FileDown, FileText, MoreHorizontal, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DataTable } from '@/components/ui/DataTable';
-import { SidePanel } from '@/components/ui/SidePanel';
 import { Select, type SelectOption } from '@/components/ui/select';
 import {
   Dialog,
@@ -25,6 +24,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { CalendarDatePicker } from '@/components/ui/CalendarDatePicker';
+import { toast } from '@/components/ui/toast';
+import { confirmAction } from '@/components/ui/confirm';
 
 type LifecycleStatus = Bill['status'] | 'Disapproved';
 type WorkflowRoute = 'Agenda' | 'Committee Referral' | 'Hearing' | 'Report Workflow';
@@ -95,7 +96,7 @@ export function LegislativeTrackingList() {
         {
           status: bill.status,
           date: bill.dateFiled,
-          note: `Initial mock import with ${bill.status} stage`,
+          note: `Recorded at ${bill.status} stage`,
         },
       ],
     }))
@@ -124,7 +125,7 @@ export function LegislativeTrackingList() {
     committeeReportRef: '',
   });
   const [createWarning, setCreateWarning] = useState('');
-  const pageSize = 25;
+  const pageSize = 10;
 
   const stageFlow: LifecycleStatus[] = [
     'Draft',
@@ -206,7 +207,7 @@ export function LegislativeTrackingList() {
   const openActionMenuFromEvent = (bill: TrackingRecord, trigger: HTMLButtonElement) => {
     const rect = trigger.getBoundingClientRect();
     const menuWidth = 176;
-    const menuHeight = 168;
+    const menuHeight = 212;
     let top = rect.bottom + 4;
     if (top + menuHeight > window.innerHeight - 8) {
       top = Math.max(8, rect.top - menuHeight - 4);
@@ -219,7 +220,20 @@ export function LegislativeTrackingList() {
     );
   };
 
-  const moveToNextStage = (id: string) => {
+  const moveToNextStage = async (id: string) => {
+    const target = records.find((bill) => bill.id === id);
+    const targetIndex = target ? progressionFlow.indexOf(target.lifecycleStatus) : -1;
+    if (!target || targetIndex < 0 || targetIndex === progressionFlow.length - 1) {
+      toast('Stage not updated', target ? `${target.number} is already ${target.lifecycleStatus}.` : 'This record could not be found.', 'error');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Move to the next stage?',
+      description: `${target.number} will move from ${target.lifecycleStatus} to ${progressionFlow[targetIndex + 1]}. This is added to its status history.`,
+      confirmLabel: 'Move stage',
+    });
+    if (!confirmed) return;
+    toast('Stage updated', `${target.number} moved to ${progressionFlow[targetIndex + 1]}.`);
     setRecords((prev) =>
       prev.map((bill) => {
         if (bill.id !== id) return bill;
@@ -236,7 +250,20 @@ export function LegislativeTrackingList() {
     );
   };
 
-  const markDisapproved = (id: string) => {
+  const markDisapproved = async (id: string) => {
+    const target = records.find((bill) => bill.id === id);
+    if (!target || target.lifecycleStatus === 'Disapproved') {
+      toast('Record not updated', target ? `${target.number} is already disapproved.` : 'This record could not be found.', 'error');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Disapprove this record?',
+      description: `${target.number} will be marked as disapproved and can no longer move to the next stage.`,
+      confirmLabel: 'Disapprove',
+      tone: 'destructive',
+    });
+    if (!confirmed) return;
+    toast('Record disapproved', `${target.number} was marked as disapproved.`);
     setRecords((prev) =>
       prev.map((bill) => {
         if (bill.id !== id) return bill;
@@ -250,7 +277,20 @@ export function LegislativeTrackingList() {
     );
   };
 
-  const cycleRoute = (id: string) => {
+  const cycleRoute = async (id: string) => {
+    const target = records.find((bill) => bill.id === id);
+    if (!target) {
+      toast('Route not updated', 'This record could not be found.', 'error');
+      return;
+    }
+    const nextRoute = routeCycle[(routeCycle.indexOf(target.route) + 1) % routeCycle.length];
+    const confirmed = await confirmAction({
+      title: 'Route this record?',
+      description: `${target.number} will be routed from ${target.route} to ${nextRoute}.`,
+      confirmLabel: 'Route record',
+    });
+    if (!confirmed) return;
+    toast('Record routed', `${target.number} routed to ${nextRoute}.`);
     setRecords((prev) =>
       prev.map((bill) => {
         if (bill.id !== id) return bill;
@@ -266,8 +306,42 @@ export function LegislativeTrackingList() {
     );
   };
 
-  const createRecord = () => {
-    if (!newRecord.number.trim() || !newRecord.title.trim() || !newRecord.author.trim()) return;
+  const deleteRecord = async (id: string) => {
+    const target = records.find((bill) => bill.id === id);
+    if (!target) {
+      toast('Record not deleted', 'This record could not be found.', 'error');
+      return;
+    }
+    if (target.lifecycleStatus === 'Enacted') {
+      toast('Record not deleted', `${target.number} is already enacted. Enacted measures are permanent records and cannot be deleted.`, 'error');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Delete this legislative record?',
+      description: `${target.number} — "${target.title}" and its status history will be removed from the tracking list. This cannot be undone.`,
+      confirmLabel: 'Delete record',
+      tone: 'destructive',
+    });
+    if (!confirmed) return;
+    const remaining = records.filter((bill) => bill.id !== id);
+    setRecords(remaining);
+    setCurrentPage((page) => Math.min(page, Math.max(1, Math.ceil((filteredRecords.length - 1) / pageSize))));
+    if (selectedRecordId === id) setSelectedRecordId(null);
+    toast('Record deleted', `${target.number} was removed from the tracking list.`);
+  };
+
+  const createRecord = async () => {
+    const missing = [
+      !newRecord.number.trim() && 'Record No.',
+      !newRecord.title.trim() && 'Title',
+      !newRecord.author.trim() && 'Author',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      const message = `Please fill in ${missing.join(', ')}.`;
+      setCreateWarning(message);
+      toast('Record not saved', message, 'error');
+      return;
+    }
     const duplicate = records.find(
       (record) =>
         record.number.trim().toLowerCase() === newRecord.number.trim().toLowerCase() ||
@@ -275,9 +349,16 @@ export function LegislativeTrackingList() {
     );
     if (duplicate) {
       setCreateWarning(`Possible duplicate with ${duplicate.number}: "${duplicate.title}"`);
+      toast('Record not saved', `It looks like a duplicate of ${duplicate.number}.`, 'error');
       return;
     }
-    const newId = `${records.length + 1}`;
+    const confirmed = await confirmAction({
+      title: 'Save this legislative record?',
+      description: `${newRecord.number.trim()} — "${newRecord.title.trim()}" will be added to the tracking list as ${newRecord.status}.`,
+      confirmLabel: 'Save record',
+    });
+    if (!confirmed) return;
+    const newId = `${Math.max(0, ...records.map((record) => Number(record.id) || 0)) + 1}`;
     const attachments: AttachmentRef[] = [];
     if (newRecord.fullTextRef.trim()) {
       attachments.push({
@@ -302,7 +383,7 @@ export function LegislativeTrackingList() {
         category: newRecord.category,
         status: newRecord.status,
         dateFiled: newRecord.trackingDate,
-        description: 'Mock legislative record created from side panel form.',
+        description: 'Legislative record created from the new record form.',
         direction: newRecord.direction,
         trackingDate: newRecord.trackingDate,
         route: newRecord.route,
@@ -333,6 +414,7 @@ export function LegislativeTrackingList() {
     setIsCreateOpen(false);
     setCreateWarning('');
     setCurrentPage(1);
+    toast('Record saved', `${newRecord.number.trim()} was added to the tracking list.`);
   };
 
   const onKeywordChange = (value: string) => {
@@ -345,10 +427,34 @@ export function LegislativeTrackingList() {
     setCurrentPage(1);
   };
 
-  const exportTrackingList = () => {
-    if (filteredRecords.length === 0) return;
+  const repositoryEntries = useMemo(() => {
+    const q = repositoryKeyword.trim().toLowerCase();
+    return records
+      .flatMap((record) =>
+        record.attachments.map((attachment) => ({
+          recordNo: record.number,
+          title: record.title,
+          route: record.route,
+          ...attachment,
+        }))
+      )
+      .filter(
+        (entry) =>
+          !q ||
+          entry.name.toLowerCase().includes(q) ||
+          entry.title.toLowerCase().includes(q) ||
+          entry.recordNo.toLowerCase().includes(q) ||
+          entry.type.toLowerCase().includes(q)
+      );
+  }, [records, repositoryKeyword]);
 
-    const headers = ['Record No', 'Title', 'Author', 'Category', 'Stage', 'Date Filed'];
+  const exportTrackingList = () => {
+    if (filteredRecords.length === 0) {
+      toast('Nothing to export', 'No records match the current search and stage filter.', 'error');
+      return;
+    }
+
+    const headers = ['Record No', 'Title', 'Direction', 'Route', 'Author', 'Category', 'Stage', 'Tracking Date'];
     const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
     const rows = filteredRecords.map((bill) =>
       [
@@ -373,15 +479,16 @@ export function LegislativeTrackingList() {
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
+    toast('Tracking list exported', `${filteredRecords.length} record(s) saved as CSV.`);
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Legislative Tracking System</h1>
           <p className="text-sm text-text-muted">
-            Mock workflow: capture incoming/outgoing docs, route to workflow, manage lifecycle history, and link full text/committee reports.
+            Capture incoming/outgoing docs, route to workflow, manage lifecycle history, and link full text/committee reports.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -395,7 +502,7 @@ export function LegislativeTrackingList() {
             <FileDown className="mr-2 h-4 w-4" />
             Export Tracking List
           </Button>
-          <Button size="sm" className="bg-primary hover:bg-primary-light" onClick={() => setIsCreateOpen(true)}>
+          <Button size="sm" className="bg-primary hover:bg-primary-light" onClick={() => { setCreateWarning(''); setIsCreateOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" />
             New Legislative Record
           </Button>
@@ -403,7 +510,7 @@ export function LegislativeTrackingList() {
       </div>
 
       <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden flex flex-col">
-        <div className="px-6 py-4 border-b border-border flex items-center gap-4 bg-[#fafafa]">
+        <div className="px-4 py-3 border-b border-border flex items-center gap-4 bg-[#fafafa]">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
             <Input
@@ -413,14 +520,6 @@ export function LegislativeTrackingList() {
               onChange={(e) => onKeywordChange(e.target.value)}
             />
           </div>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-9 w-9 border-border"
-            onClick={() => onStatusFilterChange(statusFilter === 'All' ? 'Committee' : 'All')}
-          >
-            <Filter className="h-4 w-4 text-text-muted" />
-          </Button>
           <div className="ml-auto w-[180px]">
             <Select
               options={[
@@ -450,26 +549,26 @@ export function LegislativeTrackingList() {
           <Table className="table-fixed w-full">
             <TableHeader className="bg-[#fafafa]">
               <TableRow className="border-border">
-                <TableHead className="w-[140px] px-6 text-[12px] font-semibold text-text-muted">RECORD NO.</TableHead>
-                <TableHead className="px-6 text-[12px] font-semibold text-text-muted">TITLE</TableHead>
-                <TableHead className="px-6 text-[12px] font-semibold text-text-muted">DIRECTION</TableHead>
-                <TableHead className="px-6 text-[12px] font-semibold text-text-muted">ROUTE</TableHead>
-                <TableHead className="px-6 text-[12px] font-semibold text-text-muted">AUTHOR</TableHead>
-                <TableHead className="px-6 text-[12px] font-semibold text-text-muted">CATEGORY</TableHead>
-                <TableHead className="px-6 text-[12px] font-semibold text-text-muted">STAGE</TableHead>
-                <TableHead className="text-right px-6 text-[12px] font-semibold text-text-muted w-[90px]">ACTION</TableHead>
+                <TableHead className="w-[215px] px-4 text-[12px] font-semibold text-text-muted">RECORD NO.</TableHead>
+                <TableHead className="px-4 text-[12px] font-semibold text-text-muted">TITLE</TableHead>
+                <TableHead className="w-[110px] px-4 text-[12px] font-semibold text-text-muted">DIRECTION</TableHead>
+                <TableHead className="w-[160px] px-4 text-[12px] font-semibold text-text-muted">ROUTE</TableHead>
+                <TableHead className="w-[210px] px-4 text-[12px] font-semibold text-text-muted">AUTHOR</TableHead>
+                <TableHead className="w-[140px] px-4 text-[12px] font-semibold text-text-muted">CATEGORY</TableHead>
+                <TableHead className="w-[150px] px-4 text-[12px] font-semibold text-text-muted">STAGE</TableHead>
+                <TableHead className="text-right px-4 text-[12px] font-semibold text-text-muted w-[72px]">ACTION</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedRecords.map((bill) => (
                 <TableRow key={bill.id} className="hover:bg-muted/5 border-border transition-colors">
-                  <TableCell className="px-6 py-3.5 font-mono text-[13px] text-text-muted">{bill.number}</TableCell>
-                  <TableCell className="px-6 py-3.5 max-w-[300px]">
-                    <div className="font-medium text-[13px] truncate">{bill.title}</div>
+                  <TableCell className="px-4 py-2 font-mono text-[12px] text-text-muted whitespace-nowrap">{bill.number}</TableCell>
+                  <TableCell className="px-4 py-2">
+                    <div className="font-medium text-[13px] leading-snug line-clamp-2 whitespace-normal" title={bill.title}>{bill.title}</div>
                     <div className="text-[11px] text-text-muted">Tracked: {bill.trackingDate}</div>
                   </TableCell>
-                  <TableCell className="px-6 py-3.5 text-[13px]">{bill.direction}</TableCell>
-                  <TableCell className="px-6 py-3.5">
+                  <TableCell className="px-4 py-2 text-[13px]">{bill.direction}</TableCell>
+                  <TableCell className="px-4 py-2">
                     <Badge
                       variant="outline"
                       className={cn(trackingTableBadgeBase, 'border-border bg-white font-normal text-text-muted')}
@@ -477,8 +576,10 @@ export function LegislativeTrackingList() {
                       {bill.route}
                     </Badge>
                   </TableCell>
-                  <TableCell className="px-6 py-3.5 text-[13px]">{bill.author}</TableCell>
-                  <TableCell className="px-6 py-3.5">
+                  <TableCell className="px-4 py-2 text-[13px]">
+                    <div className="line-clamp-2 whitespace-normal leading-snug" title={bill.author}>{bill.author}</div>
+                  </TableCell>
+                  <TableCell className="px-4 py-2">
                     <Badge
                       variant="outline"
                       className={cn(trackingTableBadgeBase, 'border-border bg-white font-normal text-text-muted')}
@@ -486,12 +587,12 @@ export function LegislativeTrackingList() {
                       {bill.category}
                     </Badge>
                   </TableCell>
-                  <TableCell className="px-6 py-3.5">
+                  <TableCell className="px-4 py-2">
                     <Badge variant="outline" className={stageBadgeClassName(bill.lifecycleStatus)}>
                       {bill.lifecycleStatus}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right px-6 py-3.5">
+                  <TableCell className="text-right px-4 py-2">
                     <div className="flex justify-end">
                       <Button
                         type="button"
@@ -521,59 +622,65 @@ export function LegislativeTrackingList() {
         </DataTable>
       </div>
 
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5 space-y-3">
-          <h3 className="text-base font-bold text-primary">Searchable Document Repository</h3>
-          <Input
-            placeholder="Search linked full text / committee reports"
-            value={repositoryKeyword}
-            onChange={(e) => setRepositoryKeyword(e.target.value)}
-          />
-          <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-            {records
-              .flatMap((record) =>
-                record.attachments.map((attachment) => ({
-                  recordNo: record.number,
-                  title: record.title,
-                  route: record.route,
-                  ...attachment,
-                }))
-              )
-              .filter((entry) => {
-                const q = repositoryKeyword.trim().toLowerCase();
-                if (!q) return true;
-                return (
-                  entry.name.toLowerCase().includes(q) ||
-                  entry.title.toLowerCase().includes(q) ||
-                  entry.recordNo.toLowerCase().includes(q) ||
-                  entry.type.toLowerCase().includes(q)
-                );
-              })
-              .map((entry) => (
-                <div key={entry.id} className="border border-border rounded-md p-3">
-                  <div className="text-xs text-text-muted">{entry.recordNo} • {entry.type}</div>
-                  <div className="font-semibold text-sm">{entry.name}</div>
-                  <div className="text-xs text-text-muted mt-1">{entry.title} • Route: {entry.route}</div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="flex flex-col rounded-lg border border-border bg-white shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+            <h3 className="text-base font-bold text-primary">Searchable Document Repository</h3>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-2.5 top-2 h-4 w-4 text-text-muted" />
+              <Input
+                placeholder="Search full text / committee reports"
+                aria-label="Search document repository"
+                className="h-8 pl-8 text-sm"
+                value={repositoryKeyword}
+                onChange={(e) => setRepositoryKeyword(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="max-h-72 divide-y divide-border overflow-y-auto">
+            {repositoryEntries.map((entry) => (
+              <div key={entry.id} className="flex items-center gap-3 px-4 py-2">
+                <FileText className="h-4 w-4 shrink-0 text-primary" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-[13px] font-semibold" title={entry.name}>{entry.name}</div>
+                  <div className="truncate text-[11px] text-text-muted" title={entry.title}>
+                    {entry.recordNo} · {entry.route}
+                  </div>
                 </div>
-              ))}
+                <Badge variant="outline" className={cn(trackingTableBadgeBase, 'border-border bg-white font-normal text-text-muted')}>
+                  {entry.type}
+                </Badge>
+              </div>
+            ))}
+            {repositoryEntries.length === 0 && (
+              <p className="px-4 py-6 text-center text-sm text-text-muted">No matching documents.</p>
+            )}
           </div>
-      </div>
-
-      <div className="bg-white rounded-lg border border-border shadow-sm p-5 space-y-3">
-        <h3 className="text-base font-bold text-primary">Governance Monitoring (UI Layout)</h3>
-        <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
-          <div className="col-span-2">Measure</div>
-          <div className="col-span-4">Duplicate Risk</div>
-          <div className="col-span-3">Budget Allocation</div>
-          <div className="col-span-3">Implementation Date</div>
         </div>
-        {records.slice(0, 6).map((record, index) => (
-          <div key={`gov-${record.id}`} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
-            <div className="col-span-2">{record.number}</div>
-            <div className="col-span-4">{index === 0 ? 'Possible similar subject detected' : 'No similar subject detected'}</div>
-            <div className="col-span-3">PHP {(index + 1) * 350000}</div>
-            <div className="col-span-3">{record.trackingDate}</div>
+
+        <div className="flex flex-col rounded-lg border border-border bg-white shadow-sm">
+          <div className="border-b border-border px-4 py-3">
+            <h3 className="text-base font-bold text-primary">Governance Monitoring</h3>
           </div>
-        ))}
+          <div className="max-h-72 overflow-y-auto">
+            <div className="sticky top-0 grid grid-cols-12 gap-2 bg-[#fafafa] px-4 py-2 text-[11px] font-semibold uppercase text-text-muted">
+              <div className="col-span-4">Measure</div>
+              <div className="col-span-3">Duplicate Risk</div>
+              <div className="col-span-3 text-right">Budget</div>
+              <div className="col-span-2 text-right">Impl. Date</div>
+            </div>
+            {records.slice(0, 6).map((record, index) => (
+              <div key={`gov-${record.id}`} className="grid grid-cols-12 items-center gap-2 border-t border-border px-4 py-2 text-[12px]">
+                <div className="col-span-4 truncate font-mono text-text-muted" title={record.number}>{record.number}</div>
+                <div className={cn('col-span-3', index === 0 ? 'font-medium text-[#ef6c00]' : 'text-text-muted')}>
+                  {index === 0 ? 'Similar subject found' : 'None detected'}
+                </div>
+                <div className="col-span-3 text-right tabular-nums">PHP {((index + 1) * 350000).toLocaleString('en-PH')}</div>
+                <div className="col-span-2 text-right tabular-nums">{record.trackingDate}</div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       <Dialog
@@ -622,14 +729,18 @@ export function LegislativeTrackingList() {
         </DialogContent>
       </Dialog>
 
-      <SidePanel
-        open={isCreateOpen}
-        onOpenChange={setIsCreateOpen}
-        title="New Legislative Record"
-        description="Mock side panel flow for creating a legislative record."
-        onSave={createRecord}
-      >
-        <div className="space-y-4">
+      <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+        <DialogContent
+          closeOnOverlayClick={false}
+          className="flex flex-col gap-0 p-0 sm:max-w-2xl max-sm:overflow-y-auto sm:overflow-visible"
+        >
+          <div className="border-b border-border px-6 py-5">
+            <DialogHeader className="space-y-2 text-left">
+              <DialogTitle className="text-primary">New Legislative Record</DialogTitle>
+              <DialogDescription>Capture a new incoming or outgoing legislative record.</DialogDescription>
+            </DialogHeader>
+          </div>
+        <div className="space-y-4 px-6 py-5">
           {createWarning ? (
             <div className="rounded border border-[#ffe0b2] bg-[#fff3e0] px-3 py-2 text-xs text-[#8a4b08]">
               {createWarning}
@@ -740,7 +851,14 @@ export function LegislativeTrackingList() {
             />
           </div>
         </div>
-      </SidePanel>
+          <div className="flex justify-end gap-2 rounded-b-lg border-t border-border bg-[#fafafa] px-6 py-3">
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={createRecord}>Save</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {actionMenu &&
         createPortal(
@@ -797,6 +915,19 @@ export function LegislativeTrackingList() {
               disabled={actionMenu.bill.lifecycleStatus === 'Disapproved'}
             >
               Disapprove
+            </button>
+            <div className="my-1 border-t border-border" />
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center px-3 py-2 text-left text-xs text-[#b91c1c] hover:bg-[#fef2f2]"
+              onClick={() => {
+                deleteRecord(actionMenu.bill.id);
+                setActionMenu(null);
+              }}
+            >
+              <Trash2 className="mr-2 h-3.5 w-3.5" />
+              Delete
             </button>
           </div>,
           document.body

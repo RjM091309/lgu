@@ -4,6 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { mockBills, mockSessions } from '@/lib/mock-data';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from '@/components/ui/toast';
+import { openPrintWindow, saveCsv } from '@/lib/files';
 import { BarChart3, TrendingUp, PieChart, FileText, Download, Users } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -109,40 +112,40 @@ const reportContentMap: Record<string, { title: string; description: string; ite
     title: 'Search and Listing Reports',
     description: 'Generate and export filtered listings of resolutions, ordinances, and transactions.',
     items: [
-      { title: 'Approved/Unapproved Legislation by Keyword', type: 'Listing', date: 'April 2024' },
-      { title: 'Authorship and Sponsorship Report', type: 'Listing', date: 'Q1 2024' },
-      { title: 'Committee Referral and Status Report', type: 'Search', date: 'FY 2024' },
-      { title: 'Incoming Documents and Transmittals Listing', type: 'Search', date: 'March 2024' },
+      { title: 'Approved/Unapproved Legislation by Keyword', type: 'Listing', date: 'September 2026' },
+      { title: 'Authorship and Sponsorship Report', type: 'Listing', date: 'Q3 2026' },
+      { title: 'Committee Referral and Status Report', type: 'Search', date: 'FY 2026' },
+      { title: 'Incoming Documents and Transmittals Listing', type: 'Search', date: 'August 2026' },
     ],
   },
   'report-search-listing': {
     title: 'Search and Listing Reports',
     description: 'Generate and export filtered listings of resolutions, ordinances, and transactions.',
     items: [
-      { title: 'Approved/Unapproved Legislation by Keyword', type: 'Listing', date: 'April 2024' },
-      { title: 'Authorship and Sponsorship Report', type: 'Listing', date: 'Q1 2024' },
-      { title: 'Committee Referral and Status Report', type: 'Search', date: 'FY 2024' },
-      { title: 'Incoming Documents and Transmittals Listing', type: 'Search', date: 'March 2024' },
+      { title: 'Approved/Unapproved Legislation by Keyword', type: 'Listing', date: 'September 2026' },
+      { title: 'Authorship and Sponsorship Report', type: 'Listing', date: 'Q3 2026' },
+      { title: 'Committee Referral and Status Report', type: 'Search', date: 'FY 2026' },
+      { title: 'Incoming Documents and Transmittals Listing', type: 'Search', date: 'August 2026' },
     ],
   },
   'report-statistical-performance': {
     title: 'Statistical and Performance Reports',
     description: 'View yearly totals, committee productivity, and performance indicators.',
     items: [
-      { title: 'Total Approved Resolutions/Ordinances per Year', type: 'Statistical', date: '2024 Annual' },
-      { title: 'Committee Performance Summary', type: 'Performance', date: 'Q1 2024' },
-      { title: 'Member Authorship Productivity', type: 'Performance', date: 'April 2024' },
-      { title: 'Incoming Documents by Origin/Referral', type: 'Statistical', date: 'FY 2024' },
+      { title: 'Total Approved Resolutions/Ordinances per Year', type: 'Statistical', date: '2025 Annual' },
+      { title: 'Committee Performance Summary', type: 'Performance', date: 'Q3 2026' },
+      { title: 'Member Authorship Productivity', type: 'Performance', date: 'September 2026' },
+      { title: 'Incoming Documents by Origin/Referral', type: 'Statistical', date: 'FY 2026' },
     ],
   },
   'report-attendance-publication': {
     title: 'Attendance and Publication Reports',
     description: 'Track session attendance, quorum status, and publication-related outputs.',
     items: [
-      { title: 'Session Attendance with Quorum', type: 'Attendance', date: 'April 2024' },
-      { title: 'Session Attendance without Quorum', type: 'Attendance', date: 'Q1 2024' },
-      { title: 'Second Reading Publication by Posting', type: 'Publication', date: 'FY 2024' },
-      { title: 'Ordinances with Penal Clause Publication Status', type: 'Publication', date: 'March 2024' },
+      { title: 'Session Attendance with Quorum', type: 'Attendance', date: 'September 2026' },
+      { title: 'Session Attendance without Quorum', type: 'Attendance', date: 'Q3 2026' },
+      { title: 'Second Reading Publication by Posting', type: 'Publication', date: 'FY 2026' },
+      { title: 'Ordinances with Penal Clause Publication Status', type: 'Publication', date: 'August 2026' },
     ],
   },
 };
@@ -153,6 +156,9 @@ export function ReportList({ activeTab }: ReportListProps) {
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   const [categoryFilter, setCategoryFilter] = useState('All');
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [generateType, setGenerateType] = useState(reports[0]?.title ?? '');
+  const [generatePeriod, setGeneratePeriod] = useState('Q3 2026');
 
   const statusOptions: SelectOption[] = useMemo(
     () => [
@@ -241,6 +247,50 @@ export function ReportList({ activeTab }: ReportListProps) {
     []
   );
 
+  const printReport = (title: string, type: string, period: string): boolean => {
+    const generated = new Date().toLocaleString('en-PH', { timeZone: 'Asia/Manila' });
+    const table =
+      type === 'Attendance'
+        ? `<table><thead><tr><th>Session</th><th>Date</th><th>Present</th><th>Absent</th><th>Quorum</th></tr></thead><tbody>${attendanceRows
+            .map((row) => `<tr><td>${row.title}</td><td>${row.date}</td><td>${row.present}</td><td>${row.absent}</td><td>${row.quorum}</td></tr>`)
+            .join('')}</tbody></table>`
+        : `<table><thead><tr><th>Record No.</th><th>Title</th><th>Committee</th><th>Status</th><th>Date Filed</th></tr></thead><tbody>${mockBills
+            .map((bill) => `<tr><td>${bill.number}</td><td>${bill.title}</td><td>${bill.committee ?? bill.author}</td><td>${bill.status}</td><td>${bill.dateFiled}</td></tr>`)
+            .join('')}</tbody></table>`;
+    return openPrintWindow(title, `<div class="title">${title}</div><div class="rows">Period: ${period} · Generated ${generated}</div>${table}`);
+  };
+
+  const handleGenerate = () => {
+    const report = reports.find((item) => item.title === generateType);
+    if (!report || !generatePeriod) {
+      toast('Report not generated', 'Please choose a report type and period.', 'error');
+      return;
+    }
+    if (!printReport(report.title, report.type, generatePeriod)) {
+      toast('Report not generated', 'Your browser blocked the report window. Allow pop-ups for this site and try again.', 'error');
+      return;
+    }
+    setGenerateOpen(false);
+    toast('Report generated', `${report.title} (${generatePeriod}) opened for printing or saving as PDF.`);
+  };
+
+  const exportListing = () => {
+    if (filteredListing.length === 0) {
+      toast('Nothing to export', 'No records match the current filters.', 'error');
+      return;
+    }
+    const saved = saveCsv(
+      'sb-capas-legislation-listing.csv',
+      ['Record No.', 'Title', 'Status', 'Category', 'Committee', 'Date Filed'],
+      filteredListing.map((bill) => [bill.number, bill.title, bill.status, bill.category, bill.committee ?? bill.author, bill.dateFiled])
+    );
+    if (!saved) {
+      toast('Export failed', 'The CSV file could not be created. Please try again.', 'error');
+      return;
+    }
+    toast('Listing exported', `${filteredListing.length} record(s) saved as CSV.`);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -248,7 +298,7 @@ export function ReportList({ activeTab }: ReportListProps) {
           <h1 className="text-2xl font-bold tracking-tight text-primary">{selected.title}</h1>
           <p className="text-sm text-text-muted">{selected.description}</p>
         </div>
-        <Button className="bg-primary hover:bg-primary-light">
+        <Button onClick={() => setGenerateOpen(true)}>
           <BarChart3 className="mr-2 h-4 w-4" />
           Generate New Report
         </Button>
@@ -273,21 +323,27 @@ export function ReportList({ activeTab }: ReportListProps) {
           <CardContent className="p-6">
             <FileText className="h-8 w-8 mb-4 text-success opacity-50" />
             <div className="text-3xl font-bold text-primary">{mockBills.length}</div>
-            <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Total Pages</div>
+            <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Records on File</div>
           </CardContent>
         </Card>
         <Card className="border border-border shadow-sm bg-white">
           <CardContent className="p-6">
             <Users className="h-8 w-8 mb-4 text-warning opacity-50" />
             <div className="text-lg font-bold text-primary">{statsSummary.topAuthor}</div>
-            <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Top Author</div>
+            <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Most Active Committee</div>
           </CardContent>
         </Card>
       </div>
 
       {activeTab === 'report-search-listing' || activeTab === 'reports' ? (
         <div className="bg-white rounded-lg border border-border p-4 md:p-6 space-y-4">
-          <h3 className="font-bold text-primary">Search and Listing Process (Mock)</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="font-bold text-primary">Search and Listing</h3>
+            <Button variant="outline" size="sm" onClick={exportListing}>
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
           <div className="grid gap-3 md:grid-cols-3">
             <Input
               placeholder="Search by title, number, author"
@@ -333,10 +389,10 @@ export function ReportList({ activeTab }: ReportListProps) {
 
       {activeTab === 'report-statistical-performance' ? (
         <div className="bg-white rounded-lg border border-border p-4 md:p-6 space-y-4">
-          <h3 className="font-bold text-primary">Statistical and Performance Process (Mock)</h3>
+          <h3 className="font-bold text-primary">Statistics and Performance</h3>
           <div className="grid gap-4 md:grid-cols-2">
             <SimpleBarChart
-              title="By Author"
+              title="By Committee"
               data={Object.entries(statsSummary.byAuthor).map(([label, value]) => ({ label, value }))}
             />
             <SimpleBarChart
@@ -349,7 +405,7 @@ export function ReportList({ activeTab }: ReportListProps) {
             <SimpleDonutChart title="Approval Ratio" value={statsSummary.approvedCount} total={mockBills.length} />
             <SimpleBarChart
               title="Session Types"
-              data={Array.from(
+              data={Object.entries(
                 mockSessions.reduce<Record<string, number>>((acc, session) => {
                   acc[session.type] = (acc[session.type] ?? 0) + 1;
                   return acc;
@@ -363,7 +419,7 @@ export function ReportList({ activeTab }: ReportListProps) {
 
       {activeTab === 'report-attendance-publication' ? (
         <div className="bg-white rounded-lg border border-border p-4 md:p-6 space-y-5">
-          <h3 className="font-bold text-primary">Attendance and Publication Process (Mock)</h3>
+          <h3 className="font-bold text-primary">Attendance and Publication</h3>
           <div className="grid gap-4 md:grid-cols-2">
             <SimpleBarChart
               title="Present vs Absent"
@@ -445,7 +501,11 @@ export function ReportList({ activeTab }: ReportListProps) {
                     <div className="text-xs text-text-muted">{report.type} • {report.date}</div>
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" className="text-primary font-semibold">
+                <Button variant="ghost" size="sm" className="text-primary font-semibold" onClick={() => {
+                  if (!printReport(report.title, report.type, report.date)) {
+                    toast('Report not opened', 'Your browser blocked the report window. Allow pop-ups for this site and try again.', 'error');
+                  }
+                }}>
                   <Download className="mr-2 h-4 w-4" />
                   Download PDF
                 </Button>
@@ -454,6 +514,47 @@ export function ReportList({ activeTab }: ReportListProps) {
           </div>
         </div>
       )}
+
+      <Dialog open={generateOpen} onOpenChange={setGenerateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="text-xl text-primary">Generate New Report</DialogTitle>
+            <DialogDescription>The report opens in a printable page that you can print or save as PDF.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5 space-y-3">
+            <label className="block text-xs font-semibold text-text-muted">
+              Report
+              <select
+                value={generateType}
+                onChange={(e) => setGenerateType(e.target.value)}
+                className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm font-normal text-text-main"
+              >
+                {reports.map((report) => (
+                  <option key={report.title}>{report.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-xs font-semibold text-text-muted">
+              Period
+              <select
+                value={generatePeriod}
+                onChange={(e) => setGeneratePeriod(e.target.value)}
+                className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm font-normal text-text-main"
+              >
+                {['September 2026', 'Q3 2026', 'First Half 2026', 'FY 2026', 'FY 2025'].map((period) => (
+                  <option key={period}>{period}</option>
+                ))}
+              </select>
+            </label>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setGenerateOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={handleGenerate}>Generate</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

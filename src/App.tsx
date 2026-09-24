@@ -13,10 +13,36 @@ import { AccessView } from '@/components/access/AccessView';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { motion, AnimatePresence } from 'motion/react';
 import { LandingPage } from '@/components/public/LandingPage';
+import { Toaster } from '@/components/ui/toast';
+import { ConfirmDialogHost } from '@/components/ui/confirm';
+import { LandingSkeleton, PageSkeleton } from '@/components/ui/skeleton';
 import { useLocation, useNavigate } from 'react-router-dom';
 
+const SESSION_KEY = 'sb-capas-session';
+
+// "Remember me" keeps the session in localStorage; otherwise it lasts for the browser tab (sessionStorage).
+const readSession = () => {
+  try {
+    return localStorage.getItem(SESSION_KEY) === 'active' || sessionStorage.getItem(SESSION_KEY) === 'active';
+  } catch {
+    return false;
+  }
+};
+
+const writeSession = (remember: boolean | null) => {
+  try {
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+    if (remember !== null) (remember ? localStorage : sessionStorage).setItem(SESSION_KEY, 'active');
+  } catch {
+    // Storage unavailable (private mode): the session simply won't survive a refresh.
+  }
+};
+
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(readSession);
+  const [isBooting, setIsBooting] = useState(true);
+  const [loadedTab, setLoadedTab] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -74,6 +100,20 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeTab]);
 
+  // Brief skeleton on first paint and on each page change; a page counts as loaded once its timer fires.
+  useEffect(() => {
+    const timer = setTimeout(() => setIsBooting(false), 700);
+    return () => clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const timer = setTimeout(() => setLoadedTab(activeTab), 450);
+    return () => clearTimeout(timer);
+  }, [activeTab, isLoggedIn]);
+
+  const showPageSkeleton = loadedTab !== activeTab;
+
   const setActiveTab = (tab: string) => {
     navigate(tabToPath[tab as keyof typeof tabToPath] ?? '/dashboard');
   };
@@ -81,7 +121,7 @@ export default function App() {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <Overview />;
+        return <Overview onNavigate={setActiveTab} />;
       case 'manage-legislation':
         return <LegislativeTrackingList />;
       case 'manage-master-files':
@@ -124,57 +164,76 @@ export default function App() {
     }
   };
 
+  const handleLogin = (remember: boolean) => {
+    writeSession(remember);
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    writeSession(null);
+    setIsLoggedIn(false);
+    setLoadedTab(null);
+    navigate('/', { replace: true });
+  };
+
   if (!isLoggedIn) {
-    return <LandingPage onLogin={() => setIsLoggedIn(true)} />;
+    return (
+      <>
+        {isBooting ? <LandingSkeleton /> : <LandingPage onLogin={handleLogin} />}
+        <Toaster />
+        <ConfirmDialogHost />
+      </>
+    );
   }
 
   return (
     <div className="min-h-screen bg-background font-sans antialiased md:flex">
       {/* Desktop Sidebar */}
       <aside className="hidden md:block md:w-72 md:shrink-0 md:h-screen md:sticky md:top-0">
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} compact={false} />
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
-        <Navbar 
-          isLoggedIn={isLoggedIn} 
-          onLogout={() => setIsLoggedIn(false)} 
-          onLogin={() => setIsLoggedIn(true)}
-          onNavigateFromSearch={setActiveTab}
-          onMenuClick={() => setIsSidebarOpen(true)} 
+        <Navbar
+          activeTab={activeTab}
+          onLogout={handleLogout}
+          onNavigate={setActiveTab}
+          onMenuClick={() => setIsSidebarOpen(true)}
         />
-        
+
         {/* Mobile Sidebar */}
         <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
           <SheetContent side="left" className="p-0 w-72">
-            <Sidebar 
-              activeTab={activeTab} 
+            <Sidebar
+              activeTab={activeTab}
               setActiveTab={(tab) => {
                 setActiveTab(tab);
                 setIsSidebarOpen(false);
               }}
-              compact={false}
+              onLogout={handleLogout}
             />
           </SheetContent>
         </Sheet>
 
         {/* Main Content */}
-        <main ref={mainScrollRef} className="flex-1 overflow-y-auto bg-muted/5">
-          <div className="py-8 px-4 md:px-8 w-full">
+        <main ref={mainScrollRef} className="flex-1 overflow-y-auto bg-background">
+          <div className="mx-auto w-full max-w-[1600px] px-4 py-8 md:px-8">
             <AnimatePresence mode="wait">
               <motion.div
-                key={activeTab}
-                initial={{ opacity: 0, y: 10 }}
+                key={`${activeTab}-${showPageSkeleton ? 'loading' : 'ready'}`}
+                initial={{ opacity: 0, y: showPageSkeleton ? 0 : 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.18 }}
               >
-                {renderContent()}
+                {showPageSkeleton ? <PageSkeleton variant={activeTab === 'dashboard' ? 'dashboard' : 'page'} /> : renderContent()}
               </motion.div>
             </AnimatePresence>
           </div>
         </main>
       </div>
+      <Toaster />
+      <ConfirmDialogHost />
     </div>
   );
 }

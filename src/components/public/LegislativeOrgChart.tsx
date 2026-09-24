@@ -6,156 +6,61 @@ interface OrgNode {
   id: string;
   name: string;
   role: string;
+  abbr?: string;
   image?: string;
   children?: OrgNode[];
 }
 
+// Positions only: officials and staff are intentionally not named.
 const orgData: OrgNode = {
-  id: '1',
-  name: 'Ramil M. Pulvera',
-  role: 'Municipal Vice Mayor',
-  image: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?q=80&w=200&h=200&auto=format&fit=crop',
+  id: 'vm',
+  name: 'Municipal Vice Mayor',
+  role: 'Presiding Officer',
+  abbr: 'VM',
   children: [
     {
       id: 'sb-members',
-      name: 'Sangguniang Bayan',
-      role: 'SB Members',
+      name: 'Sangguniang Bayan Members',
+      role: 'Legislative Body',
+      abbr: 'SB',
       children: [
-        {
-          id: '2',
-          name: 'Vinzsimon L. Ruila',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '3',
-          name: 'Doreen Pahile P. Sandig',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '4',
-          name: 'Arlyn Ryan F. Palabriga',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '5',
-          name: 'Rosary A. Balagtas',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '6',
-          name: 'Eddie G. De Asis, Jr.',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '7',
-          name: 'John Ed Lindam D. Parrilla',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '8',
-          name: 'Filomeno P. Cadiz',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '9',
-          name: 'Jessie S. Beldad',
-          role: 'SB Member',
-          image: 'https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-      ],
-    },
-    {
-      id: 'sb-staff',
-      name: 'SB Staff Support',
-      role: 'Administrative Staff',
-      children: [
-        {
-          id: '10',
-          name: 'Edelyn M. Tadeo',
-          role: 'SB Staff',
-          image: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '11',
-          name: 'Inee Grace M. Nakila',
-          role: 'SB Staff',
-          image: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '12',
-          name: 'Jemarc P. Gementiza',
-          role: 'SB Staff',
-          image: 'https://images.unsplash.com/photo-1552058544-f2b08422138a?q=80&w=150&h=150&auto=format&fit=crop',
-        },
-        {
-          id: '13',
-          name: 'Jocelyn C. Tianero',
-          role: 'SB Staff',
-          image: 'https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?q=80&w=150&h=150&auto=format&fit=crop',
-        },
+        { id: 'mc1', name: 'Municipal Councilor (1st)', role: 'SB Member', abbr: 'MC1' },
+        { id: 'mc2', name: 'Municipal Councilor (2nd)', role: 'SB Member', abbr: 'MC2' },
+        { id: 'mc3', name: 'Municipal Councilor (3rd)', role: 'SB Member', abbr: 'MC3' },
+        { id: 'mc4', name: 'Municipal Councilor (4th)', role: 'SB Member', abbr: 'MC4' },
+        { id: 'mc5', name: 'Municipal Councilor (5th)', role: 'SB Member', abbr: 'MC5' },
+        { id: 'mc6', name: 'Municipal Councilor (6th)', role: 'SB Member', abbr: 'MC6' },
+        { id: 'mc7', name: 'Municipal Councilor (7th)', role: 'SB Member', abbr: 'MC7' },
+        { id: 'mc8', name: 'Municipal Councilor (8th)', role: 'SB Member', abbr: 'MC8' },
+        { id: 'ipmr', name: 'IPMR Representative', role: 'Ex-officio SB Member', abbr: 'IP' },
+        { id: 'abc', name: 'ABC President', role: 'Ex-officio SB Member', abbr: 'ABC' },
+        { id: 'skf', name: 'SK Federation President', role: 'Ex-officio SB Member', abbr: 'SK' },
       ],
     },
     {
       id: 'sec-sanggunian',
-      name: 'Ian Loure V. Bajade',
-      role: 'Secretary to the Sangguniang',
-      image: 'https://images.unsplash.com/photo-1519345182560-3f2917c472ef?q=80&w=150&h=150&auto=format&fit=crop',
+      name: 'Secretary to the Sanggunian',
+      role: 'SB Secretariat',
+      abbr: 'SEC',
       children: [
         {
-          id: 'admin-ops',
-          name: 'Administrative Operations',
+          id: 'legislative-services',
+          name: 'Legislative Services',
           role: 'Section',
+          abbr: 'LS',
           children: [
-            {
-              id: '14',
-              name: 'Robelyn L. Barrios',
-              role: 'Admin Officer I',
-              image: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?q=80&w=150&h=150&auto=format&fit=crop',
-            },
-            {
-              id: '15',
-              name: 'Runitto D. Chan',
-              role: 'Process Server',
-              image: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=150&h=150&auto=format&fit=crop',
-            },
-            {
-              id: '16',
-              name: 'Josephine S. Dela Peña',
-              role: 'Admin Aide I',
-              image: 'https://images.unsplash.com/photo-1619895862022-09114b41f16f?q=80&w=150&h=150&auto=format&fit=crop',
-            },
+            { id: 'legislative-staff', name: 'Legislative Staff', role: 'Legislative Services', abbr: 'LS' },
+            { id: 'records-officer', name: 'Records Officer', role: 'Legislative Services', abbr: 'RO' },
           ],
         },
         {
-          id: 'legislative-sec',
-          name: 'Legislative Services',
+          id: 'admin-services',
+          name: 'Administrative Services',
           role: 'Section',
+          abbr: 'AS',
           children: [
-            {
-              id: '17',
-              name: 'Rendil B. Delos Santos',
-              role: 'Senior Admin Asst II',
-              image: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?q=80&w=150&h=150&auto=format&fit=crop',
-            },
-            {
-              id: '18',
-              name: 'James D. Dulagson',
-              role: 'Admin Asst II',
-              image: 'https://images.unsplash.com/photo-1542909168-82c3e7fdca5c?q=80&w=150&h=150&auto=format&fit=crop',
-            },
-            {
-              id: '19',
-              name: 'Duenadel M. Belceria',
-              role: 'Board Secretary II',
-              image: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=150&h=150&auto=format&fit=crop',
-            },
+            { id: 'admin-officer', name: 'Administrative Officer', role: 'Administrative Services', abbr: 'AO' },
+            { id: 'admin-aide', name: 'Administrative Aide', role: 'Administrative Services', abbr: 'AA' },
           ],
         },
       ],
@@ -318,7 +223,7 @@ export function LegislativeOrgChart() {
           .attr('fill', '#94a3b8')
           .style('font-size', '32px')
           .style('font-weight', 'bold')
-          .text(d.data.name.charAt(0));
+          .text(d.data.abbr ?? d.data.name.charAt(0));
       }
 
       nodeG

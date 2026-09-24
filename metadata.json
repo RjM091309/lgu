@@ -1,6 +1,6 @@
 {
-  "name": "Legislative Information System",
-  "description": "A comprehensive Online Legislative Management Information System for tracking bills, sessions, and member activities.",
+  "name": "SB Capas LMIS",
+  "description": "Legislative Management Information System prototype for the Sangguniang Bayan ng Capas, Tarlac: tracking ordinances, resolutions, sessions, and committee work.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

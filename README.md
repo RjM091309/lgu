@@ -1,6 +1,9 @@
-## LGU
+## SB Capas LMIS
 
-React + Vite + TypeScript app (Tailwind CSS). Uses `GEMINI_API_KEY` (see `.env.example`).
+Legislative Management Information System prototype for the Sangguniang Bayan ng Capas, Tarlac.
+React + Vite + TypeScript app (Tailwind CSS).
+
+All records in the app are **sample data** (see `src/lib/mock-data.ts`). Officials are shown by position only.
 
 ## Requirements
 
@@ -13,21 +16,15 @@ React + Vite + TypeScript app (Tailwind CSS). Uses `GEMINI_API_KEY` (see `.env.e
 npm install
 ```
 
-Create your env file:
-
-```bash
-copy .env.example .env
-```
-
-Then set `GEMINI_API_KEY` in `.env`.
-
 ## Run (dev)
 
 ```bash
 npm run dev
 ```
 
-Dev server runs on `http://localhost:3000`.
+Dev server runs on `http://localhost:2510`.
+
+Demo login on the public portal: username `admin`, password `admin123`.
 
 ## Build
 
@@ -50,4 +47,4 @@ npm run lint
 ## Notes
 
 - `dist/`, `node_modules/`, and `.env*` are ignored via `.gitignore`.
-- On Windows, `npm run clean` may fail because it uses `rm -rf`. If you need it, we can switch it to a cross-platform command.
+- On Windows, `npm run clean` may fail because it uses `rm -rf`.

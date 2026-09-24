@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { mockSystemRequirements } from '@/lib/system-requirements';
 import { mockBills, mockSessions } from '@/lib/mock-data';
+import { toast } from '@/components/ui/toast';
+import { confirmAction } from '@/components/ui/confirm';
 
 interface RequirementsViewProps {
   activeTab: string;
@@ -201,6 +203,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [signedBills, setSignedBills] = useState<string[]>([]);
+  const [mfaMethods, setMfaMethods] = useState<string[]>(['SMS/Text OTP', 'Authenticator App']);
 
   const statuses = useMemo(
     () => ['All', ...Array.from(new Set(mockBills.map((bill) => bill.status)))],
@@ -241,8 +244,19 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
     return { byStatus, byCategory, byAuthor };
   }, []);
 
-  const signBill = (id: string) => {
-    setSignedBills((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  const signBill = async (id: string, label: string) => {
+    if (signedBills.includes(id)) {
+      toast('Not signed', `${label} is already signed.`, 'error');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Sign this document?',
+      description: `Your electronic signature will be applied to ${label}. A signature cannot be withdrawn once applied.`,
+      confirmLabel: 'Sign document',
+    });
+    if (!confirmed) return;
+    setSignedBills((prev) => [...prev, id]);
+    toast('Document signed', `${label} was signed electronically.`);
   };
 
   const eSessionQueue = useMemo(
@@ -256,10 +270,10 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
   const attendanceForSignature = useMemo(
     () => [
-      { member: 'Hon. Maria Santos', present: true, signed: signedBills.includes('sig-1') },
-      { member: 'Sen. Robert Chen', present: true, signed: signedBills.includes('sig-2') },
-      { member: 'Hon. James Wilson', present: false, signed: false },
-      { member: 'Hon. Elena Rodriguez', present: true, signed: signedBills.includes('sig-4') },
+      { member: 'Municipal Vice Mayor', present: true, signed: signedBills.includes('sig-1') },
+      { member: 'Municipal Councilor (1st)', present: true, signed: signedBills.includes('sig-2') },
+      { member: 'Municipal Councilor (2nd)', present: false, signed: false },
+      { member: 'Municipal Councilor (3rd)', present: true, signed: signedBills.includes('sig-4') },
     ],
     [signedBills]
   );
@@ -362,7 +376,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-primary">System Requirements</h1>
-        <p className="text-sm text-text-muted">Document-style mock requirements aligned with the project proposal content.</p>
+        <p className="text-sm text-text-muted">Functional requirements of the Legislative Management System, aligned with the project proposal.</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -430,8 +444,8 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {selectedTitle === 'Public Viewing and Inquiry' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-          <h4 className="text-lg font-bold">Inquiry Engine (Mock Logic)</h4>
-          <p className="text-sm text-text-muted">Searches bills by keyword, status, and category using mock records.</p>
+          <h4 className="text-lg font-bold">Inquiry Engine</h4>
+          <p className="text-sm text-text-muted">Searches measures by keyword, status, and category.</p>
           <div className="grid gap-3 md:grid-cols-3">
             <Input
               value={keyword}
@@ -487,8 +501,8 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {selectedTitle === 'Reports and Analytics' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-          <h4 className="text-lg font-bold">Report Generator (Mock Logic)</h4>
-          <p className="text-sm text-text-muted">Computed from current mock bills and sessions dataset.</p>
+          <h4 className="text-lg font-bold">Report Generator</h4>
+          <p className="text-sm text-text-muted">Computed from current legislative records and sessions.</p>
           <div className="grid gap-4 md:grid-cols-3">
             <div className="border border-border p-4">
               <div className="text-xs uppercase text-text-muted">Total Bills</div>
@@ -530,7 +544,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {selectedTitle === 'E-Session and Digital Signature' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-          <h4 className="text-lg font-bold">E-Session Signature Flow (Mock Logic)</h4>
+          <h4 className="text-lg font-bold">E-Session Signature Flow</h4>
           <p className="text-sm text-text-muted">
             Simulates session signing state for approved/passed/enacted legislative items.
           </p>
@@ -548,7 +562,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                     <Button
                       size="sm"
                       variant={isSigned ? 'default' : 'outline'}
-                      onClick={() => signBill(bill.id)}
+                      onClick={() => signBill(bill.id, bill.number)}
                     >
                       {isSigned ? 'Signed' : 'Sign Document'}
                     </Button>
@@ -561,7 +575,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {activeTab === 'esig-platform' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-          <h4 className="text-lg font-bold">E-Session Platform Process (Mock)</h4>
+          <h4 className="text-lg font-bold">E-Session Platform Process</h4>
           <p className="text-sm text-text-muted">
             Simulates live session device connectivity, agenda sync, and transcription updates.
           </p>
@@ -602,7 +616,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {activeTab === 'esig-electronic-signature' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-          <h4 className="text-lg font-bold">Electronic Signature Process (Mock)</h4>
+          <h4 className="text-lg font-bold">Electronic Signature Process</h4>
           <p className="text-sm text-text-muted">
             Demonstrates signer availability based on attendance and signature finalization flow.
           </p>
@@ -619,7 +633,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                   size="sm"
                   variant={row.signed ? 'default' : 'outline'}
                   disabled={!row.present}
-                  onClick={() => signBill(`sig-${idx + 1}`)}
+                  onClick={() => signBill(`sig-${idx + 1}`, `Attendance sheet for ${row.member}`)}
                 >
                   {row.signed ? 'Signed' : 'Sign Document'}
                 </Button>
@@ -631,9 +645,9 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {activeTab === 'esig-session-files' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-          <h4 className="text-lg font-bold">Session Files and Attachments Process (Mock)</h4>
+          <h4 className="text-lg font-bold">Session Files and Attachments Process</h4>
           <p className="text-sm text-text-muted">
-            Mock file browsing flow for agenda, minutes, and session media attachments.
+            File browsing flow for agenda, minutes, and session media attachments.
           </p>
           <div className="border border-border">
             <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
@@ -668,7 +682,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
       {selectedTitle === 'Core Legislative Modules' && (
         <div className="border border-border bg-white p-6 shadow-sm space-y-3">
-          <h4 className="text-lg font-bold">Core Module Status (Mock Logic)</h4>
+          <h4 className="text-lg font-bold">Core Module Status</h4>
           <p className="text-sm text-text-muted">
             Pipeline counts reflect current dataset progression from draft to enactment.
           </p>
@@ -686,7 +700,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
       {selectedTitle === 'Workflow, Security, and Compliance' && (
         <div className="space-y-4">
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-            <h4 className="text-lg font-bold">Assessment and Evaluation (UI Layout)</h4>
+            <h4 className="text-lg font-bold">Assessment and Evaluation</h4>
             <p className="text-sm text-text-muted">
               Review queue, compliance score, and evaluator remarks layout for pre-approval processing.
             </p>
@@ -711,7 +725,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           </div>
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-            <h4 className="text-lg font-bold">Approval and Issuance (UI Layout)</h4>
+            <h4 className="text-lg font-bold">Approval and Issuance</h4>
             <div className="border border-border">
               <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
                 <div className="col-span-2">Document No.</div>
@@ -733,7 +747,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           </div>
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-            <h4 className="text-lg font-bold">Notifications and Alerts (UI Layout)</h4>
+            <h4 className="text-lg font-bold">Notifications and Alerts</h4>
             <div className="border border-border">
               <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
                 <div className="col-span-3">Event Trigger</div>
@@ -751,23 +765,41 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           </div>
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-            <h4 className="text-lg font-bold">Security Controls and Audit Trail (UI Layout)</h4>
+            <h4 className="text-lg font-bold">Security Controls and Audit Trail</h4>
             <div className="grid gap-4 md:grid-cols-2">
               <div className="border border-border p-4 space-y-3">
                 <div className="text-sm font-semibold">MFA Configuration</div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" defaultChecked />
-                  SMS/Text OTP
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" defaultChecked />
-                  Authenticator App
-                </label>
-                <label className="flex items-center gap-2 text-sm">
-                  <input type="checkbox" />
-                  Physical Token
-                </label>
-                <Button variant="outline" size="sm">Save Security Policy</Button>
+                {['SMS/Text OTP', 'Authenticator App', 'Physical Token'].map((method) => (
+                  <label key={method} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={mfaMethods.includes(method)}
+                      onChange={(e) =>
+                        setMfaMethods((prev) => (e.target.checked ? [...prev, method] : prev.filter((entry) => entry !== method)))
+                      }
+                    />
+                    {method}
+                  </label>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (mfaMethods.length === 0) {
+                      toast('Security policy not saved', 'Keep at least one MFA method turned on.', 'error');
+                      return;
+                    }
+                    const confirmed = await confirmAction({
+                      title: 'Save security policy?',
+                      description: `All users will sign in with these MFA methods: ${mfaMethods.join(', ')}.`,
+                      confirmLabel: 'Save policy',
+                    });
+                    if (!confirmed) return;
+                    toast('Security policy saved', `MFA methods: ${mfaMethods.join(', ')}.`);
+                  }}
+                >
+                  Save Security Policy
+                </Button>
               </div>
               <div className="border border-border p-4 space-y-3">
                 <div className="text-sm font-semibold">Captcha and Password Policy</div>
@@ -797,7 +829,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           </div>
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
-            <h4 className="text-lg font-bold">Governance Monitoring (UI Layout)</h4>
+            <h4 className="text-lg font-bold">Governance Monitoring</h4>
             <p className="text-sm text-text-muted">
               Duplicate measure checks, budget monitoring, and implementation date tracking preview.
             </p>

@@ -10,147 +10,131 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
-import { User, Settings, LogOut, Search, Menu, X } from 'lucide-react';
-import { mockBills, mockMembers, mockSessions } from '@/lib/mock-data';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Bell, ChevronDown, ChevronRight, CircleHelp, KeyRound, LogOut, Mail, Menu, Search, User, X } from 'lucide-react';
+import { LGU_PROFILE, mockBills, mockMembers, mockSessions } from '@/lib/mock-data';
+import { NAV_GROUPS, findNavItem } from '@/lib/navigation';
+import { toast } from '@/components/ui/toast';
+import { confirmAction } from '@/components/ui/confirm';
 
-export function Navbar({ 
-  onMenuClick, 
-  isLoggedIn, 
-  onLogout, 
-  onLogin,
-  onNavigateFromSearch,
-}: { 
-  onMenuClick?: () => void;
-  isLoggedIn: boolean;
+interface NavbarProps {
+  activeTab: string;
+  onMenuClick: () => void;
   onLogout: () => void;
-  onLogin: () => void;
-  onNavigateFromSearch: (tab: string) => void;
-}) {
-  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  onNavigate: (tab: string) => void;
+}
+
+const INITIAL_NOTIFICATIONS = [
+  {
+    id: 'n1',
+    title: 'Committee report due',
+    body: 'Committee on Transportation report on Prop. Ord. No. 2026-P-012 is due this week.',
+    time: '2 hours ago',
+    tab: 'manage-legislation',
+    unread: true,
+  },
+  {
+    id: 'n2',
+    title: 'Signature requested',
+    body: 'Mun. Ord. No. 2026-007 is awaiting electronic signatures.',
+    time: '5 hours ago',
+    tab: 'esig-electronic-signature',
+    unread: true,
+  },
+  {
+    id: 'n3',
+    title: 'Agenda ready for review',
+    body: 'The order of business for the 38th Regular Session is ready.',
+    time: 'Yesterday',
+    tab: 'manage-transactions',
+    unread: true,
+  },
+  {
+    id: 'n4',
+    title: 'Account request',
+    body: 'A new committee staff account is pending approval.',
+    time: '2 days ago',
+    tab: 'access-users',
+    unread: false,
+  },
+];
+
+export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarProps) {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
-  const [isSuggestedExpanded, setIsSuggestedExpanded] = useState(false);
+  const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [dialog, setDialog] = useState<'help' | 'profile' | 'settings' | null>(null);
+  const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
+  const [passwordError, setPasswordError] = useState('');
+  const [emailAlerts, setEmailAlerts] = useState(true);
+  const [smsAlerts, setSmsAlerts] = useState(false);
   const searchBoxRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  const searchTargets = useMemo(
-    () => [
-      { tab: 'dashboard', keywords: ['dashboard', 'overview', 'home'] },
-      { tab: 'manage-legislation', keywords: ['legislation', 'legislative', 'tracking', 'bills'] },
-      { tab: 'manage-master-files', keywords: ['master', 'files', 'members', 'listings'] },
-      { tab: 'manage-transactions', keywords: ['transaction', 'operations', 'session'] },
-      { tab: 'access-users', keywords: ['access', 'user', 'users'] },
-      { tab: 'access-roles', keywords: ['role', 'roles', 'permissions'] },
-      { tab: 'access-control-panel', keywords: ['control', 'panel', 'security', 'settings'] },
-      { tab: 'report-search-listing', keywords: ['report', 'reports', 'search', 'listing'] },
-      { tab: 'report-statistical-performance', keywords: ['statistics', 'statistical', 'performance'] },
-      { tab: 'report-attendance-publication', keywords: ['attendance', 'publication'] },
-      { tab: 'archive', keywords: ['archive', 'archives'] },
-      { tab: 'req-core-modules', keywords: ['requirements', 'core', 'modules'] },
-      { tab: 'req-public-inquiry', keywords: ['public', 'inquiry'] },
-      { tab: 'req-reports-analytics', keywords: ['analytics', 'report analytics'] },
-      { tab: 'req-e-session-signature', keywords: ['e-session', 'esig', 'signature'] },
-      { tab: 'esig-platform', keywords: ['platform', 'e-session platform'] },
-      { tab: 'esig-electronic-signature', keywords: ['electronic signature', 'digital signature'] },
-      { tab: 'esig-session-files', keywords: ['session files', 'attachments'] },
-    ],
-    []
-  );
+  const current = findNavItem(activeTab);
+  const unreadCount = notifications.filter((item) => item.unread).length;
+  const today = new Intl.DateTimeFormat('en-PH', {
+    timeZone: 'Asia/Manila',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  }).format(new Date());
 
   const searchEntries = useMemo(
-    () => {
-      const sessionFileEntries = [
-        'Regular Session Agenda - Week 16.pdf',
-        'Plenary Recording - Week 16.mp4',
-        'Plenary Highlights - April 2024.mp4',
-        'Session Minutes Draft.docx',
-      ];
-
-      return [
-      ...searchTargets.map((target) => ({
-        id: `menu-${target.tab}`,
-        label: target.keywords[0],
-        tab: target.tab,
-        keywords: target.keywords,
-        group: 'Menu',
-      })),
+    () => [
+      ...NAV_GROUPS.flatMap((group) =>
+        group.items.map((item) => ({
+          id: `menu-${item.id}`,
+          label: item.label,
+          tab: item.id,
+          keywords: [group.label, ...item.keywords],
+          group: 'Page',
+        }))
+      ),
       ...mockBills.map((bill) => ({
         id: `bill-${bill.id}`,
         label: `${bill.number} - ${bill.title}`,
         tab: 'manage-legislation',
         keywords: [bill.number, bill.title, bill.author, bill.category],
-        group: 'Legislative Data',
+        group: 'Legislation',
       })),
       ...mockMembers.map((member) => ({
         id: `member-${member.id}`,
         label: `${member.name} (${member.role})`,
         tab: 'manage-master-files',
-        keywords: [member.name, member.role, member.party, member.district],
-        group: 'Member Data',
+        keywords: [member.name, member.role, member.position, member.seat],
+        group: 'Member',
       })),
       ...mockSessions.map((session) => ({
         id: `session-${session.id}`,
         label: `${session.title} (${session.date})`,
         tab: 'manage-transactions',
         keywords: [session.title, session.type, session.location, session.date],
-        group: 'Session Data',
+        group: 'Session',
       })),
-      {
-        id: 'access-users-data',
-        label: 'Access Users',
-        tab: 'access-users',
-        keywords: ['users', 'maria santos', 'robert chen', 'elena rodriguez'],
-        group: 'Access Data',
-      },
-      {
-        id: 'access-roles-data',
-        label: 'Access Roles',
-        tab: 'access-roles',
-        keywords: ['roles', 'administrator', 'records officer', 'committee staff'],
-        group: 'Access Data',
-      },
-      ...sessionFileEntries.map((fileName, index) => ({
+      ...['38th Regular Session Agenda - Week 41.pdf', 'Plenary Recording - Week 41.mp4', 'Session Minutes Draft.docx'].map((fileName, index) => ({
         id: `session-file-${index}`,
         label: fileName,
         tab: 'esig-session-files',
-        keywords: [fileName, 'session file', 'attachment', 'e-session'],
+        keywords: [fileName, 'session file', 'attachment'],
         group: 'Session File',
       })),
-      ];
-    },
-    [searchTargets]
-  );
-
-  const suggestedSearches = useMemo(
-    () => ['users', 'roles', 'control panel', 'legislation', 'reports', 'archive'],
+    ],
     []
   );
 
   const matchesSearchQuery = (query: string, values: string[]) => {
-    const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return false;
-
-    const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+    const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return false;
     const haystack = values.join(' ').toLowerCase();
-
     return tokens.every((token) => haystack.includes(token));
   };
 
   const searchResults = useMemo(() => {
-    const query = searchKeyword.trim();
-    if (!query) return [];
-
-    const entries = searchEntries.filter((entry) => matchesSearchQuery(query, [entry.label, ...entry.keywords]));
-    return entries.slice(0, 20);
+    if (!searchKeyword.trim()) return [];
+    return searchEntries.filter((entry) => matchesSearchQuery(searchKeyword, [entry.label, ...entry.keywords])).slice(0, 12);
   }, [searchKeyword, searchEntries]);
 
   React.useEffect(() => {
@@ -166,12 +150,24 @@ export function Navbar({
 
   React.useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (!searchBoxRef.current?.contains(event.target as Node)) {
-        setIsSearchOpen(false);
+      if (!searchBoxRef.current?.contains(event.target as Node)) setIsSearchOpen(false);
+    };
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const typing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
+      if (event.key === '/' && !typing) {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchOpen(true);
       }
+      if (event.key === 'Escape') setIsSearchOpen(false);
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleShortcut);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleShortcut);
+    };
   }, []);
 
   const saveRecentSearch = (query: string) => {
@@ -188,230 +184,403 @@ export function Navbar({
     });
   };
 
-  const findTargetTab = (rawQuery: string) => {
-    const query = rawQuery.trim();
-    if (!query) return null;
-    return (
-      searchEntries.find((entry) =>
-        matchesSearchQuery(query, [entry.label, ...entry.keywords])
-      ) ?? null
-    );
+  const openEntry = (entry: { tab: string; label: string }, query: string) => {
+    saveRecentSearch(query);
+    onNavigate(entry.tab);
+    setSearchKeyword('');
+    setIsSearchOpen(false);
   };
 
   const navigateByQuery = (query: string) => {
-    const match = findTargetTab(query);
-    if (!match) return;
-    saveRecentSearch(query);
-    onNavigateFromSearch(match.tab);
-    setIsSearchOpen(false);
+    const match = searchEntries.find((entry) => matchesSearchQuery(query, [entry.label, ...entry.keywords]));
+    if (!match) {
+      toast('No matching page or record', `Nothing matched "${query}".`, 'info');
+      return;
+    }
+    openEntry(match, query);
   };
 
   const handleGlobalSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!searchKeyword.trim()) return;
-    navigateByQuery(searchKeyword);
+    if (searchKeyword.trim()) navigateByQuery(searchKeyword);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onLogin();
-    setShowLoginDialog(false);
+  const openNotification = (id: string, tab: string) => {
+    setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, unread: false } : item)));
+    onNavigate(tab);
   };
+
+  const handlePasswordSave = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fail = (message: string) => {
+      setPasswordError(message);
+      toast('Password not updated', message, 'error');
+    };
+    if (!passwordForm.current || !passwordForm.next || !passwordForm.confirm) {
+      fail('Please complete all password fields.');
+      return;
+    }
+    if (passwordForm.next.length < 12) {
+      fail('The new password must be at least 12 characters.');
+      return;
+    }
+    if (passwordForm.next === passwordForm.current) {
+      fail('The new password must be different from your current password.');
+      return;
+    }
+    if (passwordForm.next !== passwordForm.confirm) {
+      fail('The new passwords do not match.');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: 'Change your password?',
+      description: 'You will need to use the new password the next time you sign in.',
+      confirmLabel: 'Change password',
+    });
+    if (!confirmed) return;
+    setPasswordError('');
+    setPasswordForm({ current: '', next: '', confirm: '' });
+    setDialog(null);
+    toast('Password updated', 'Use your new password the next time you sign in.');
+  };
+
+  const closeDialog = () => setDialog(null);
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b border-border bg-surface h-16">
-      <div className="flex h-full w-full items-center justify-between px-4 md:px-6">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick}>
-            <Menu className="h-5 w-5" />
-          </Button>
-          <div ref={searchBoxRef} className="relative w-[360px] hidden md:block">
-            <form className="relative" onSubmit={handleGlobalSearchSubmit}>
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-text-muted" />
-              <input
-                type="text"
-                value={searchKeyword}
-                onFocus={() => setIsSearchOpen(true)}
-                onClick={() => setIsSearchOpen(true)}
-                onChange={(e) => setSearchKeyword(e.target.value)}
-                placeholder="General search: modules, pages, users, reports..."
-                className="w-full bg-[#eee] border-none rounded-[4px] py-2 pl-10 pr-9 text-[13px] text-text-muted focus:outline-none focus:ring-1 focus:ring-primary/20"
-              />
-              {searchKeyword ? (
-                <button
-                  type="button"
-                  onClick={() => setSearchKeyword('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer rounded p-1 text-[#3d5d95] hover:bg-black/5"
-                  aria-label="Clear search"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              ) : null}
-            </form>
+    <header className="sticky top-0 z-40 w-full border-b border-border bg-white">
+      <div className="flex h-16 items-center gap-3 px-4 md:px-6">
+        <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick} aria-label="Open menu">
+          <Menu className="h-5 w-5" />
+        </Button>
 
-            {isSearchOpen ? (
-              <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-md border border-border bg-white p-2 shadow-lg">
-                {recentSearches.length > 0 ? (
-                  <div className="mb-2 border-b border-border pb-2">
-                    <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Recent Searches</p>
-                    <div className="space-y-1">
-                      {recentSearches.slice(0, 5).map((recent) => (
-                        <button
-                          key={recent}
-                          type="button"
-                          className="w-full cursor-pointer rounded px-2 py-1.5 text-left text-sm hover:bg-muted truncate"
-                          onClick={() => {
-                            setSearchKeyword(recent);
-                            navigateByQuery(recent);
-                          }}
-                          title={recent}
-                        >
-                          {recent}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className={searchKeyword.trim() ? 'mb-2 border-b border-border pb-2' : 'mb-1'}>
-                  <button
-                    type="button"
-                    className="flex w-full cursor-pointer items-center justify-between rounded px-2 py-1 text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted hover:bg-muted"
-                    onClick={() => setIsSuggestedExpanded((prev) => !prev)}
-                  >
-                    <span>Suggested Searches</span>
-                    <span>{isSuggestedExpanded ? 'Hide' : 'Show'}</span>
-                  </button>
-                  {isSuggestedExpanded ? (
-                    <div className="mt-1 space-y-1">
-                      {suggestedSearches.map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          type="button"
-                          className="w-full cursor-pointer rounded px-2 py-1.5 text-left text-sm hover:bg-muted truncate"
-                          onClick={() => {
-                            setSearchKeyword(suggestion);
-                            navigateByQuery(suggestion);
-                          }}
-                          title={suggestion}
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-
-                {searchKeyword.trim() ? (
-                  <div>
-                    <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Results</p>
-                    {searchResults.length > 0 ? (
-                      <div className="space-y-1">
-                        {searchResults.map((entry) => (
-                          <button
-                            key={entry.id}
-                            type="button"
-                            className="flex w-full cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
-                            onClick={() => {
-                              setSearchKeyword(entry.label);
-                              navigateByQuery(entry.label);
-                            }}
-                            title={entry.label}
-                          >
-                            <span className="min-w-0 flex-1 truncate">{entry.label}</span>
-                            <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] leading-none text-text-muted">
-                              {entry.group}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="px-2 py-1.5 text-sm text-text-muted">No matching results.</p>
-                    )}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-4 text-[12px] text-text-muted font-medium">
-            <span className="cursor-pointer hover:text-primary transition-colors">Help Desk</span>
-            <div className="w-px h-5 bg-border"></div>
-          </div>
-
-          {isLoggedIn ? (
-            <div className="flex items-center gap-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                    <Avatar className="h-9 w-9 border border-border">
-                      <AvatarImage src="https://i.pravatar.cc/150?u=admin" alt="Admin" />
-                      <AvatarFallback>AD</AvatarFallback>
-                    </Avatar>
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent className="w-56" align="end" forceMount>
-                  <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">Admin User</p>
-                      <p className="text-xs leading-none text-muted-foreground">admin@olmis.gov</p>
-                    </div>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem>
-                    <User className="mr-2 h-4 w-4" />
-                    <span>Profile</span>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button variant="outline" size="sm" onClick={onLogout} className="h-9">
-                <LogOut className="mr-2 h-4 w-4" />
-                Logout
-              </Button>
-            </div>
+        <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-sm lg:flex">
+          <button type="button" onClick={() => onNavigate('dashboard')} className="text-text-muted hover:text-primary">
+            Home
+          </button>
+          {current && current.item.id !== 'dashboard' ? (
+            <>
+              <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
+              <span className="text-text-muted">{current.group.label}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
+              <span className="truncate font-semibold text-primary">{current.item.label}</span>
+            </>
           ) : (
-            <Dialog open={showLoginDialog} onOpenChange={setShowLoginDialog}>
-              <DialogTrigger asChild>
-                <button className="bg-primary text-white border-none px-5 py-2 rounded-[4px] text-[13px] font-semibold cursor-pointer hover:bg-primary-light transition-colors">
-                  Sign In to Portal
-                </button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[425px]">
-                <DialogHeader>
-                  <DialogTitle className="text-2xl font-bold">Login to OLMIS</DialogTitle>
-                  <DialogDescription>
-                    Enter your credentials to access the legislative management system.
-                  </DialogDescription>
-                </DialogHeader>
-                <form onSubmit={handleLoginSubmit} className="space-y-4 pt-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      Email Address
-                    </label>
-                    <Input placeholder="name@example.com" type="email" required />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                      Password
-                    </label>
-                    <Input type="password" required />
-                  </div>
-                  <Button type="submit" className="w-full bg-primary hover:bg-primary-light">
-                    Sign In
-                  </Button>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <>
+              <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
+              <span className="font-semibold text-primary">Dashboard</span>
+            </>
           )}
+        </nav>
+
+        <div ref={searchBoxRef} className="relative ml-auto w-full max-w-sm">
+          <form onSubmit={handleGlobalSearchSubmit} role="search">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchKeyword}
+              onFocus={() => setIsSearchOpen(true)}
+              onChange={(e) => {
+                setSearchKeyword(e.target.value);
+                setIsSearchOpen(true);
+              }}
+              placeholder="Search pages, records, members..."
+              aria-label="Search"
+              className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-16 text-[13px] outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+            />
+            {searchKeyword ? (
+              <button
+                type="button"
+                onClick={() => setSearchKeyword('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-muted hover:bg-muted"
+                aria-label="Clear search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : (
+              <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-white px-1.5 text-[11px] text-text-muted sm:block">
+                /
+              </kbd>
+            )}
+          </form>
+
+          {isSearchOpen ? (
+            <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-lg border border-border bg-white p-2 shadow-xl">
+              {searchKeyword.trim() ? (
+                searchResults.length > 0 ? (
+                  <ul className="max-h-80 space-y-0.5 overflow-y-auto">
+                    {searchResults.map((entry) => (
+                      <li key={entry.id}>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-muted"
+                          onClick={() => openEntry(entry, searchKeyword)}
+                          title={entry.label}
+                        >
+                          <span className="min-w-0 flex-1 truncate">{entry.label}</span>
+                          <span className="shrink-0 rounded border border-border px-1.5 py-0.5 text-[10px] leading-none text-text-muted">{entry.group}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="px-2 py-1.5 text-sm text-text-muted">No matching results.</p>
+                )
+              ) : (
+                <>
+                  <p className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-text-muted">
+                    {recentSearches.length > 0 ? 'Recent searches' : 'Try searching for'}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 px-2 pb-1">
+                    {(recentSearches.length > 0 ? recentSearches : ['tricycle', 'budget', 'regular session', 'users', 'archives']).map((term) => (
+                      <button
+                        key={term}
+                        type="button"
+                        onClick={() => {
+                          setSearchKeyword(term);
+                          navigateByQuery(term);
+                        }}
+                        className="rounded-full border border-border px-2.5 py-1 text-xs hover:border-primary hover:text-primary"
+                      >
+                        {term}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          ) : null}
         </div>
+
+        <span className="hidden whitespace-nowrap text-xs text-text-muted xl:inline">{today}</span>
+
+        <Button variant="ghost" size="icon" onClick={() => setDialog('help')} aria-label="Help" title="Help">
+          <CircleHelp className="h-5 w-5 text-text-muted" />
+        </Button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative" aria-label={`Notifications (${unreadCount} unread)`} title="Notifications">
+              <Bell className="h-5 w-5 text-text-muted" />
+              {unreadCount > 0 ? (
+                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                  {unreadCount}
+                </span>
+              ) : null}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-80 p-0">
+            <div className="flex items-center justify-between border-b border-border px-4 py-3">
+              <span className="text-sm font-semibold">Notifications</span>
+              <button
+                type="button"
+                onClick={() => setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })))}
+                className="text-xs font-semibold text-primary hover:underline disabled:text-text-muted disabled:no-underline"
+                disabled={unreadCount === 0}
+              >
+                Mark all as read
+              </button>
+            </div>
+            <div className="max-h-80 overflow-y-auto p-1">
+              {notifications.map((item) => (
+                <DropdownMenuItem key={item.id} onClick={() => openNotification(item.id, item.tab)} className="items-start gap-3 px-3 py-2.5">
+                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.unread ? 'bg-primary' : 'bg-transparent'}`} />
+                  <span className="min-w-0">
+                    <span className={`block text-sm ${item.unread ? 'font-semibold' : ''}`}>{item.title}</span>
+                    <span className="mt-0.5 block text-xs text-text-muted">{item.body}</span>
+                    <span className="mt-1 block text-[11px] text-text-muted">{item.time}</span>
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </div>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button type="button" className="flex items-center gap-2 rounded-md py-1 pl-1 pr-2 hover:bg-muted" aria-label="Account menu">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">SB</span>
+              <span className="hidden text-left leading-tight md:block">
+                <span className="block text-[13px] font-semibold">SB Secretariat Admin</span>
+                <span className="block text-[11px] text-text-muted">Administrator</span>
+              </span>
+              <ChevronDown className="hidden h-4 w-4 text-text-muted md:block" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-60" align="end">
+            <DropdownMenuLabel className="font-normal">
+              <p className="text-sm font-semibold">SB Secretariat Admin</p>
+              <p className="text-xs text-text-muted">sb.admin@capas.gov.ph</p>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setDialog('profile')}>
+              <User className="mr-2 h-4 w-4" />
+              My Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDialog('settings')}>
+              <KeyRound className="mr-2 h-4 w-4" />
+              Account Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDialog('help')}>
+              <CircleHelp className="mr-2 h-4 w-4" />
+              Help & Support
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
-    </nav>
+
+      <Dialog open={dialog === 'help'} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="relative max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-primary">Help & Support</DialogTitle>
+            <DialogDescription>Quick guide to the Legislative Management System.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4 space-y-2">
+            {[
+              { tab: 'manage-legislation', title: 'Record and track legislation', text: 'Create records, move them through readings, and attach full texts.' },
+              { tab: 'manage-transactions', title: 'Prepare sessions', text: 'Route documents, build the agenda, and issue transmittals.' },
+              { tab: 'esig-electronic-signature', title: 'Sign measures electronically', text: 'Collect signatures from members present in session.' },
+              { tab: 'report-search-listing', title: 'Generate reports', text: 'Download listings, statistics, and attendance reports.' },
+            ].map((guide) => (
+              <button
+                key={guide.tab}
+                type="button"
+                onClick={() => {
+                  closeDialog();
+                  onNavigate(guide.tab);
+                }}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-border p-3 text-left hover:border-primary"
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-primary">{guide.title}</span>
+                  <span className="block text-xs text-text-muted">{guide.text}</span>
+                </span>
+                <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" />
+              </button>
+            ))}
+          </div>
+          <div className="mt-4 rounded-lg bg-background p-3 text-xs text-text-muted">
+            <p>
+              Press <kbd className="rounded border border-border bg-white px-1">/</kbd> anywhere to search.
+            </p>
+            <p className="mt-1 flex items-center gap-1.5">
+              <Mail className="h-3.5 w-3.5" />
+              Technical support:{' '}
+              <a href={`mailto:${LGU_PROFILE.email}`} className="font-semibold text-primary hover:underline">
+                {LGU_PROFILE.email}
+              </a>
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialog === 'profile'} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="relative max-w-md">
+          <div className="flex items-center gap-4">
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-white">SB</span>
+            <div>
+              <DialogTitle className="text-xl text-primary">SB Secretariat Admin</DialogTitle>
+              <DialogDescription>Administrator</DialogDescription>
+            </div>
+          </div>
+          <dl className="mt-5 divide-y divide-border rounded-lg border border-border text-sm">
+            {[
+              ['Email', 'sb.admin@capas.gov.ph'],
+              ['Office', 'Office of the Secretary to the Sanggunian'],
+              ['Access level', 'Full module access'],
+              ['Last sign-in', today],
+            ].map(([label, value]) => (
+              <div key={label} className="flex justify-between gap-4 px-4 py-2.5">
+                <dt className="text-text-muted">{label}</dt>
+                <dd className="text-right font-medium">{value}</dd>
+              </div>
+            ))}
+          </dl>
+          <div className="mt-5 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDialog('settings')}>
+              Account Settings
+            </Button>
+            <Button onClick={closeDialog}>Done</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialog === 'settings'} onOpenChange={(open) => !open && closeDialog()}>
+        <DialogContent className="relative max-h-[90vh] max-w-md overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-primary">Account Settings</DialogTitle>
+            <DialogDescription>Change your password and notification preferences.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handlePasswordSave} className="mt-5 space-y-3">
+            <h3 className="text-sm font-semibold">Change password</h3>
+            <Input
+              type="password"
+              placeholder="Current password"
+              aria-label="Current password"
+              value={passwordForm.current}
+              onChange={(e) => setPasswordForm((prev) => ({ ...prev, current: e.target.value }))}
+            />
+            <Input
+              type="password"
+              placeholder="New password (at least 12 characters)"
+              aria-label="New password"
+              value={passwordForm.next}
+              onChange={(e) => setPasswordForm((prev) => ({ ...prev, next: e.target.value }))}
+            />
+            <Input
+              type="password"
+              placeholder="Confirm new password"
+              aria-label="Confirm new password"
+              value={passwordForm.confirm}
+              onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirm: e.target.value }))}
+            />
+            {passwordError ? (
+              <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
+                {passwordError}
+              </p>
+            ) : null}
+            <Button type="submit" className="w-full">
+              Update password
+            </Button>
+          </form>
+          <div className="mt-6 space-y-2 border-t border-border pt-4">
+            <h3 className="text-sm font-semibold">Notifications</h3>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={emailAlerts} onChange={(e) => setEmailAlerts(e.target.checked)} className="h-4 w-4 accent-primary" />
+              Email me about routing and signature requests
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={smsAlerts} onChange={(e) => setSmsAlerts(e.target.checked)} className="h-4 w-4 accent-primary" />
+              Send SMS reminders before sessions
+            </label>
+            <Button
+              variant="outline"
+              className="mt-2"
+              onClick={async () => {
+                const confirmed = await confirmAction({
+                  title: 'Save notification preferences?',
+                  description: `Email alerts will be ${emailAlerts ? 'on' : 'off'} and SMS reminders will be ${smsAlerts ? 'on' : 'off'}.`,
+                  confirmLabel: 'Save preferences',
+                });
+                if (!confirmed) return;
+                toast(
+                  'Notification preferences saved',
+                  emailAlerts || smsAlerts
+                    ? `You will get ${[emailAlerts && 'email', smsAlerts && 'SMS'].filter(Boolean).join(' and ')} alerts.`
+                    : 'All email and SMS alerts are turned off.'
+                );
+              }}
+            >
+              Save preferences
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </header>
   );
 }

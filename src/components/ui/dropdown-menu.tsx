@@ -17,9 +17,29 @@ function useDropdownContext() {
 
 function DropdownMenu({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = React.useState(false);
+  const rootRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   return (
     <DropdownMenuContext.Provider value={{ open, setOpen }}>
-      <div className="relative inline-block">{children}</div>
+      <div ref={rootRef} className="relative inline-block">
+        {children}
+      </div>
     </DropdownMenuContext.Provider>
   );
 }
@@ -35,7 +55,7 @@ function DropdownMenuContent({
   children,
   align = "start",
 }: React.HTMLAttributes<HTMLDivElement> & { align?: "start" | "center" | "end"; forceMount?: boolean }) {
-  const { open, setOpen } = useDropdownContext();
+  const { open } = useDropdownContext();
   if (!open) return null;
   const alignmentClassName =
     align === "end" ? "right-0" : align === "center" ? "left-1/2 -translate-x-1/2" : "left-0";
@@ -46,7 +66,6 @@ function DropdownMenuContent({
         alignmentClassName,
         className
       )}
-      onMouseLeave={() => setOpen(false)}
     >
       <div className="w-full">{children}</div>
     </div>
@@ -62,13 +81,21 @@ const DropdownMenuSeparator = ({ className, ...props }: React.HTMLAttributes<HTM
 );
 
 const DropdownMenuItem = React.forwardRef<HTMLButtonElement, React.ButtonHTMLAttributes<HTMLButtonElement>>(
-  ({ className, ...props }, ref) => (
-    <button
-      ref={ref}
-      className={cn("flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted", className)}
-      {...props}
-    />
-  )
+  ({ className, onClick, ...props }, ref) => {
+    const context = React.useContext(DropdownMenuContext);
+    return (
+      <button
+        ref={ref}
+        type="button"
+        className={cn("flex w-full items-center rounded-sm px-2 py-1.5 text-left text-sm hover:bg-muted", className)}
+        onClick={(event) => {
+          onClick?.(event);
+          context?.setOpen(false);
+        }}
+        {...props}
+      />
+    );
+  }
 );
 DropdownMenuItem.displayName = "DropdownMenuItem";
 
