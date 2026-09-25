@@ -26,6 +26,9 @@ import {
 import { CalendarDatePicker } from '@/components/ui/CalendarDatePicker';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
+import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { logActivity } from '@/lib/activity-log';
 
 type LifecycleStatus = Bill['status'] | 'Disapproved';
 type WorkflowRoute = 'Agenda' | 'Committee Referral' | 'Hearing' | 'Report Workflow';
@@ -55,20 +58,6 @@ interface TrackingRecord extends Bill {
 /** Shared table badge shell: same height, padding, and pill shape so ROUTE/CATEGORY/STAGE align. */
 const trackingTableBadgeBase =
   'h-6 min-h-6 inline-flex items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-0 text-[11px] font-medium leading-none';
-
-function stageBadgeClassName(status: LifecycleStatus) {
-  return cn(
-    trackingTableBadgeBase,
-    'uppercase tracking-wide',
-    status === 'Enacted' || status === 'Passed'
-      ? 'border-[#c8e6c9] bg-[#e8f5e9] text-[#2e7d32]'
-      : status === 'Disapproved'
-        ? 'border-[#ffcdd2] bg-[#ffebee] text-[#c62828]'
-        : status === 'Committee'
-          ? 'border-[#ffe0b2] bg-[#fff3e0] text-[#ef6c00]'
-          : 'border-[#bbdefb] bg-[#e3f2fd] text-[#1565c0]'
-  );
-}
 
 const defaultDate = new Date().toISOString().slice(0, 10);
 
@@ -234,6 +223,7 @@ export function LegislativeTrackingList() {
     });
     if (!confirmed) return;
     toast('Stage updated', `${target.number} moved to ${progressionFlow[targetIndex + 1]}.`);
+    logActivity({ module: 'Legislative Tracking', action: 'Updated', summary: `Moved ${target.number} to ${progressionFlow[targetIndex + 1]}`, detail: target.title });
     setRecords((prev) =>
       prev.map((bill) => {
         if (bill.id !== id) return bill;
@@ -264,6 +254,7 @@ export function LegislativeTrackingList() {
     });
     if (!confirmed) return;
     toast('Record disapproved', `${target.number} was marked as disapproved.`);
+    logActivity({ module: 'Legislative Tracking', action: 'Returned', summary: `Marked ${target.number} as disapproved`, detail: target.title });
     setRecords((prev) =>
       prev.map((bill) => {
         if (bill.id !== id) return bill;
@@ -291,6 +282,7 @@ export function LegislativeTrackingList() {
     });
     if (!confirmed) return;
     toast('Record routed', `${target.number} routed to ${nextRoute}.`);
+    logActivity({ module: 'Legislative Tracking', action: 'Routed', summary: `Routed ${target.number} to ${nextRoute}`, detail: target.title });
     setRecords((prev) =>
       prev.map((bill) => {
         if (bill.id !== id) return bill;
@@ -328,6 +320,7 @@ export function LegislativeTrackingList() {
     setCurrentPage((page) => Math.min(page, Math.max(1, Math.ceil((filteredRecords.length - 1) / pageSize))));
     if (selectedRecordId === id) setSelectedRecordId(null);
     toast('Record deleted', `${target.number} was removed from the tracking list.`);
+    logActivity({ module: 'Legislative Tracking', action: 'Deleted', summary: `Deleted ${target.number}`, detail: target.title });
   };
 
   const createRecord = async () => {
@@ -415,6 +408,7 @@ export function LegislativeTrackingList() {
     setCreateWarning('');
     setCurrentPage(1);
     toast('Record saved', `${newRecord.number.trim()} was added to the tracking list.`);
+    logActivity({ module: 'Legislative Tracking', action: 'Created', summary: `Saved ${newRecord.number.trim()}`, detail: newRecord.title.trim() });
   };
 
   const onKeywordChange = (value: string) => {
@@ -480,6 +474,7 @@ export function LegislativeTrackingList() {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     toast('Tracking list exported', `${filteredRecords.length} record(s) saved as CSV.`);
+    logActivity({ module: 'Legislative Tracking', action: 'Exported', summary: 'Exported the tracking list', detail: `${filteredRecords.length} record(s) saved as CSV.` });
   };
 
   return (
@@ -547,28 +542,28 @@ export function LegislativeTrackingList() {
           onNextPage={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
         >
           <Table className="table-fixed w-full">
-            <TableHeader className="bg-[#fafafa]">
-              <TableRow className="border-border">
-                <TableHead className="w-[215px] px-4 text-[12px] font-semibold text-text-muted">RECORD NO.</TableHead>
-                <TableHead className="px-4 text-[12px] font-semibold text-text-muted">TITLE</TableHead>
-                <TableHead className="w-[110px] px-4 text-[12px] font-semibold text-text-muted">DIRECTION</TableHead>
-                <TableHead className="w-[160px] px-4 text-[12px] font-semibold text-text-muted">ROUTE</TableHead>
-                <TableHead className="w-[210px] px-4 text-[12px] font-semibold text-text-muted">AUTHOR</TableHead>
-                <TableHead className="w-[140px] px-4 text-[12px] font-semibold text-text-muted">CATEGORY</TableHead>
-                <TableHead className="w-[150px] px-4 text-[12px] font-semibold text-text-muted">STAGE</TableHead>
-                <TableHead className="text-right px-4 text-[12px] font-semibold text-text-muted w-[72px]">ACTION</TableHead>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[215px]">RECORD NO.</TableHead>
+                <TableHead>TITLE</TableHead>
+                <TableHead className="w-[110px]">DIRECTION</TableHead>
+                <TableHead className="w-[160px]">ROUTE</TableHead>
+                <TableHead className="w-[210px]">AUTHOR</TableHead>
+                <TableHead className="w-[140px]">CATEGORY</TableHead>
+                <TableHead className="w-[150px]">STAGE</TableHead>
+                <TableHead className="w-[72px]">ACTION</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedRecords.map((bill) => (
-                <TableRow key={bill.id} className="hover:bg-muted/5 border-border transition-colors">
-                  <TableCell className="px-4 py-2 font-mono text-[12px] text-text-muted whitespace-nowrap">{bill.number}</TableCell>
-                  <TableCell className="px-4 py-2">
+                <TableRow key={bill.id}>
+                  <TableCell className="whitespace-nowrap">{bill.number}</TableCell>
+                  <TableCell>
                     <div className="font-medium text-[13px] leading-snug line-clamp-2 whitespace-normal" title={bill.title}>{bill.title}</div>
                     <div className="text-[11px] text-text-muted">Tracked: {bill.trackingDate}</div>
                   </TableCell>
-                  <TableCell className="px-4 py-2 text-[13px]">{bill.direction}</TableCell>
-                  <TableCell className="px-4 py-2">
+                  <TableCell>{bill.direction}</TableCell>
+                  <TableCell>
                     <Badge
                       variant="outline"
                       className={cn(trackingTableBadgeBase, 'border-border bg-white font-normal text-text-muted')}
@@ -576,10 +571,10 @@ export function LegislativeTrackingList() {
                       {bill.route}
                     </Badge>
                   </TableCell>
-                  <TableCell className="px-4 py-2 text-[13px]">
+                  <TableCell>
                     <div className="line-clamp-2 whitespace-normal leading-snug" title={bill.author}>{bill.author}</div>
                   </TableCell>
-                  <TableCell className="px-4 py-2">
+                  <TableCell>
                     <Badge
                       variant="outline"
                       className={cn(trackingTableBadgeBase, 'border-border bg-white font-normal text-text-muted')}
@@ -587,13 +582,11 @@ export function LegislativeTrackingList() {
                       {bill.category}
                     </Badge>
                   </TableCell>
-                  <TableCell className="px-4 py-2">
-                    <Badge variant="outline" className={stageBadgeClassName(bill.lifecycleStatus)}>
-                      {bill.lifecycleStatus}
-                    </Badge>
+                  <TableCell>
+                    <StatusBadge status={bill.lifecycleStatus} />
                   </TableCell>
-                  <TableCell className="text-right px-4 py-2">
-                    <div className="flex justify-end">
+                  <TableCell>
+                    <div className="flex justify-center">
                       <Button
                         type="button"
                         data-legislative-action-trigger
@@ -663,20 +656,20 @@ export function LegislativeTrackingList() {
             <h3 className="text-base font-bold text-primary">Governance Monitoring</h3>
           </div>
           <div className="max-h-72 overflow-y-auto">
-            <div className="sticky top-0 grid grid-cols-12 gap-2 bg-[#fafafa] px-4 py-2 text-[11px] font-semibold uppercase text-text-muted">
+            <div className={cn('sticky top-0', gridTableHeaderClassName)}>
               <div className="col-span-4">Measure</div>
               <div className="col-span-3">Duplicate Risk</div>
-              <div className="col-span-3 text-right">Budget</div>
-              <div className="col-span-2 text-right">Impl. Date</div>
+              <div className="col-span-3">Budget</div>
+              <div className="col-span-2">Impl. Date</div>
             </div>
             {records.slice(0, 6).map((record, index) => (
-              <div key={`gov-${record.id}`} className="grid grid-cols-12 items-center gap-2 border-t border-border px-4 py-2 text-[12px]">
-                <div className="col-span-4 truncate font-mono text-text-muted" title={record.number}>{record.number}</div>
+              <div key={`gov-${record.id}`} className={gridTableRowClassName}>
+                <div className="col-span-4 truncate" title={record.number}>{record.number}</div>
                 <div className={cn('col-span-3', index === 0 ? 'font-medium text-[#ef6c00]' : 'text-text-muted')}>
                   {index === 0 ? 'Similar subject found' : 'None detected'}
                 </div>
-                <div className="col-span-3 text-right tabular-nums">PHP {((index + 1) * 350000).toLocaleString('en-PH')}</div>
-                <div className="col-span-2 text-right tabular-nums">{record.trackingDate}</div>
+                <div className="col-span-3 tabular-nums">PHP {((index + 1) * 350000).toLocaleString('en-PH')}</div>
+                <div className="col-span-2 tabular-nums">{record.trackingDate}</div>
               </div>
             ))}
           </div>

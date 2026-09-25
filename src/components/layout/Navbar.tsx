@@ -16,6 +16,7 @@ import { LGU_PROFILE, mockBills, mockMembers, mockSessions } from '@/lib/mock-da
 import { NAV_GROUPS, findNavItem } from '@/lib/navigation';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
+import { logActivity } from '@/lib/activity-log';
 
 interface NavbarProps {
   activeTab: string;
@@ -242,6 +243,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
     setPasswordForm({ current: '', next: '', confirm: '' });
     setDialog(null);
     toast('Password updated', 'Use your new password the next time you sign in.');
+    logActivity({ module: 'Administration', action: 'Updated', summary: 'Changed the account password' });
   };
 
   const closeDialog = () => setDialog(null);

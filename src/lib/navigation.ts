@@ -7,6 +7,7 @@ import {
   ClipboardList,
   FileText,
   FolderOpen,
+  History,
   LayoutDashboard,
   MonitorSmartphone,
   PenLine,
@@ -35,7 +36,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     id: 'overview',
     label: 'Overview',
-    items: [{ id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, keywords: ['dashboard', 'overview', 'home'] }],
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, keywords: ['dashboard', 'overview', 'home'] },
+      { id: 'activity-log', label: 'Activity Log', icon: History, keywords: ['activity', 'log', 'history', 'audit', 'actions', 'users'] },
+    ],
   },
   {
     id: 'legislative',

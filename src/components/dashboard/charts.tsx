@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
+import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 // Chart colors, validated with the dataviz palette checks against the white card surface:
 // categorical slots 1-3 (all-pairs CVD ΔE ≥ 9.2) and a 3-step ordinal blue ramp for pipeline phases.
@@ -173,70 +174,57 @@ export function PipelineChart({
   onSelect: (status: string) => void;
 }) {
   const reduceMotion = useReducedMotion();
-  const [active, setActive] = useState<string | null>(null);
-  const max = Math.max(1, ...stages.map((stage) => stage.count));
+  const phaseTotals = phases.map((_, phase) => stages.filter((stage) => stage.phase === phase).reduce((sum, stage) => sum + stage.count, 0));
 
   return (
     <div>
-      <div className="flex flex-wrap gap-4 text-xs text-text-muted" aria-hidden>
+      {/* Phase summary doubles as the legend for the step markers. */}
+      <dl className="grid grid-cols-3 divide-x divide-border rounded-lg border border-border">
         {phases.map((phase, index) => (
-          <span key={phase} className="inline-flex items-center gap-1.5">
-            <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: PHASE_COLORS[index] }} />
-            {phase}
-          </span>
+          <div key={phase} className="px-3 py-2">
+            <dt className="flex items-center gap-1.5 text-[11px] text-text-muted">
+              <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: PHASE_COLORS[index] }} />
+              {phase}
+            </dt>
+            <dd className="mt-0.5 text-lg font-semibold leading-tight text-text-main">{phaseTotals[index]}</dd>
+          </div>
         ))}
-      </div>
-      <ul className="mt-4 space-y-1.5" aria-label="Measures by legislative stage">
-        {stages.map((stage, index) => {
-          const width = (stage.count / max) * 100;
-          const isActive = active === stage.status;
-          return (
-            <li key={stage.status} className="relative">
-              <button
-                type="button"
-                onClick={() => onSelect(stage.status)}
-                onMouseEnter={() => setActive(stage.status)}
-                onMouseLeave={() => setActive(null)}
-                onFocus={() => setActive(stage.status)}
-                onBlur={() => setActive(null)}
-                className="grid w-full grid-cols-[104px_1fr_24px] items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-background focus-visible:bg-background"
-                aria-label={`${stage.status}: ${stage.count} measure${stage.count === 1 ? '' : 's'}, ${phases[stage.phase]} phase`}
+      </dl>
+
+      <ol className="relative mt-3" aria-label="Measures by legislative stage">
+        {/* Connector running through the step markers. */}
+        <span className="absolute bottom-4 left-[15px] top-4 w-px bg-[#d5d9e2]" aria-hidden />
+        {stages.map((stage, index) => (
+          <motion.li
+            key={stage.status}
+            initial={{ opacity: reduceMotion ? 1 : 0, x: reduceMotion ? 0 : -6 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.35, delay: reduceMotion ? 0 : index * 0.05 }}
+          >
+            <button
+              type="button"
+              onClick={() => onSelect(stage.status)}
+              className="relative grid w-full grid-cols-[14px_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-background focus-visible:bg-background"
+              aria-label={`${stage.status}: ${stage.count} measure${stage.count === 1 ? '' : 's'}, ${phases[stage.phase]} phase`}
+            >
+              <span
+                className="relative z-[1] mx-auto h-3 w-3 rounded-full ring-[3px] ring-white"
+                style={{ backgroundColor: stage.count > 0 ? PHASE_COLORS[stage.phase] : '#e5e7eb' }}
+                aria-hidden
+              />
+              <span className={cn('truncate text-[13px]', stage.count > 0 ? 'text-text-main' : 'text-text-muted')}>{stage.status}</span>
+              <span
+                className={cn(
+                  'inline-flex h-6 min-w-6 items-center justify-center rounded-full px-2 text-xs font-semibold tabular-nums',
+                  stage.count > 0 ? 'bg-[#eef2fb] text-text-main' : 'bg-[#f3f4f7] text-text-muted'
+                )}
               >
-                <span className="truncate text-xs text-text-muted">{stage.status}</span>
-                <span className="relative h-2.5 rounded-r-[4px] bg-[#f3f4f7]">
-                  <motion.span
-                    className="absolute inset-y-0 left-0 rounded-r-[4px]"
-                    style={{ backgroundColor: PHASE_COLORS[stage.phase], filter: isActive ? 'brightness(1.08)' : undefined }}
-                    initial={{ width: reduceMotion ? `${width}%` : '0%' }}
-                    animate={{ width: `${width}%` }}
-                    transition={{ duration: 0.7, delay: reduceMotion ? 0 : index * 0.07, ease: [0.22, 1, 0.36, 1] }}
-                  />
-                </span>
-                <span className="text-right text-sm font-semibold tabular-nums text-text-main">{stage.count}</span>
-              </button>
-              {isActive ? (
-                <div
-                  role="tooltip"
-                  className="pointer-events-none absolute -top-9 z-10 whitespace-nowrap rounded-md border border-border bg-white px-2.5 py-1.5 text-xs shadow-lg"
-                  // Track starts 124px in (padding + label column + gap) and spans the row minus 168px.
-                  style={{
-                    left: `calc(124px + (100% - 168px) * ${width / 100})`,
-                    transform: width > 55 ? 'translateX(-100%)' : 'translateX(-12px)',
-                  }}
-                >
-                  <span className="font-semibold text-text-main">
-                    {stage.count} measure{stage.count === 1 ? '' : 's'}
-                  </span>
-                  <span className="text-text-muted">
-                    {' '}
-                    · {stage.status} · {phases[stage.phase]}
-                  </span>
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+                {stage.count}
+              </span>
+            </button>
+          </motion.li>
+        ))}
+      </ol>
     </div>
   );
 }
@@ -254,7 +242,9 @@ export function DonutChart({ segments, totalLabel, onSelect }: { segments: Donut
   const [active, setActive] = useState<string | null>(null);
   const size = 168;
   const stroke = 20;
-  const radius = (size - stroke) / 2;
+  const hoverGrow = 6;
+  // Leave room for the thicker hovered ring so it isn't clipped at the SVG edge.
+  const radius = (size - stroke - hoverGrow) / 2;
   const circumference = 2 * Math.PI * radius;
   const gap = 2;
   const total = segments.reduce((sum, segment) => sum + segment.value, 0) || 1;
@@ -272,7 +262,16 @@ export function DonutChart({ segments, totalLabel, onSelect }: { segments: Donut
   return (
     <div className="flex flex-col items-center gap-5">
       <div className="relative shrink-0" style={{ width: size, height: size }}>
-        <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} className="-rotate-90" role="img" aria-label={`${totalLabel} by status`}>
+        <svg
+          viewBox={`0 0 ${size} ${size}`}
+          width={size}
+          height={size}
+          className="-rotate-90 overflow-visible"
+          role="img"
+          aria-label={`${totalLabel} by status`}
+          // Clear on leaving the whole ring, not each arc, so crossing the gaps between arcs doesn't flicker.
+          onMouseLeave={() => setActive(null)}
+        >
           <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#f3f4f7" strokeWidth={stroke} />
           {arcs.map((arc) => (
             <circle
@@ -282,13 +281,12 @@ export function DonutChart({ segments, totalLabel, onSelect }: { segments: Donut
               r={radius}
               fill="none"
               stroke={arc.color}
-              strokeWidth={active === arc.label ? stroke + 4 : stroke}
+              strokeWidth={active === arc.label ? stroke + hoverGrow : stroke}
               strokeDasharray={`${Math.max(0, arc.length - gap)} ${circumference}`}
               strokeDashoffset={-arc.offset}
               opacity={active && active !== arc.label ? 0.35 : 1}
               className="cursor-pointer transition-all duration-200"
               onMouseEnter={() => setActive(arc.label)}
-              onMouseLeave={() => setActive(null)}
               onClick={() => onSelect?.(arc.label)}
             />
           ))}
@@ -347,30 +345,67 @@ export interface TrendSeries {
   label: string;
   color: string;
   values: number[];
-  area?: boolean;
 }
 
-export function TrendChart({ labels, series, showTable }: { labels: string[]; series: TrendSeries[]; showTable: boolean }) {
+// Column path with a 4px rounded data-end and a square baseline.
+const columnPath = (x: number, top: number, width: number, baseline: number) => {
+  const h = baseline - top;
+  if (h <= 0) return '';
+  const r = Math.min(4, width / 2, h);
+  return `M${x},${baseline} V${top + r} Q${x},${top} ${x + r},${top} H${x + width - r} Q${x + width},${top} ${x + width},${top + r} V${baseline} Z`;
+};
+
+// Optional derived column for the table view, e.g. approved ÷ filed.
+export interface TrendRatio {
+  label: string;
+  numerator: string;
+  denominator: string;
+}
+
+const percentOf = (numerator: number, denominator: number) => (denominator > 0 ? `${Math.round((numerator / denominator) * 100)}%` : '–');
+
+export function GroupedBarChart({
+  labels,
+  series,
+  showTable,
+  ratio,
+  periodSuffix = '',
+}: {
+  labels: string[];
+  series: TrendSeries[];
+  showTable: boolean;
+  ratio?: TrendRatio;
+  periodSuffix?: string;
+}) {
   const reduceMotion = useReducedMotion();
   const [containerRef, width] = useElementWidth<HTMLDivElement>();
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const height = 256;
-  const pad = { top: 12, right: 76, bottom: 26, left: 30 };
+  const pad = { top: 20, right: 8, bottom: 26, left: 30 };
   const plotWidth = Math.max(0, width - pad.left - pad.right);
   const plotHeight = height - pad.top - pad.bottom;
   const rawMax = Math.max(1, ...series.flatMap((s) => s.values));
-  const yMax = Math.ceil(rawMax / 5) * 5;
-  const ticks = Array.from({ length: yMax / 5 + 1 }, (_, i) => i * 5);
+  // About four gridlines at a round step (1, 2 or 5 × 10^n); never finer than 5.
+  const roughStep = rawMax / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const step = Math.max(5, [1, 2, 5, 10].map((m) => m * magnitude).find((candidate) => candidate >= roughStep) ?? 10 * magnitude);
+  const yMax = Math.ceil(rawMax / step) * step;
+  const ticks = Array.from({ length: yMax / step + 1 }, (_, i) => i * step);
 
-  const x = (i: number) => pad.left + (labels.length === 1 ? plotWidth / 2 : (i / (labels.length - 1)) * plotWidth);
+  // Each month gets an equal band; bars are capped at 24px and separated by a 2px surface gap.
+  const band = plotWidth / Math.max(1, labels.length);
+  const barGap = 2;
+  const barWidth = Math.max(4, Math.min(24, (band * 0.62 - barGap * (series.length - 1)) / series.length));
+  const groupWidth = barWidth * series.length + barGap * (series.length - 1);
+  const bandStart = (i: number) => pad.left + i * band;
+  const barX = (i: number, seriesIndex: number) => bandStart(i) + (band - groupWidth) / 2 + seriesIndex * (barWidth + barGap);
   const y = (v: number) => pad.top + plotHeight - (v / yMax) * plotHeight;
-  const linePath = (values: number[]) => values.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i)},${y(v)}`).join(' ');
-  const areaPath = (values: number[]) => `${linePath(values)} L${x(values.length - 1)},${y(0)} L${x(0)},${y(0)} Z`;
+  const baseline = pad.top + plotHeight;
+  const last = labels.length - 1;
 
   const handlePointer = (clientX: number, rect: DOMRect) => {
-    const relative = clientX - rect.left - pad.left;
-    const index = Math.round((relative / (plotWidth || 1)) * (labels.length - 1));
-    setHoverIndex(Math.min(labels.length - 1, Math.max(0, index)));
+    const index = Math.floor((clientX - rect.left - pad.left) / (band || 1));
+    setHoverIndex(index >= 0 && index < labels.length ? index : null);
   };
 
   const handleKey = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -379,36 +414,71 @@ export function TrendChart({ labels, series, showTable }: { labels: string[]; se
     if (event.key === 'Escape') setHoverIndex(null);
   };
 
+  const totals = series.map((s) => s.values.reduce((sum, value) => sum + value, 0));
+  const ratioIndexes = ratio
+    ? { num: series.findIndex((s) => s.key === ratio.numerator), den: series.findIndex((s) => s.key === ratio.denominator) }
+    : null;
+  const rowRatio = (values: number[]) =>
+    ratioIndexes && ratioIndexes.num >= 0 && ratioIndexes.den >= 0 ? percentOf(values[ratioIndexes.num], values[ratioIndexes.den]) : null;
+
   if (showTable) {
     return (
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-text-muted">
-              <th className="py-2 pr-4 font-semibold">Month</th>
+      <div className="overflow-x-auto rounded-md border border-border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Month</TableHead>
               {series.map((s) => (
-                <th key={s.key} className="py-2 pr-4 text-right font-semibold">
-                  {s.label}
-                </th>
+                <TableHead key={s.key}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.color }} aria-hidden />
+                    {s.label}
+                  </span>
+                </TableHead>
               ))}
-            </tr>
-          </thead>
-          <tbody>
+              {ratio ? <TableHead>{ratio.label}</TableHead> : null}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {labels.map((label, i) => (
-              <tr key={label} className="border-b border-border last:border-0">
-                <td className="py-2 pr-4">{label}</td>
+              <TableRow key={label}>
+                <TableCell className="py-2">
+                  {label}
+                  {periodSuffix}
+                </TableCell>
                 {series.map((s) => (
-                  <td key={s.key} className="py-2 pr-4 text-right tabular-nums">
+                  <TableCell key={s.key} className="py-2 tabular-nums">
                     {s.values[i]}
-                  </td>
+                  </TableCell>
                 ))}
-              </tr>
+                {ratio ? <TableCell className="py-2 tabular-nums text-text-muted">{rowRatio(series.map((s) => s.values[i]))}</TableCell> : null}
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+          <TableFooter>
+            <TableRow className="hover:bg-transparent">
+              <TableCell className="py-2.5">Total</TableCell>
+              {series.map((s, index) => (
+                <TableCell key={s.key} className="py-2.5 tabular-nums">
+                  {totals[index]}
+                </TableCell>
+              ))}
+              {ratio ? <TableCell className="py-2.5 tabular-nums">{rowRatio(totals)}</TableCell> : null}
+            </TableRow>
+          </TableFooter>
+        </Table>
       </div>
     );
   }
+
+  // Tooltip sits beside the hovered month (right side, or left when near the edge) so it never covers those bars.
+  const tooltipWidth = 160;
+  const tooltipLeft =
+    hoverIndex === null
+      ? 0
+      : bandStart(hoverIndex) + band + 4 + tooltipWidth <= width
+        ? bandStart(hoverIndex) + band + 4
+        : Math.max(0, bandStart(hoverIndex) - tooltipWidth - 4);
 
   return (
     <div
@@ -416,7 +486,7 @@ export function TrendChart({ labels, series, showTable }: { labels: string[]; se
       className="relative outline-none focus-visible:ring-2 focus-visible:ring-primary/20"
       tabIndex={0}
       role="img"
-      aria-label={`Line chart of ${series.map((s) => s.label).join(' and ')} per month. Use the left and right arrow keys to read values.`}
+      aria-label={`Column chart of ${series.map((s) => s.label).join(' and ')} per month. Use the left and right arrow keys to read values.`}
       onKeyDown={handleKey}
       onPointerMove={(event) => handlePointer(event.clientX, event.currentTarget.getBoundingClientRect())}
       onPointerLeave={() => setHoverIndex(null)}
@@ -424,6 +494,10 @@ export function TrendChart({ labels, series, showTable }: { labels: string[]; se
     >
       {width > 0 ? (
         <svg width={width} height={height} className="block">
+          {hoverIndex !== null ? (
+            <rect x={bandStart(hoverIndex) + 2} y={pad.top - 8} width={band - 4} height={plotHeight + 8} rx={6} fill="#f3f4f7" />
+          ) : null}
+
           {ticks.map((tick) => (
             <g key={tick}>
               <line x1={pad.left} x2={pad.left + plotWidth} y1={y(tick)} y2={y(tick)} stroke={GRID} strokeWidth={1} />
@@ -432,57 +506,49 @@ export function TrendChart({ labels, series, showTable }: { labels: string[]; se
               </text>
             </g>
           ))}
+
           {labels.map((label, i) => (
-            <text key={label} x={x(i)} y={height - 6} textAnchor="middle" className="fill-text-muted text-[11px]">
+            <text
+              key={label}
+              x={bandStart(i) + band / 2}
+              y={height - 6}
+              textAnchor="middle"
+              className={cn('text-[11px]', hoverIndex === i ? 'fill-text-main font-semibold' : 'fill-text-muted')}
+            >
               {label}
             </text>
           ))}
 
-          {series
-            .filter((s) => s.area)
-            .map((s) => (
+          {labels.map((label, i) =>
+            series.map((s, seriesIndex) => (
               <motion.path
-                key={`${s.key}-area`}
-                d={areaPath(s.values)}
+                key={`${label}-${s.key}`}
+                d={columnPath(barX(i, seriesIndex), y(s.values[i]), barWidth, baseline)}
                 fill={s.color}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 0.1 }}
-                transition={{ duration: 0.8, delay: reduceMotion ? 0 : 0.5 }}
+                opacity={hoverIndex !== null && hoverIndex !== i ? 0.45 : 1}
+                style={{ transformBox: 'fill-box', transformOrigin: 'bottom' }}
+                initial={{ scaleY: reduceMotion ? 1 : 0 }}
+                animate={{ scaleY: 1 }}
+                transition={{ duration: 0.6, delay: reduceMotion ? 0 : i * 0.05 + seriesIndex * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                className="transition-opacity duration-150"
               />
-            ))}
+            ))
+          )}
 
-          {series.map((s, seriesIndex) => (
-            <motion.path
-              key={s.key}
-              d={linePath(s.values)}
-              fill="none"
-              stroke={s.color}
-              strokeWidth={2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              initial={{ pathLength: reduceMotion ? 1 : 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: 1.1, delay: reduceMotion ? 0 : seriesIndex * 0.15, ease: 'easeInOut' }}
-            />
-          ))}
-
-          {hoverIndex !== null ? (
-            <line x1={x(hoverIndex)} x2={x(hoverIndex)} y1={pad.top} y2={pad.top + plotHeight} stroke="#c3c2b7" strokeWidth={1} />
-          ) : null}
-
-          {series.map((s) => {
-            const last = s.values.length - 1;
-            const index = hoverIndex ?? last;
-            return (
-              <g key={`${s.key}-marks`}>
-                <circle cx={x(index)} cy={y(s.values[index])} r={4} fill={s.color} stroke="#ffffff" strokeWidth={2} />
-                <text x={x(last) + 10} y={y(s.values[last])} dy="0.32em" className="fill-text-main text-[12px] font-semibold">
+          {/* Direct labels on the latest month only; every other value is in the tooltip and the table view. */}
+          {hoverIndex === null
+            ? series.map((s, seriesIndex) => (
+                <text
+                  key={`${s.key}-latest`}
+                  x={barX(last, seriesIndex) + barWidth / 2}
+                  y={y(s.values[last]) - 6}
+                  textAnchor="middle"
+                  className="fill-text-main text-[11px] font-semibold tabular-nums"
+                >
                   {s.values[last]}
-                  <tspan className="fill-text-muted font-normal"> {s.label}</tspan>
                 </text>
-              </g>
-            );
-          })}
+              ))
+            : null}
         </svg>
       ) : (
         <div style={{ height }} />
@@ -491,17 +557,18 @@ export function TrendChart({ labels, series, showTable }: { labels: string[]; se
       {hoverIndex !== null && width > 0 ? (
         <div
           role="tooltip"
-          className="pointer-events-none absolute top-2 z-10 min-w-[128px] rounded-md border border-border bg-white px-3 py-2 text-xs shadow-lg"
-          style={{
-            left: Math.min(x(hoverIndex) + 12, width - 150),
-          }}
+          className="pointer-events-none absolute top-2 z-10 w-40 rounded-md border border-border bg-white px-3 py-2 text-xs shadow-lg"
+          style={{ left: tooltipLeft }}
         >
-          <div className="mb-1 font-semibold text-text-muted">{labels[hoverIndex]} 2026</div>
+          <div className="mb-1 font-semibold text-text-main">
+            {labels[hoverIndex]}
+            {periodSuffix}
+          </div>
           {series.map((s) => (
             <div key={s.key} className="flex items-center gap-2">
-              <span className="h-0.5 w-3 rounded" style={{ backgroundColor: s.color }} />
-              <span className="font-semibold tabular-nums text-text-main">{s.values[hoverIndex]}</span>
+              <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.color }} />
               <span className="text-text-muted">{s.label}</span>
+              <span className="ml-auto font-semibold tabular-nums text-text-main">{s.values[hoverIndex]}</span>
             </div>
           ))}
         </div>
@@ -512,30 +579,58 @@ export function TrendChart({ labels, series, showTable }: { labels: string[]; se
 
 /* ---------------------------------------------------------- Horizontal bars */
 
-export function BarList({ items, onSelect }: { items: { label: string; value: number }[]; onSelect: () => void }) {
+export function BarList({
+  items,
+  total,
+  groupCount,
+  groupLabel = 'committees',
+  onSelect,
+}: {
+  items: { label: string; value: number }[];
+  total: number;
+  groupCount: number;
+  groupLabel?: string;
+  onSelect: () => void;
+}) {
   const reduceMotion = useReducedMotion();
   const max = Math.max(1, ...items.map((item) => item.value));
   return (
-    <ul className="space-y-3">
-      {items.map((item, index) => (
-        <li key={item.label}>
-          <button type="button" onClick={onSelect} className="w-full text-left" title={`${item.label}: ${item.value}`}>
-            <div className="flex justify-between gap-2 text-xs">
-              <span className="truncate font-medium text-text-main">{item.label}</span>
-              <span className="tabular-nums text-text-muted">{item.value}</span>
-            </div>
-            <div className="mt-1.5 h-2 rounded-r-[4px] bg-[#f3f4f7]">
-              <motion.div
-                className="h-2 rounded-r-[4px]"
-                style={{ backgroundColor: SERIES_COLORS.blue }}
-                initial={{ width: reduceMotion ? `${(item.value / max) * 100}%` : '0%' }}
-                animate={{ width: `${(item.value / max) * 100}%` }}
-                transition={{ duration: 0.7, delay: reduceMotion ? 0 : index * 0.08, ease: [0.22, 1, 0.36, 1] }}
-              />
-            </div>
-          </button>
-        </li>
-      ))}
-    </ul>
+    <div>
+      <ol className="space-y-1">
+        {items.map((item, index) => (
+          <li key={item.label}>
+            <button
+              type="button"
+              onClick={onSelect}
+              className="grid w-full grid-cols-[24px_1fr] items-center gap-x-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-background focus-visible:bg-background"
+              aria-label={`${item.label}: ${item.value} measure${item.value === 1 ? '' : 's'}`}
+            >
+              <span className="row-span-2 flex h-6 w-6 items-center justify-center rounded-md bg-[#f3f4f7] text-[11px] font-semibold text-text-muted">
+                {index + 1}
+              </span>
+              <span className="flex items-baseline justify-between gap-2 text-[13px]">
+                <span className="truncate font-medium text-text-main">{item.label}</span>
+                <span className="shrink-0 text-xs text-text-muted">
+                  <span className="font-semibold text-text-main">{item.value}</span> · {total > 0 ? Math.round((item.value / total) * 100) : 0}%
+                </span>
+              </span>
+              <span className="mt-1.5 h-1.5 rounded-r-[4px] bg-[#f3f4f7]">
+                <motion.span
+                  className="block h-1.5 rounded-r-[4px]"
+                  style={{ backgroundColor: SERIES_COLORS.blue }}
+                  initial={{ width: reduceMotion ? `${(item.value / max) * 100}%` : '0%' }}
+                  animate={{ width: `${(item.value / max) * 100}%` }}
+                  transition={{ duration: 0.7, delay: reduceMotion ? 0 : index * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                />
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-3 border-t border-border px-2 pt-3 text-xs text-text-muted">
+        <span className="font-semibold text-text-main">{total}</span> measures across{' '}
+        <span className="font-semibold text-text-main">{groupCount}</span> {groupLabel}
+      </p>
+    </div>
   );
 }

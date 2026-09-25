@@ -5,6 +5,9 @@ import { mockSystemRequirements } from '@/lib/system-requirements';
 import { mockBills, mockSessions } from '@/lib/mock-data';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
+import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { logActivity } from '@/lib/activity-log';
 
 interface RequirementsViewProps {
   activeTab: string;
@@ -257,6 +260,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
     if (!confirmed) return;
     setSignedBills((prev) => [...prev, id]);
     toast('Document signed', `${label} was signed electronically.`);
+    logActivity({ module: 'E-Session', action: 'Signed', summary: `Signed ${label} electronically` });
   };
 
   const eSessionQueue = useMemo(
@@ -475,8 +479,8 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
               ))}
             </select>
           </div>
-          <div className="border border-border">
-            <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+          <div className={gridTableClassName}>
+            <div className={gridTableHeaderClassName}>
               <div className="col-span-2">Bill No.</div>
               <div className="col-span-4">Title</div>
               <div className="col-span-2">Status</div>
@@ -484,10 +488,12 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
               <div className="col-span-2">Author</div>
             </div>
             {inquiryResults.map((bill) => (
-              <div key={bill.id} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+              <div key={bill.id} className={gridTableRowClassName}>
                 <div className="col-span-2">{bill.number}</div>
                 <div className="col-span-4">{bill.title}</div>
-                <div className="col-span-2">{bill.status}</div>
+                <div className="col-span-2">
+                  <StatusBadge status={bill.status} />
+                </div>
                 <div className="col-span-2">{bill.category}</div>
                 <div className="col-span-2">{bill.author}</div>
               </div>
@@ -557,7 +563,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                   <div key={bill.id} className="flex items-center justify-between border border-border p-3">
                     <div>
                       <div className="text-sm font-semibold">{bill.number} - {bill.title}</div>
-                      <div className="text-xs text-text-muted">Status: {bill.status}</div>
+                      <StatusBadge status={bill.status} align="start" className="mt-1.5" />
                     </div>
                     <Button
                       size="sm"
@@ -597,14 +603,14 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
               <div className="mt-2 text-3xl font-bold text-primary">v2.4</div>
             </div>
           </div>
-          <div className="border border-border">
-            <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+          <div className={gridTableClassName}>
+            <div className={gridTableHeaderClassName}>
               <div className="col-span-5">Device</div>
               <div className="col-span-3">Status</div>
               <div className="col-span-4">Last Sync</div>
             </div>
             {eSessionQueue.map((item) => (
-              <div key={item.device} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+              <div key={item.device} className={gridTableRowClassName}>
                 <div className="col-span-5">{item.device}</div>
                 <div className="col-span-3">{item.status}</div>
                 <div className="col-span-4">{item.lastSync}</div>
@@ -649,14 +655,14 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           <p className="text-sm text-text-muted">
             File browsing flow for agenda, minutes, and session media attachments.
           </p>
-          <div className="border border-border">
-            <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+          <div className={gridTableClassName}>
+            <div className={gridTableHeaderClassName}>
               <div className="col-span-6">File</div>
               <div className="col-span-2">Type</div>
               <div className="col-span-4">Action</div>
             </div>
             {sessionAttachments.map((row) => (
-              <div key={row.file} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+              <div key={row.file} className={gridTableRowClassName}>
                 <div className="col-span-6">{row.file}</div>
                 <div className="col-span-2">{row.type}</div>
                 <div className="col-span-4">{row.action}</div>
@@ -704,8 +710,8 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
             <p className="text-sm text-text-muted">
               Review queue, compliance score, and evaluator remarks layout for pre-approval processing.
             </p>
-            <div className="border border-border">
-              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+            <div className={gridTableClassName}>
+              <div className={gridTableHeaderClassName}>
                 <div className="col-span-2">Reference</div>
                 <div className="col-span-3">Applicant/Office</div>
                 <div className="col-span-2">Compliance</div>
@@ -713,7 +719,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                 <div className="col-span-2">Evaluator</div>
               </div>
               {assessmentQueue.map((row) => (
-                <div key={row.refNo} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                <div key={row.refNo} className={gridTableRowClassName}>
                   <div className="col-span-2">{row.refNo}</div>
                   <div className="col-span-3">{row.applicant}</div>
                   <div className="col-span-2">{row.compliance}</div>
@@ -726,8 +732,8 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
             <h4 className="text-lg font-bold">Approval and Issuance</h4>
-            <div className="border border-border">
-              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+            <div className={gridTableClassName}>
+              <div className={gridTableHeaderClassName}>
                 <div className="col-span-2">Document No.</div>
                 <div className="col-span-4">Title</div>
                 <div className="col-span-2">Current Stage</div>
@@ -735,7 +741,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                 <div className="col-span-2">Timeline</div>
               </div>
               {approvalQueue.map((row) => (
-                <div key={row.documentNo} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                <div key={row.documentNo} className={gridTableRowClassName}>
                   <div className="col-span-2">{row.documentNo}</div>
                   <div className="col-span-4">{row.title}</div>
                   <div className="col-span-2">{row.currentStage}</div>
@@ -748,14 +754,14 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
             <h4 className="text-lg font-bold">Notifications and Alerts</h4>
-            <div className="border border-border">
-              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+            <div className={gridTableClassName}>
+              <div className={gridTableHeaderClassName}>
                 <div className="col-span-3">Event Trigger</div>
                 <div className="col-span-3">Channel</div>
                 <div className="col-span-6">Recipients</div>
               </div>
               {notificationTriggers.map((row) => (
-                <div key={row.event} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                <div key={row.event} className={gridTableRowClassName}>
                   <div className="col-span-3">{row.event}</div>
                   <div className="col-span-3">{row.channels}</div>
                   <div className="col-span-6">{row.recipients}</div>
@@ -810,15 +816,15 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                 <Input placeholder="Session timeout (minutes)" defaultValue="30" />
               </div>
             </div>
-            <div className="border border-border">
-              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+            <div className={gridTableClassName}>
+              <div className={gridTableHeaderClassName}>
                 <div className="col-span-3">Timestamp</div>
                 <div className="col-span-2">User</div>
                 <div className="col-span-5">Activity</div>
                 <div className="col-span-2">Source</div>
               </div>
               {auditTrailRows.map((row) => (
-                <div key={`${row.time}-${row.user}`} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                <div key={`${row.time}-${row.user}`} className={gridTableRowClassName}>
                   <div className="col-span-3">{row.time}</div>
                   <div className="col-span-2">{row.user}</div>
                   <div className="col-span-5">{row.action}</div>
@@ -833,15 +839,15 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
             <p className="text-sm text-text-muted">
               Duplicate measure checks, budget monitoring, and implementation date tracking preview.
             </p>
-            <div className="border border-border">
-              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+            <div className={gridTableClassName}>
+              <div className={gridTableHeaderClassName}>
                 <div className="col-span-2">Measure</div>
                 <div className="col-span-4">Duplicate Check</div>
                 <div className="col-span-3">Budget Allocation</div>
                 <div className="col-span-3">Implementation Date</div>
               </div>
               {governanceRows.map((row) => (
-                <div key={row.measure} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                <div key={row.measure} className={gridTableRowClassName}>
                   <div className="col-span-2">{row.measure}</div>
                   <div className="col-span-4">{row.duplicateRisk}</div>
                   <div className="col-span-3">{row.budgetAllocation}</div>

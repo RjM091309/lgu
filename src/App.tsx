@@ -10,6 +10,8 @@ import { ReportList } from '@/components/reports/ReportList';
 import { RequirementsView } from '@/components/requirements/RequirementsView';
 import { ESessionEsigView } from '@/components/esession/ESessionEsigView';
 import { AccessView } from '@/components/access/AccessView';
+import { ActivityLog } from '@/components/activity/ActivityLog';
+import { logActivity } from '@/lib/activity-log';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { motion, AnimatePresence } from 'motion/react';
 import { LandingPage } from '@/components/public/LandingPage';
@@ -17,6 +19,8 @@ import { Toaster } from '@/components/ui/toast';
 import { ConfirmDialogHost } from '@/components/ui/confirm';
 import { LandingSkeleton, PageSkeleton } from '@/components/ui/skeleton';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const SESSION_KEY = 'sb-capas-session';
 
@@ -39,11 +43,31 @@ const writeSession = (remember: boolean | null) => {
   }
 };
 
+const SIDEBAR_KEY = 'sb-capas-sidebar-collapsed';
+
+// Remembered per browser; a convenience only, so storage failures just fall back to expanded.
+const readSidebarCollapsed = () => {
+  try {
+    return localStorage.getItem(SIDEBAR_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
+
+const writeSidebarCollapsed = (collapsed: boolean) => {
+  try {
+    localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
+  } catch {
+    // Storage unavailable: the choice lasts until refresh.
+  }
+};
+
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(readSession);
   const [isBooting, setIsBooting] = useState(true);
   const [loadedTab, setLoadedTab] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const location = useLocation();
   const navigate = useNavigate();
   const mainScrollRef = useRef<HTMLElement | null>(null);
@@ -51,6 +75,7 @@ export default function App() {
   const tabToPath = useMemo(
     () => ({
       dashboard: '/dashboard',
+      'activity-log': '/activity-log',
       'manage-legislation': '/management/legislation',
       'manage-master-files': '/management/master-listings',
       'manage-transactions': '/management/transactions',
@@ -122,6 +147,8 @@ export default function App() {
     switch (activeTab) {
       case 'dashboard':
         return <Overview onNavigate={setActiveTab} />;
+      case 'activity-log':
+        return <ActivityLog />;
       case 'manage-legislation':
         return <LegislativeTrackingList />;
       case 'manage-master-files':
@@ -131,7 +158,7 @@ export default function App() {
       case 'access-users':
       case 'access-roles':
       case 'access-control-panel':
-        return <AccessView activeTab={activeTab} />;
+        return <AccessView activeTab={activeTab} onNavigate={setActiveTab} />;
       case 'archive':
         return <ArchiveList />;
       case 'reports':
@@ -164,12 +191,21 @@ export default function App() {
     }
   };
 
+  const toggleSidebar = () => {
+    setIsSidebarCollapsed((prev) => {
+      writeSidebarCollapsed(!prev);
+      return !prev;
+    });
+  };
+
   const handleLogin = (remember: boolean) => {
+    logActivity({ module: 'Authentication', action: 'Signed in', summary: 'Signed in to the Secretariat portal' });
     writeSession(remember);
     setIsLoggedIn(true);
   };
 
   const handleLogout = () => {
+    logActivity({ module: 'Authentication', action: 'Signed out', summary: 'Signed out of the Secretariat portal' });
     writeSession(null);
     setIsLoggedIn(false);
     setLoadedTab(null);
@@ -188,9 +224,33 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-background font-sans antialiased md:flex">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:block md:w-72 md:shrink-0 md:h-screen md:sticky md:top-0">
-        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} />
+      {/* Desktop Sidebar: a floating panel that collapses to an icon rail. */}
+      <aside
+        className={cn(
+          'relative z-20 hidden shrink-0 transition-[width] duration-200 ease-out md:sticky md:top-0 md:block md:h-screen md:p-4',
+          isSidebarCollapsed ? 'md:w-[104px]' : 'md:w-[308px]'
+        )}
+      >
+        {/* Tinted glow beneath the panel so it lifts off the page. */}
+        <span className="pointer-events-none absolute inset-x-8 bottom-4 top-1/3 rounded-full bg-[#1a237e]/25 blur-2xl" aria-hidden />
+        <Sidebar
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onLogout={handleLogout}
+          collapsed={isSidebarCollapsed}
+          // Layered shadows (contact, key, ambient) plus a faint inner ring read as a raised panel.
+          className="rounded-2xl ring-1 ring-inset ring-white/10 shadow-[0_1px_2px_rgba(10,15,61,0.30),0_6px_12px_-2px_rgba(10,15,61,0.22),0_18px_36px_-8px_rgba(10,15,61,0.35),0_40px_80px_-24px_rgba(26,35,126,0.45)]"
+        />
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          className="absolute right-4 top-24 flex h-7 w-7 translate-x-1/2 items-center justify-center rounded-full border border-border bg-white text-primary shadow-md transition-colors hover:bg-primary hover:text-white"
+          aria-label={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!isSidebarCollapsed}
+          title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+        </button>
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
@@ -216,7 +276,7 @@ export default function App() {
         </Sheet>
 
         {/* Main Content */}
-        <main ref={mainScrollRef} className="flex-1 overflow-y-auto bg-background">
+        <main ref={mainScrollRef} className="relative flex-1 overflow-y-auto bg-background">
           <div className="mx-auto w-full max-w-[1600px] px-4 py-8 md:px-8">
             <AnimatePresence mode="wait">
               <motion.div

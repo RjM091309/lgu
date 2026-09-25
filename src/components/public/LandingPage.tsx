@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/DataTable';
-import { LGU_PROFILE, mockBills, mockCommittees, mockSessions } from '@/lib/mock-data';
+import { LGU_PROFILE, mockBills, mockCommittees, mockMembers, mockSessions } from '@/lib/mock-data';
 import { openPrintWindow, saveFile } from '@/lib/files';
 import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -47,9 +47,12 @@ import {
   Megaphone,
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { LegislativeOrgChart } from '@/components/public/LegislativeOrgChart';
+import { CompositionChart, committeeRolesOf, shortCommitteeName } from '@/components/members/CompositionChart';
+import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { logActivity } from '@/lib/activity-log';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -196,13 +199,6 @@ const NEWS: NewsItem[] = [
   },
 ];
 
-const statusTone = (status: string) => {
-  if (['Enacted', 'Passed', 'Approved', 'Available'].includes(status)) return 'bg-green-50 text-green-800 border-green-200';
-  if (['Vetoed'].includes(status)) return 'bg-red-50 text-red-800 border-red-200';
-  if (['Draft', 'Received', 'Submitted'].includes(status)) return 'bg-slate-50 text-slate-700 border-slate-200';
-  return 'bg-amber-50 text-amber-800 border-amber-200';
-};
-
 export function LandingPage({ onLogin }: LandingPageProps) {
   const [lang, setLang] = useState<Lang>('EN');
   const t = COPY[lang];
@@ -223,6 +219,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const [selectedType, setSelectedType] = useState('All');
   const [selectedSubject, setSelectedSubject] = useState('All');
   const [selectedReferral, setSelectedReferral] = useState('All');
+  const [publicMemberId, setPublicMemberId] = useState<string | null>(null);
+  const publicMember = mockMembers.find((member) => member.id === publicMemberId) ?? null;
   const [selectedClassification, setSelectedClassification] = useState('All');
   const [selectedAuthorship, setSelectedAuthorship] = useState('All');
   const [selectedActionTaken, setSelectedActionTaken] = useState('All');
@@ -328,6 +326,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     });
     if (!confirmed) return;
     toast('Registration saved', notifyUpdates ? 'You are now subscribed to legislative updates.' : 'You may enable updates anytime.');
+    logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Registered on the public portal', detail: notifyUpdates ? 'Subscribed to legislative updates.' : undefined });
     setRegistrationNotice(
       notifyUpdates
         ? 'Registration saved. You are now subscribed to legislative updates.'
@@ -377,6 +376,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     setRequestError('');
     setRequestReference(reference);
     toast('Request submitted', `Your reference number is ${reference}.`);
+    logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Submitted a certified copy request', detail: `Reference number ${reference}.` });
   };
 
   const openRequestDialog = (recordNumber = '') => {
@@ -1152,32 +1152,32 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 tableWrapperClassName="overflow-x-auto overflow-y-visible"
               >
                 <Table>
-                  <TableHeader className="bg-[#fafafa]">
-                    <TableRow className="border-border">
-                      <TableHead className="px-4 text-[12px] font-semibold text-text-muted">RECORD NO.</TableHead>
-                      <TableHead className="px-4 text-[12px] font-semibold text-text-muted">TITLE</TableHead>
-                      <TableHead className="px-4 text-[12px] font-semibold text-text-muted">TYPE</TableHead>
-                      <TableHead className="px-4 text-[12px] font-semibold text-text-muted">DATE</TableHead>
-                      <TableHead className="px-4 text-[12px] font-semibold text-text-muted">STATUS</TableHead>
-                      <TableHead className="px-4 text-right text-[12px] font-semibold text-text-muted">ACTIONS</TableHead>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>RECORD NO.</TableHead>
+                      <TableHead>TITLE</TableHead>
+                      <TableHead>TYPE</TableHead>
+                      <TableHead>DATE</TableHead>
+                      <TableHead>STATUS</TableHead>
+                      <TableHead>ACTIONS</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedInquiryResults.map((record) => (
-                      <TableRow key={record.id} className="border-border transition-colors hover:bg-muted/40">
-                        <TableCell className="whitespace-nowrap px-4 py-3.5 font-mono text-[12px] text-text-muted">{record.number}</TableCell>
-                        <TableCell className="px-4 py-3.5">
-                          <button type="button" onClick={() => openDoc(record.id)} className="text-left text-[13px] font-semibold text-primary hover:underline">
+                      <TableRow key={record.id}>
+                        <TableCell className="whitespace-nowrap">{record.number}</TableCell>
+                        <TableCell>
+                          <button type="button" onClick={() => openDoc(record.id)} className="text-center font-semibold text-primary hover:underline">
                             {record.title}
                           </button>
                           <div className="mt-0.5 text-[11px] text-text-muted">{record.referral}</div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap px-4 py-3.5 text-[13px]">{record.classification}</TableCell>
-                        <TableCell className="whitespace-nowrap px-4 py-3.5 text-[13px]">{record.date}</TableCell>
-                        <TableCell className="px-4 py-3.5">
-                          <span className={`inline-block whitespace-nowrap rounded border px-2 py-0.5 text-[11px] font-semibold ${statusTone(record.status)}`}>{record.status}</span>
+                        <TableCell className="whitespace-nowrap">{record.classification}</TableCell>
+                        <TableCell className="whitespace-nowrap">{record.date}</TableCell>
+                        <TableCell>
+                          <StatusBadge status={record.status} />
                         </TableCell>
-                        <TableCell className="relative px-4 py-3.5 text-right">
+                        <TableCell className="relative">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
                               <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`Actions for ${record.number}`}>
@@ -1239,8 +1239,21 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               ))}
             </div>
 
-            <LegislativeOrgChart />
-            <p className="mt-3 text-xs text-white/65">Use the zoom controls or drag the chart to explore each office.</p>
+            <div className="overflow-hidden rounded-2xl bg-white shadow-xl">
+              <div className="flex flex-col gap-2 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-base font-semibold text-text-main">Composition of the Sangguniang Bayan</h3>
+                  <p className="text-xs text-text-muted">{mockMembers.length} members · select a member to see their committee assignments</p>
+                </div>
+                <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#fdf6e3] px-2 py-0.5 font-semibold text-[#8a6a12]">
+                    <Gavel className="h-3 w-3" /> Chair
+                  </span>
+                  chairs at least one committee
+                </span>
+              </div>
+              <CompositionChart onSelect={setPublicMemberId} />
+            </div>
 
             <div className="mt-10">
               <h3 className="text-lg font-bold text-white">Standing Committees</h3>
@@ -1657,7 +1670,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     {activePublicDoc.recordType} • {activePublicDoc.number}
                   </div>
                   <div className="text-lg font-bold text-primary">{activePublicDoc.title}</div>
-                  <span className={`inline-block rounded border px-2 py-0.5 text-[11px] font-semibold ${statusTone(activePublicDoc.status)}`}>{activePublicDoc.status}</span>
+                  <StatusBadge status={activePublicDoc.status} align="start" />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => downloadRecord(activePublicDoc)}>
@@ -1881,6 +1894,66 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </p>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Member of the Sangguniang Bayan: committee assignments, each linking to its referred measures. */}
+      <Dialog open={publicMember !== null} onOpenChange={(open) => !open && setPublicMemberId(null)}>
+        <DialogContent>
+          {publicMember ? (
+            <>
+              <div className="flex items-center gap-4">
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#1a237e] to-[#0d1452] text-sm font-bold text-white ring-2 ring-[#d4a72c]">
+                  {publicMember.abbr}
+                </span>
+                <DialogHeader className="text-left">
+                  <DialogTitle className="text-xl text-primary">{publicMember.name}</DialogTitle>
+                  <DialogDescription>
+                    {publicMember.position} · {publicMember.seat}
+                  </DialogDescription>
+                </DialogHeader>
+              </div>
+              <h4 className="mt-5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Committee assignments</h4>
+              {committeeRolesOf(publicMember.id).length > 0 ? (
+                <ul className="mt-2 space-y-2">
+                  {committeeRolesOf(publicMember.id)
+                    .sort((a, b) => ['Chair', 'Vice Chair', 'Member'].indexOf(a.role) - ['Chair', 'Vice Chair', 'Member'].indexOf(b.role))
+                    .map((entry) => (
+                      <li key={entry.committee.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPublicMemberId(null);
+                            resetFilters();
+                            setSelectedReferral(entry.committee.name);
+                            scrollToSection('legislation');
+                          }}
+                          className="flex w-full items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
+                        >
+                          <span className="min-w-0 truncate text-sm text-text-main">{shortCommitteeName(entry.committee.name)}</span>
+                          <span className="flex shrink-0 items-center gap-2">
+                            <span
+                              className={cn(
+                                'rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                                entry.role === 'Chair' ? 'bg-[#fdf6e3] text-[#8a6a12]' : entry.role === 'Vice Chair' ? 'bg-primary/10 text-primary' : 'bg-muted text-text-muted'
+                              )}
+                            >
+                              {entry.role}
+                            </span>
+                            <ArrowRight className="h-4 w-4 text-text-muted" />
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="mt-2 text-sm text-text-muted">
+                  {publicMember.seat === 'Presiding Officer' ? 'The Municipal Vice Mayor presides over sessions and does not sit in standing committees.' : 'No committee assignments.'}
+                </p>
+              )}
+              <p className="mt-4 text-xs text-text-muted">Select a committee to see the measures referred to it.</p>
+            </>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>

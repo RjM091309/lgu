@@ -69,6 +69,24 @@
   background-color: var(--color-primary-light);
 }
 
+/* Sidebar: a dark, thin scrollbar that only shows while the menu is hovered. */
+.sidebar-scroll {
+  scrollbar-color: transparent transparent;
+}
+.sidebar-scroll:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-color: transparent;
+}
+.sidebar-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

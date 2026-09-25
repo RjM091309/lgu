@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import {
   ArrowDownRight,
   ArrowRight,
+  BarChart3,
+  ChevronRight,
   ArrowUpRight,
   CalendarDays,
   CalendarPlus,
@@ -9,15 +11,11 @@ import {
   CheckCircle2,
   FilePlus2,
   FileText,
-  FolderUp,
   Layers,
-  Gavel,
   MapPin,
   Minus,
   Printer,
   Table2,
-  LineChart,
-  UserCog,
 } from 'lucide-react';
 import { mockBills, mockMonthlyActivity, mockSessions, type Bill } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
@@ -27,43 +25,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { cn } from '@/lib/utils';
 import { openPrintWindow } from '@/lib/files';
 import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
-import { AreaSparkline, BarList, CountUp, DonutChart, PHASE_COLORS, PipelineChart, SegmentMeter, SERIES_COLORS, TrendChart } from '@/components/dashboard/charts';
+import { todayInManila } from '@/lib/session-files';
+import { LEGISLATIVE_PHASES, LEGISLATIVE_STAGES, StatusBadge } from '@/components/ui/status-badge';
+import { AreaSparkline, BarList, CountUp, DonutChart, PHASE_COLORS, PipelineChart, SegmentMeter, SERIES_COLORS, GroupedBarChart } from '@/components/dashboard/charts';
 
 interface OverviewProps {
   onNavigate: (tab: string) => void;
 }
 
-const PHASES = ['Filing', 'Deliberation', 'Approval'];
-const PIPELINE: { status: Bill['status']; phase: number }[] = [
-  { status: 'Draft', phase: 0 },
-  { status: 'First Reading', phase: 0 },
-  { status: 'Committee', phase: 1 },
-  { status: 'Second Reading', phase: 1 },
-  { status: 'Third Reading', phase: 1 },
-  { status: 'Passed', phase: 2 },
-  { status: 'Enacted', phase: 2 },
-];
+const PHASES = LEGISLATIVE_PHASES;
+const PIPELINE = LEGISLATIVE_STAGES as { status: Bill['status']; phase: number }[];
 const FINAL_STATUSES: Bill['status'][] = ['Passed', 'Enacted', 'Vetoed'];
 
-const RECENT_ACTIVITY = [
-  { time: '09:37 AM', user: 'sb.committee', text: 'Returned APP-2026-016 as incomplete', tab: 'manage-transactions' },
-  { time: '09:22 AM', user: 'sb.records', text: 'Uploaded minutes of the 37th Regular Session', tab: 'esig-session-files' },
-  { time: '09:14 AM', user: 'sb.admin', text: 'Approved routing of Mun. Ord. No. 2026-007', tab: 'manage-legislation' },
-  { time: 'Yesterday', user: 'sb.admin', text: 'Prepared the order of business for the 38th Regular Session', tab: 'manage-transactions' },
-];
-
-export function statusBadgeClassName(status: string) {
-  return cn(
-    'inline-flex h-6 items-center whitespace-nowrap rounded-full border px-2.5 text-[11px] font-semibold',
-    ['Enacted', 'Passed'].includes(status)
-      ? 'border-green-200 bg-green-50 text-green-800'
-      : status === 'Vetoed'
-        ? 'border-red-200 bg-red-50 text-red-800'
-        : status === 'Draft'
-          ? 'border-slate-200 bg-slate-50 text-slate-700'
-          : 'border-amber-200 bg-amber-50 text-amber-800'
-  );
-}
+const SESSION_TYPE_TONE: Record<string, string> = {
+  Regular: 'bg-primary/10 text-primary',
+  Special: 'bg-orange-50 text-orange-800',
+  'Committee Hearing': 'bg-violet-50 text-violet-800',
+};
 
 function Card({ title, subtitle, action, children, className }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
@@ -79,6 +57,18 @@ function Card({ title, subtitle, action, children, className }: { title: string;
     </section>
   );
 }
+
+const formatShortDate = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+
+const relativeDays = (iso: string) => {
+  const days = Math.round((new Date(`${todayInManila()}T00:00:00`).getTime() - new Date(`${iso}T00:00:00`).getTime()) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 30) return `${days} days ago`;
+  const months = Math.floor(days / 30);
+  return `${months} month${months === 1 ? '' : 's'} ago`;
+};
 
 function LinkButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
@@ -113,15 +103,19 @@ export function Overview({ onNavigate }: OverviewProps) {
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
-    return Object.entries(counts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([label, value]) => ({ label, value }));
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return {
+      top: entries.slice(0, 5).map(([label, value]) => ({ label, value })),
+      committeeCount: entries.length,
+    };
   }, []);
 
   const months = mockMonthlyActivity.map((row) => row.month);
   const filed = mockMonthlyActivity.map((row) => row.filed);
   const approved = mockMonthlyActivity.map((row) => row.approved);
+  const totalFiled = filed.reduce((sum, value) => sum + value, 0);
+  const totalApproved = approved.reduce((sum, value) => sum + value, 0);
+  const approvalRate = totalFiled > 0 ? Math.round((totalApproved / totalFiled) * 100) : 0;
   const lastMonth = mockMonthlyActivity[mockMonthlyActivity.length - 1];
   const prevMonth = mockMonthlyActivity[mockMonthlyActivity.length - 2];
 
@@ -196,13 +190,6 @@ export function Overview({ onNavigate }: OverviewProps) {
     },
   ];
 
-  const quickActions = [
-    { label: 'New legislative record', icon: FilePlus2, tab: 'manage-legislation' },
-    { label: 'Prepare session agenda', icon: Gavel, tab: 'manage-transactions' },
-    { label: 'Upload session files', icon: FolderUp, tab: 'esig-session-files' },
-    { label: 'Manage user accounts', icon: UserCog, tab: 'access-users' },
-  ];
-
   const statusSegments = [
     { label: 'In process', value: inProcess.length, color: SERIES_COLORS.blue, tab: 'manage-legislation' },
     { label: 'Awaiting signature', value: awaitingSignature.length, color: SERIES_COLORS.orange, tab: 'esig-electronic-signature' },
@@ -248,7 +235,7 @@ export function Overview({ onNavigate }: OverviewProps) {
       </div>
 
       {/* Stat tiles */}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((tile) => {
           const delta = tile.delta;
           const deltaTone =
@@ -294,40 +281,46 @@ export function Overview({ onNavigate }: OverviewProps) {
       </div>
 
       {/* Trend + status mix */}
-      <div className="grid gap-6 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         <Card
           className="xl:col-span-2"
           title="Monthly Legislative Activity"
           subtitle="Measures filed and approved, January–September 2026"
           action={
-            <div className="flex items-center gap-4">
-              <div className="hidden items-center gap-3 text-xs text-text-muted sm:flex" aria-hidden>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-0.5 w-3.5 rounded" style={{ backgroundColor: SERIES_COLORS.blue }} />
-                  Filed
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="h-0.5 w-3.5 rounded" style={{ backgroundColor: SERIES_COLORS.orange }} />
-                  Approved
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTrendAsTable((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-semibold text-text-muted hover:border-primary hover:text-primary"
-                aria-pressed={trendAsTable}
-              >
-                {trendAsTable ? <LineChart className="h-3.5 w-3.5" /> : <Table2 className="h-3.5 w-3.5" />}
-                {trendAsTable ? 'Chart' : 'Table'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setTrendAsTable((prev) => !prev)}
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-semibold text-text-muted hover:border-primary hover:text-primary"
+              aria-pressed={trendAsTable}
+            >
+              {trendAsTable ? <BarChart3 className="h-3.5 w-3.5" /> : <Table2 className="h-3.5 w-3.5" />}
+              {trendAsTable ? 'Chart' : 'Table'}
+            </button>
           }
         >
-          <TrendChart
+          {/* Summary doubles as the legend: each swatch names its series. */}
+          <dl className="mb-5 grid grid-cols-3 divide-x divide-border rounded-lg border border-border">
+            {[
+              { label: 'Filed', value: totalFiled, color: SERIES_COLORS.blue },
+              { label: 'Approved', value: totalApproved, color: SERIES_COLORS.orange },
+              { label: 'Approval rate', value: `${approvalRate}%` },
+            ].map((item) => (
+              <div key={item.label} className="px-4 py-3">
+                <dt className="flex items-center gap-1.5 text-xs text-text-muted">
+                  {item.color ? <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: item.color }} /> : null}
+                  {item.label}
+                </dt>
+                <dd className="mt-1 text-2xl font-semibold leading-none text-text-main">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+          <GroupedBarChart
             labels={months}
             showTable={trendAsTable}
+            periodSuffix=" 2026"
+            ratio={{ label: 'Approval rate', numerator: 'approved', denominator: 'filed' }}
             series={[
-              { key: 'filed', label: 'Filed', color: SERIES_COLORS.blue, values: filed, area: true },
+              { key: 'filed', label: 'Filed', color: SERIES_COLORS.blue, values: filed },
               { key: 'approved', label: 'Approved', color: SERIES_COLORS.orange, values: approved },
             ]}
           />
@@ -343,32 +336,62 @@ export function Overview({ onNavigate }: OverviewProps) {
       </div>
 
       {/* Pipeline, sessions, committees */}
-      <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
         <Card title="Legislative Pipeline" subtitle="Measures at each stage" action={<LinkButton onClick={() => onNavigate('manage-legislation')}>Open tracking</LinkButton>}>
           <PipelineChart stages={pipelineStages} phases={PHASES} onSelect={() => onNavigate('manage-legislation')} />
         </Card>
 
-        <Card title="Upcoming Sessions" action={<LinkButton onClick={() => onNavigate('manage-transactions')}>View all</LinkButton>}>
-          <ul className="space-y-3">
+        <Card title="Upcoming Sessions" subtitle="Scheduled sessions and hearings" action={<LinkButton onClick={() => onNavigate('manage-transactions')}>View all</LinkButton>}>
+          <ul className="space-y-2.5">
             {mockSessions.map((session) => {
               const date = new Date(`${session.date}T00:00:00`);
+              const daysAway = Math.round((date.getTime() - new Date(`${todayInManila()}T00:00:00`).getTime()) / 86_400_000);
+              const when = daysAway < 0 ? 'Concluded' : daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`;
               return (
-                <li key={session.id} className="flex gap-3 rounded-lg border border-border p-3 transition-colors hover:border-primary/30">
-                  <div className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-primary text-white">
-                    <span className="text-[10px] font-bold uppercase">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
+                <li key={session.id} className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:border-primary/30 hover:bg-primary/[0.02]">
+                  <div className="flex h-[60px] w-14 shrink-0 flex-col items-center justify-center rounded-lg border border-primary/15 bg-primary/[0.06] text-primary">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
                     <span className="text-xl font-bold leading-none">{date.getDate()}</span>
+                    <span className="mt-0.5 text-[10px] text-text-muted">{date.toLocaleDateString('en-PH', { weekday: 'short' })}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-secondary">{session.type}</p>
-                    <p className="truncate text-sm font-semibold">{session.title}</p>
-                    <div className="mt-1 flex gap-3">
-                      <button type="button" onClick={() => setAgendaSessionId(session.id)} className="text-xs font-semibold text-primary hover:underline">
-                        Agenda
-                      </button>
-                      <button type="button" onClick={() => addSessionToCalendar(session)} className="text-xs font-semibold text-primary hover:underline">
-                        Add to calendar
-                      </button>
+                    <div className="flex items-center gap-2">
+                      <span className={cn('shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold', SESSION_TYPE_TONE[session.type])}>{session.type}</span>
+                      <span className="truncate text-[11px] text-text-muted">{when}</span>
+                      <span className="ml-auto flex shrink-0 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setAgendaSessionId(session.id)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+                          title="View agenda"
+                          aria-label={`View agenda for ${session.title}`}
+                        >
+                          <FileText className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => addSessionToCalendar(session)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+                          title="Add to calendar"
+                          aria-label={`Add ${session.title} to calendar`}
+                        >
+                          <CalendarPlus className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
                     </div>
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-text-main" title={session.title}>
+                      {session.title}
+                    </p>
+                    <p className="mt-1 flex min-w-0 items-center gap-3 text-xs text-text-muted">
+                      <span className="inline-flex shrink-0 items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {session.time}
+                      </span>
+                      <span className="inline-flex min-w-0 items-center gap-1" title={session.location}>
+                        <MapPin className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{session.location}</span>
+                      </span>
+                    </p>
                   </div>
                 </li>
               );
@@ -377,7 +400,12 @@ export function Overview({ onNavigate }: OverviewProps) {
         </Card>
 
         <Card title="Committee Workload" subtitle="Measures referred, top 5" action={<LinkButton onClick={() => onNavigate('manage-master-files')}>Committees</LinkButton>}>
-          <BarList items={committeeLoad} onSelect={() => onNavigate('manage-master-files')} />
+          <BarList
+            items={committeeLoad.top}
+            total={mockBills.length}
+            groupCount={committeeLoad.committeeCount}
+            onSelect={() => onNavigate('manage-master-files')}
+          />
         </Card>
       </div>
 
@@ -407,73 +435,49 @@ export function Overview({ onNavigate }: OverviewProps) {
           onNextPage={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
         >
           <Table>
-            <TableHeader className="bg-[#fafafa]">
-              <TableRow className="border-border">
-                <TableHead className="px-5 text-[12px] font-semibold text-text-muted">RECORD NO.</TableHead>
-                <TableHead className="px-5 text-[12px] font-semibold text-text-muted">TITLE</TableHead>
-                <TableHead className="px-5 text-[12px] font-semibold text-text-muted">COMMITTEE</TableHead>
-                <TableHead className="px-5 text-[12px] font-semibold text-text-muted">DATE FILED</TableHead>
-                <TableHead className="px-5 text-[12px] font-semibold text-text-muted">STATUS</TableHead>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Record No.</TableHead>
+                <TableHead>Title</TableHead>
+                <TableHead>Committee</TableHead>
+                <TableHead>Date Filed</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="w-10">
+                  <span className="sr-only">Open</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedBills.map((bill) => (
-                <TableRow
-                  key={bill.id}
-                  onClick={() => setSelectedBill(bill)}
-                  className="cursor-pointer border-border transition-colors hover:bg-primary/[0.03]"
-                >
-                  <TableCell className="whitespace-nowrap px-5 py-3.5 font-mono text-[12px] text-text-muted">{bill.number}</TableCell>
-                  <TableCell className="px-5 py-3.5 text-[13px] font-medium text-primary">{bill.title}</TableCell>
-                  <TableCell className="px-5 py-3.5 text-[13px]">{bill.committee ?? bill.author}</TableCell>
-                  <TableCell className="whitespace-nowrap px-5 py-3.5 text-[13px] tabular-nums">{bill.dateFiled}</TableCell>
-                  <TableCell className="px-5 py-3.5">
-                    <span className={statusBadgeClassName(bill.status)}>{bill.status}</span>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {paginatedBills.map((bill) => {
+                return (
+                  <TableRow key={bill.id} onClick={() => setSelectedBill(bill)} className="group cursor-pointer hover:bg-primary/[0.03]">
+                    <TableCell className="whitespace-nowrap">
+                      <div className="font-medium text-text-main">{bill.number}</div>
+                      <div className="text-[11px] text-text-muted">{bill.classification ?? (bill.number.includes('Res.') ? 'Resolution' : 'Ordinance')}</div>
+                    </TableCell>
+                    <TableCell>
+                      <p className="mx-auto line-clamp-2 max-w-md font-medium leading-snug text-primary group-hover:underline" title={bill.title}>
+                        {bill.title}
+                      </p>
+                    </TableCell>
+                    <TableCell className="text-text-main">{(bill.committee ?? bill.author).replace('Committee on ', '')}</TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <div className="text-text-main">{formatShortDate(bill.dateFiled)}</div>
+                      <div className="text-[11px] text-text-muted">{relativeDays(bill.dateFiled)}</div>
+                    </TableCell>
+                    <TableCell>
+                      <StatusBadge status={bill.status} />
+                    </TableCell>
+                    <TableCell className="w-10">
+                      <ChevronRight className="mx-auto h-4 w-4 text-text-muted transition-colors group-hover:text-primary" />
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </DataTable>
       </section>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card title="Recent Activity" action={<LinkButton onClick={() => onNavigate('access-control-panel')}>Audit trail</LinkButton>}>
-          <ol className="relative space-y-1 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
-            {RECENT_ACTIVITY.map((entry) => (
-              <li key={entry.text}>
-                <button type="button" onClick={() => onNavigate(entry.tab)} className="relative flex w-full gap-3 rounded-md p-2 text-left hover:bg-background">
-                  <span className="relative z-10 mt-1 h-2.5 w-2.5 shrink-0 rounded-full border-2 border-white bg-primary ring-1 ring-primary/30" />
-                  <span>
-                    <span className="block text-[13px] text-text-main">{entry.text}</span>
-                    <span className="text-[11px] text-text-muted">
-                      {entry.user} · {entry.time}
-                    </span>
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </Card>
-
-        <Card title="Quick Actions">
-          <div className="grid grid-cols-2 gap-3">
-            {quickActions.map((action) => (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => onNavigate(action.tab)}
-                className="group flex items-center gap-3 rounded-lg border border-border p-3 text-left transition-colors hover:border-primary hover:bg-primary/[0.03]"
-              >
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
-                  <action.icon className="h-4 w-4" />
-                </span>
-                <span className="text-[13px] font-semibold leading-snug">{action.label}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      </div>
 
       {/* Record details */}
       <Dialog open={selectedBill !== null} onOpenChange={(open) => !open && setSelectedBill(null)}>
@@ -487,7 +491,7 @@ export function Overview({ onNavigate }: OverviewProps) {
               </DialogHeader>
               <dl className="mt-5 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                 {[
-                  ['Status', <span className={statusBadgeClassName(selectedBill.status)}>{selectedBill.status}</span>],
+                  ['Status', <StatusBadge status={selectedBill.status} align="start" />],
                   ['Classification', selectedBill.classification ?? 'Ordinance'],
                   ['Committee', selectedBill.committee ?? selectedBill.author],
                   ['Co-author', selectedBill.coAuthor || '—'],

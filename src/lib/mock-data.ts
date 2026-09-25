@@ -263,6 +263,27 @@ export const mockMonthlyActivity = [
   { month: 'Sep', filed: 8, approved: 6 },
 ];
 
+// Yearly performance; 2026 is year-to-date (Jan–Sep) and its filed/approved match mockMonthlyActivity.
+export const mockYearlyActivity = [
+  { year: '2023', filed: 58, approved: 41, sessionsHeld: 46, sessionsPlanned: 48, quorumRate: 91, avgDaysToApprove: 74, publishedOnTime: 82 },
+  { year: '2024', filed: 64, approved: 47, sessionsHeld: 47, sessionsPlanned: 48, quorumRate: 94, avgDaysToApprove: 66, publishedOnTime: 88 },
+  { year: '2025', filed: 71, approved: 52, sessionsHeld: 48, sessionsPlanned: 48, quorumRate: 96, avgDaysToApprove: 58, publishedOnTime: 93 },
+  { year: '2026', filed: 60, approved: 43, sessionsHeld: 35, sessionsPlanned: 36, quorumRate: 97, avgDaysToApprove: 52, publishedOnTime: 95 },
+];
+
+// Committee hearings held per month, January–September 2026.
+export const mockCommitteeHearings = [
+  { committee: 'Finance, Budget and Appropriations', monthly: [2, 3, 2, 4, 3, 2, 3, 4, 5] },
+  { committee: 'Tourism, Culture and Heritage', monthly: [1, 2, 1, 1, 3, 2, 2, 1, 2] },
+  { committee: 'Transportation', monthly: [1, 0, 2, 1, 1, 2, 3, 2, 3] },
+  { committee: 'Health and Social Welfare', monthly: [1, 1, 1, 2, 2, 1, 1, 2, 1] },
+  { committee: 'Public Works and Infrastructure', monthly: [0, 1, 2, 1, 0, 2, 1, 1, 2] },
+  { committee: 'Environment and Natural Resources', monthly: [1, 0, 1, 1, 2, 1, 0, 1, 1] },
+  { committee: 'Agriculture', monthly: [0, 1, 1, 0, 1, 1, 2, 1, 0] },
+  { committee: 'Education', monthly: [1, 0, 0, 1, 1, 0, 1, 0, 1] },
+];
+
+
 export const mockSessions: Session[] = [
   {
     id: 's1',
@@ -288,4 +309,89 @@ export const mockSessions: Session[] = [
     location: LGU_PROFILE.sessionHall,
     type: 'Special',
   },
+];
+
+export interface SessionDevice {
+  name: string;
+  type: string;
+  status: 'Connected' | 'Pending' | 'Disconnected';
+  lastSync: string;
+}
+
+export const mockSessionDevices: SessionDevice[] = [
+  { name: 'Session Hall Tablet A', type: 'Tablet', status: 'Connected', lastSync: '10:12 AM' },
+  { name: 'Session Hall Tablet B', type: 'Tablet', status: 'Disconnected', lastSync: '09:41 AM' },
+  { name: 'Presiding Officer iPad', type: 'iPad', status: 'Connected', lastSync: '10:10 AM' },
+  { name: 'Secretary Console', type: 'Laptop', status: 'Pending', lastSync: '09:58 AM' },
+];
+
+/* Attendance register: roll call for recent sessions. P = present, L = late, A = absent. */
+export type AttendanceMark = 'P' | 'L' | 'A';
+
+export const mockAttendanceSessions = [
+  { id: 'as30', label: '30th Regular', short: '30th', date: '2026-07-06', type: 'Regular' },
+  { id: 'as31', label: '31st Regular', short: '31st', date: '2026-07-13', type: 'Regular' },
+  { id: 'as32', label: '32nd Regular', short: '32nd', date: '2026-07-20', type: 'Regular' },
+  { id: 'asp1', label: 'Special Session', short: 'Special', date: '2026-07-24', type: 'Special' },
+  { id: 'as33', label: '33rd Regular', short: '33rd', date: '2026-08-03', type: 'Regular' },
+  { id: 'as34', label: '34th Regular', short: '34th', date: '2026-08-17', type: 'Regular' },
+  { id: 'as35', label: '35th Regular', short: '35th', date: '2026-08-31', type: 'Regular' },
+  { id: 'as36', label: '36th Regular', short: '36th', date: '2026-09-07', type: 'Regular' },
+  { id: 'as37', label: '37th Regular', short: '37th', date: '2026-09-21', type: 'Regular' },
+];
+
+// One mark per session above, in order; keyed by member id.
+export const mockAttendanceMarks: Record<string, string> = {
+  m1: 'PPPPPPPPP',
+  m2: 'PPPAPPPPP',
+  m3: 'PLPAPPPPP',
+  m4: 'PPPPPAPPP',
+  m5: 'PPAAPPLPP',
+  m6: 'PPPAPPPPA',
+  m7: 'LPPAPPPPP',
+  m8: 'PPPPPPAPP',
+  m9: 'PAPAPPPPP',
+  m10: 'APPAPLPPP',
+  m11: 'PPPPAPPAP',
+  m12: 'PPAAPPPPP',
+};
+
+/* Publication tracker: posting and effectivity of approved ordinances. */
+export interface PublicationRecord {
+  number: string;
+  title: string;
+  approvedOn: string;
+  postedOn: string | null;
+  placesPosted: number;
+  penalClause: boolean;
+  newspaperOn: string | null;
+}
+
+export const mockPublications: PublicationRecord[] = [
+  { number: 'Mun. Ord. No. 2026-002', title: "An Ordinance Establishing the Capas Farmers' Weekend Market", approvedOn: '2026-08-03', postedOn: '2026-08-05', placesPosted: 3, penalClause: false, newspaperOn: null },
+  { number: 'Mun. Ord. No. 2026-004', title: 'An Ordinance Imposing Fines for Illegal Parking along the Capas–Patling Road', approvedOn: '2026-08-10', postedOn: '2026-08-13', placesPosted: 3, penalClause: true, newspaperOn: '2026-08-20' },
+  { number: 'Mun. Ord. No. 2026-003', title: 'An Ordinance Regulating the Use of Videoke and Sound Systems during Night Hours', approvedOn: '2026-09-08', postedOn: null, placesPosted: 0, penalClause: true, newspaperOn: null },
+  { number: 'Mun. Ord. No. 2026-006', title: 'An Ordinance Prohibiting Single-Use Plastics in the Capas Public Market', approvedOn: '2026-09-14', postedOn: '2026-09-16', placesPosted: 3, penalClause: true, newspaperOn: '2026-09-23' },
+  { number: 'Mun. Ord. No. 2026-005', title: 'An Ordinance Declaring the Capas National Shrine Environs as a Heritage Protection Zone', approvedOn: '2026-09-21', postedOn: '2026-09-24', placesPosted: 2, penalClause: true, newspaperOn: null },
+  { number: 'Mun. Ord. No. 2026-007', title: 'An Ordinance Appropriating Supplemental Funds for Barangay Disaster Preparedness Equipment', approvedOn: '2026-09-22', postedOn: null, placesPosted: 0, penalClause: false, newspaperOn: null },
+];
+
+/* Committee composition: member ids from mockMembers. */
+export const mockCommitteeAssignments: Record<string, { chair: string; viceChair: string; members: string[] }> = {
+  c1: { chair: 'm2', viceChair: 'm4', members: ['m6', 'm11'] },
+  c2: { chair: 'm3', viceChair: 'm7', members: ['m10', 'm12'] },
+  c3: { chair: 'm4', viceChair: 'm9', members: ['m5', 'm11'] },
+  c4: { chair: 'm5', viceChair: 'm12', members: ['m3', 'm8'] },
+  c5: { chair: 'm6', viceChair: 'm2', members: ['m9', 'm11'] },
+  c6: { chair: 'm7', viceChair: 'm11', members: ['m4', 'm10'] },
+  c7: { chair: 'm8', viceChair: 'm3', members: ['m6', 'm12'] },
+  c8: { chair: 'm9', viceChair: 'm10', members: ['m2', 'm7'] },
+  c9: { chair: 'm3', viceChair: 'm8', members: ['m5', 'm11'] },
+};
+
+/* Special legislative files kept by the Secretariat. */
+export const mockSpecialFiles = [
+  { id: 'sf1', title: 'Executive Legislative Agenda', detail: 'Priority legislation per session cycle, 2025–2028', count: 14, unit: 'documents', updated: '2026-09-18', custodian: 'SB Secretariat' },
+  { id: 'sf2', title: 'Programs and Projects File', detail: 'Programs and projects of the Sangguniang Bayan', count: 32, unit: 'documents', updated: '2026-09-10', custodian: 'Office of the SB Secretary' },
+  { id: 'sf3', title: 'Subject Matter Index', detail: 'Subject listing and codification references', count: 486, unit: 'entries', updated: '2026-08-29', custodian: 'Records Section' },
 ];

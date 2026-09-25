@@ -29,6 +29,7 @@ import {
 } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
 import { TranscriptPanel } from '@/components/esession/TranscriptPanel';
+import { logActivity } from '@/lib/activity-log';
 
 const CURRENT_USER = 'SB Secretariat Admin';
 
@@ -193,6 +194,7 @@ export function SessionFilesPanel() {
       return;
     }
     toast('Files uploaded', `${pending.length} file(s) added to ${sessionTitle(uploadSession)}.`);
+    logActivity({ module: 'E-Session', action: 'Uploaded', summary: `Uploaded ${pending.length} file(s) to ${sessionTitle(uploadSession)}`, detail: pending.map((item) => item.file.name).join(', ') });
     setSessionFilter((current) => (current === 'all' || current === uploadSession ? current : 'all'));
     setPending([]);
     setUploadOpen(false);
@@ -243,6 +245,7 @@ export function SessionFilesPanel() {
       return;
     }
     toast('Recording attached', `${newName} is ready to play.`);
+    logActivity({ module: 'E-Session', action: 'Uploaded', summary: `Attached the recording ${newName}` });
     setAttachTarget(null);
   };
 
@@ -261,6 +264,7 @@ export function SessionFilesPanel() {
     }
     if (previewId === file.id) setPreviewId(null);
     toast('File removed', `${file.name} was removed.`);
+    logActivity({ module: 'E-Session', action: 'Deleted', summary: `Removed ${file.name}`, detail: `From ${sessionTitle(file.sessionId)}` });
   };
 
   const actionButton = 'h-7 px-2 text-[11px]';

@@ -1,11 +1,25 @@
 import { useMemo, useState } from 'react';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { mockBills, mockMembers, mockSessions } from '@/lib/mock-data';
+import { mockBills, mockMembers, mockSessionDevices, mockSessions } from '@/lib/mock-data';
 import { useSessionFiles } from '@/lib/session-files';
 import { SessionFilesPanel } from '@/components/esession/SessionFilesPanel';
+import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
+import { logActivity } from '@/lib/activity-log';
+
+function deviceStatusClassName(status: string) {
+  return cn(
+    'inline-flex h-6 items-center whitespace-nowrap rounded-full border px-2.5 text-[11px] font-semibold',
+    status === 'Connected'
+      ? 'border-green-200 bg-green-50 text-green-800'
+      : status === 'Disconnected'
+        ? 'border-red-200 bg-red-50 text-red-800'
+        : 'border-amber-200 bg-amber-50 text-amber-800'
+  );
+}
 
 interface ESessionEsigViewProps {
   activeTab: string;
@@ -14,15 +28,7 @@ interface ESessionEsigViewProps {
 export function ESessionEsigView({ activeTab }: ESessionEsigViewProps) {
   const [signedMembers, setSignedMembers] = useState<string[]>([]);
 
-  const sessionDevices = useMemo(
-    () => [
-      { name: 'Session Hall Tablet A', type: 'Tablet', status: 'Connected', lastSync: '10:12 AM' },
-      { name: 'Session Hall Tablet B', type: 'Tablet', status: 'Connected', lastSync: '10:11 AM' },
-      { name: 'Presiding Officer iPad', type: 'iPad', status: 'Connected', lastSync: '10:10 AM' },
-      { name: 'Secretary Console', type: 'Laptop', status: 'Pending', lastSync: '09:58 AM' },
-    ],
-    []
-  );
+  const sessionDevices = mockSessionDevices;
 
   const signerRows = useMemo(
     () =>
@@ -89,18 +95,20 @@ export function ESessionEsigView({ activeTab }: ESessionEsigViewProps) {
             <CardTitle className="text-lg">E-Session Platform</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="border border-border">
-              <div className="grid grid-cols-12 bg-muted/40 px-4 py-2 text-xs font-bold uppercase">
+            <div className={gridTableClassName}>
+              <div className={gridTableHeaderClassName}>
                 <div className="col-span-4">Device</div>
                 <div className="col-span-2">Type</div>
                 <div className="col-span-2">Status</div>
                 <div className="col-span-4">Last Sync</div>
               </div>
               {sessionDevices.map((row) => (
-                <div key={row.name} className="grid grid-cols-12 border-t border-border px-4 py-2 text-sm">
+                <div key={row.name} className={gridTableRowClassName}>
                   <div className="col-span-4">{row.name}</div>
                   <div className="col-span-2">{row.type}</div>
-                  <div className="col-span-2">{row.status}</div>
+                  <div className="col-span-2">
+                    <span className={deviceStatusClassName(row.status)}>{row.status}</span>
+                  </div>
                   <div className="col-span-4">{row.lastSync}</div>
                 </div>
               ))}
@@ -145,6 +153,7 @@ export function ESessionEsigView({ activeTab }: ESessionEsigViewProps) {
                       if (!confirmed) return;
                       setSignedMembers((prev) => [...prev, row.id]);
                       toast('Document signed', `Signature recorded for ${row.member}.`);
+                      logActivity({ module: 'E-Session', action: 'Signed', summary: `Recorded the electronic signature of ${row.member}`, detail: row.role });
                     }}
                   >
                     {signed ? 'Signed' : 'Sign Document'}
