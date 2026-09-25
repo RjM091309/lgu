@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Bell, ChevronDown, ChevronRight, CircleHelp, KeyRound, LogOut, Mail, Menu, Search, User, X } from 'lucide-react';
 import { LGU_PROFILE, mockBills, mockMembers, mockSessions } from '@/lib/mock-data';
 import { NAV_GROUPS, findNavItem } from '@/lib/navigation';
+import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity } from '@/lib/activity-log';
@@ -255,23 +256,35 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
           <Menu className="h-5 w-5" />
         </Button>
 
+        {/* Dashboard is the home page, so it roots the trail; every crumb navigates. */}
         <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-sm lg:flex">
-          <button type="button" onClick={() => onNavigate('dashboard')} className="text-text-muted hover:text-primary">
-            Home
-          </button>
-          {current && current.item.id !== 'dashboard' ? (
-            <>
-              <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
-              <span className="text-text-muted">{current.group.label}</span>
-              <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
-              <span className="truncate font-semibold text-primary">{current.item.label}</span>
-            </>
-          ) : (
-            <>
-              <ChevronRight className="h-3.5 w-3.5 text-text-muted" />
-              <span className="font-semibold text-primary">Dashboard</span>
-            </>
-          )}
+          {(() => {
+            const crumbs: { label: string; tab: string }[] = [{ label: 'Dashboard', tab: 'dashboard' }];
+            if (current && current.item.id !== 'dashboard') {
+              if (current.group.id !== 'overview') crumbs.push({ label: current.group.label, tab: current.group.items[0].id });
+              crumbs.push({ label: current.item.label, tab: current.item.id });
+            }
+            return crumbs.map((crumb, index) => {
+              const isCurrent = index === crumbs.length - 1;
+              return (
+                <span key={crumb.label} className="flex min-w-0 items-center gap-1.5">
+                  {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted" /> : null}
+                  <button
+                    type="button"
+                    onClick={() => onNavigate(crumb.tab)}
+                    aria-current={isCurrent ? 'page' : undefined}
+                    className={cn(
+                      'truncate rounded px-1 py-0.5 transition-colors hover:bg-primary/[0.06] hover:text-primary',
+                      isCurrent ? 'font-semibold text-primary' : 'text-text-muted'
+                    )}
+                    title={!isCurrent && index === 1 && crumbs.length === 3 ? `Go to ${current?.group.items[0].label}` : undefined}
+                  >
+                    {crumb.label}
+                  </button>
+                </span>
+              );
+            });
+          })()}
         </nav>
 
         <div ref={searchBoxRef} className="relative ml-auto w-full max-w-sm">
