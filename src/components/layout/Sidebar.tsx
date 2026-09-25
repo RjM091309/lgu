@@ -31,8 +31,8 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, className }: Sideba
       >
         <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-40 w-40 shrink-0 rounded-full object-cover ring-2 ring-white/20" />
         <div className="min-w-0">
-          <div className="font-serif text-base font-bold leading-tight">Sangguniang Bayan ng Capas</div>
-          <div className="mt-1 text-[11px] text-white/60">Legislative Management System</div>
+          <div className="font-serif text-xl font-bold leading-tight text-balance">Sangguniang Bayan ng Capas</div>
+          <div className="mt-1.5 text-sm text-white/60">Legislative Management System</div>
         </div>
       </button>
 
