@@ -139,7 +139,7 @@ const seedFiles = (): SessionFile[] => {
       category: 'Audio Recording',
       sessionId: regularSession.id,
       kind: 'audio',
-      size: 10_434_884,
+      size: 1_013_952,
       uploadedAt: '2026-09-22',
       uploadedBy: 'SB Secretariat',
       source: 'system',
@@ -200,12 +200,20 @@ const loadSavedFiles = () => {
       const savedById = new Map(saved.map((file) => [file.id, file]));
       const current = files ?? seedFiles();
       const uploads = saved.filter((file) => file.source === 'upload' && !current.some((entry) => entry.id === file.id));
-      // A saved attachment replaces its system row, but the row keeps the app's own shipped file links.
+      // A saved attachment replaces its system row. Rows that ship their own media with the app can't take an
+      // attachment, so a saved copy of one is left over from before the media shipped: the shipped file wins
+      // (otherwise a replaced recording would keep playing the old copy), and the leftover is removed.
+      const stale = current.filter((file) => file.src && savedById.has(file.id)).map((file) => file.id);
       const merge = (file: SessionFile) => {
         const saved = savedById.get(file.id);
-        return saved ? { ...saved, src: file.src, transcriptSrc: file.transcriptSrc } : file;
+        return saved && !file.src ? { ...saved, transcriptSrc: file.transcriptSrc } : file;
       };
       setFiles([...uploads.sort((a, b) => idNumber(b) - idNumber(a)), ...current.map(merge)]);
+      if (stale.length > 0) {
+        void runTransaction(STORES.sessionFiles, 'readwrite', (store) => {
+          stale.forEach((id) => store.delete(id));
+        }).catch(() => undefined);
+      }
     } catch {
       // Storage unavailable: the page still works with the built-in files.
     }

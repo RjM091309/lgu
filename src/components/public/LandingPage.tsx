@@ -55,6 +55,9 @@ import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
 import { EgovAiChat } from '@/components/public/EgovAiChat';
 
+// Demo sign-in.
+const DEMO_PASSWORD = 'admin123';
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface LandingPageProps {
@@ -311,7 +314,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       toast('Sign-in failed', 'Please enter your username and password.', 'error');
       return;
     }
-    if (username.trim() === 'admin' && password === 'admin123') {
+    if (username.trim() === 'admin' && password === DEMO_PASSWORD) {
       toast('Signed in', 'Welcome to the SB Capas Legislative Management System.');
       onLogin(rememberMe);
       return;
@@ -1739,7 +1742,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             </Button>
             <p className="text-center text-[11px] text-text-muted">
               Demo access: <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
-              <span className="font-mono font-semibold text-text-main">admin123</span>
+              <span className="font-mono font-semibold text-text-main">{DEMO_PASSWORD}</span>
             </p>
           </form>
         </DialogContent>
