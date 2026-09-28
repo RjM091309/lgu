@@ -1,7 +1,26 @@
 import { useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
-import { Download, Eye, FileAudio, FileImage, FileText, FileVideo, File as FileIcon, Paperclip, Play, Printer, Search, Trash2, Upload, X } from 'lucide-react';
-import { Badge } from '@/components/ui/badge';
+import {
+  CalendarDays,
+  Check,
+  Clock,
+  Download,
+  Eye,
+  FileAudio,
+  FileImage,
+  FileText,
+  FileVideo,
+  File as FileIcon,
+  FolderOpen,
+  Minus,
+  Paperclip,
+  Play,
+  Printer,
+  Search,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,6 +60,31 @@ const KIND_ICONS: Record<FileKind, typeof FileText> = {
   other: FileIcon,
 };
 
+const KIND_STYLE: Record<FileKind, string> = {
+  pdf: 'bg-red-50 text-red-700',
+  audio: 'bg-violet-50 text-violet-700',
+  video: 'bg-sky-50 text-sky-700',
+  image: 'bg-emerald-50 text-emerald-700',
+  other: 'bg-slate-100 text-slate-600',
+};
+
+// What a complete session folder holds, shown as the session checklist.
+const CHECKLIST_CATEGORIES: FileCategory[] = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording'];
+
+type CategoryFilter = 'all' | 'recordings' | FileCategory;
+
+const CATEGORY_TABS: { value: CategoryFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'Agenda', label: 'Agenda' },
+  { value: 'Order of Business', label: 'Order of Business' },
+  { value: 'Minutes', label: 'Minutes' },
+  { value: 'recordings', label: 'Recordings' },
+  { value: 'Supporting Document', label: 'Supporting' },
+];
+
+const matchesCategory = (file: SessionFile, filter: CategoryFilter) =>
+  filter === 'all' || (filter === 'recordings' ? file.category === 'Audio Recording' || file.category === 'Video Recording' : file.category === filter);
+
 const sessionTitle = (id: string) => mockSessions.find((session) => session.id === id)?.title ?? 'Unassigned session';
 
 const RECORDING_ACCEPT = 'audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.webm,.mov,.m4v';
@@ -58,6 +102,7 @@ export function SessionFilesPanel() {
   const files = useSessionFiles();
   const [keyword, setKeyword] = useState('');
   const [sessionFilter, setSessionFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState(false);
   const [mediaTime, setMediaTime] = useState(0);
@@ -76,9 +121,10 @@ export function SessionFilesPanel() {
     return files.filter(
       (file) =>
         (sessionFilter === 'all' || file.sessionId === sessionFilter) &&
+        matchesCategory(file, categoryFilter) &&
         (!q || file.name.toLowerCase().includes(q) || file.category.toLowerCase().includes(q) || sessionTitle(file.sessionId).toLowerCase().includes(q))
     );
-  }, [files, keyword, sessionFilter]);
+  }, [files, keyword, sessionFilter, categoryFilter]);
 
   const previewFile = files.find((file) => file.id === previewId) ?? null;
   const previewUrl = previewFile ? fileUrl(previewFile) : null;
@@ -135,9 +181,9 @@ export function SessionFilesPanel() {
     return accepted.length;
   };
 
-  const openUpload = () => {
+  const openUpload = (sessionId?: string) => {
     setPending([]);
-    setUploadSession(sessionFilter !== 'all' ? sessionFilter : mockSessions[0]?.id ?? '');
+    setUploadSession(sessionId ?? (sessionFilter !== 'all' ? sessionFilter : mockSessions[0]?.id ?? ''));
     setUploadOpen(true);
   };
 
@@ -267,130 +313,282 @@ export function SessionFilesPanel() {
     logActivity({ module: 'E-Session', action: 'Deleted', summary: `Removed ${file.name}`, detail: `From ${sessionTitle(file.sessionId)}` });
   };
 
-  const actionButton = 'h-7 px-2 text-[11px]';
+  const recordings = files.filter((file) => file.kind === 'audio' || file.kind === 'video');
+  const awaitingRecordings = recordings.filter((file) => !file.blob && !file.src).length;
+  const totalBytes = files.reduce((sum, file) => sum + (file.size ?? 0), 0);
+  const sessionsCovered = new Set(files.map((file) => file.sessionId)).size;
+
+  const stats = [
+    { label: 'Total files', value: String(files.length), icon: FolderOpen, hint: `${formatBytes(totalBytes)} stored` },
+    { label: 'Documents', value: String(files.length - recordings.length), icon: FileText, hint: 'Agendas, minutes, supporting papers' },
+    {
+      label: 'Recordings',
+      value: String(recordings.length),
+      icon: FileVideo,
+      hint: awaitingRecordings ? `${awaitingRecordings} awaiting upload` : 'Audio and video',
+    },
+    { label: 'Sessions covered', value: `${sessionsCovered}/${mockSessions.length}`, icon: CalendarDays, hint: 'Sessions with at least one file' },
+  ];
+
+  const groups = mockSessions
+    .map((session) => ({ session, items: filtered.filter((file) => file.sessionId === session.id) }))
+    .filter((group) => group.items.length > 0);
+  const ungrouped = filtered.filter((file) => !mockSessions.some((session) => session.id === file.sessionId));
+
+  const checklistSessionId = sessionFilter !== 'all' ? sessionFilter : mockSessions[0]?.id ?? '';
+  const checklistSession = mockSessions.find((session) => session.id === checklistSessionId);
+  const checklist = CHECKLIST_CATEGORIES.map((category) => {
+    const matches = files.filter((file) => file.sessionId === checklistSessionId && file.category === category);
+    const ready = matches.some((file) => file.blob || file.src);
+    return { category, status: ready ? 'ready' : matches.length ? 'awaiting' : 'missing' } as const;
+  });
+  const readyCount = checklist.filter((item) => item.status === 'ready').length;
+
+  const renderFile = (file: SessionFile) => {
+    const Icon = KIND_ICONS[file.kind];
+    const missing = !file.blob && !file.src;
+    const canView = file.kind === 'pdf' || file.kind === 'image';
+    const canPlay = file.kind === 'audio' || file.kind === 'video';
+    return (
+      <li key={file.id} className="flex flex-col gap-3 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', KIND_STYLE[file.kind])}>
+            <Icon className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-text-main" title={file.name}>
+              {file.name}
+            </p>
+            <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
+              <span className="rounded-full bg-muted px-2 py-px font-medium text-text-main">{file.category}</span>
+              {missing ? <span className="font-semibold text-amber-700">Recording not yet attached</span> : <span>{formatBytes(file.size)}</span>}
+              <span aria-hidden>·</span>
+              <span>
+                {file.uploadedAt} by {file.uploadedBy}
+              </span>
+            </p>
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 pl-[52px] sm:pl-0">
+          {missing ? (
+            <Button size="sm" className="h-8" onClick={() => startAttach(file)}>
+              <Paperclip className="mr-1.5 h-4 w-4" />
+              Attach recording
+            </Button>
+          ) : (
+            <>
+              {canPlay || canView ? (
+                <Button size="sm" variant="outline" className="h-8" onClick={() => openPreview(file)}>
+                  {canPlay ? <Play className="mr-1.5 h-4 w-4" /> : <Eye className="mr-1.5 h-4 w-4" />}
+                  {canPlay ? 'Play' : 'View'}
+                </Button>
+              ) : null}
+              <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => download(file)} aria-label={`Download ${file.name}`} title="Download">
+                <Download className="h-4 w-4" />
+              </Button>
+              {canView ? (
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => print(file)} aria-label={`Print ${file.name}`} title="Print">
+                  <Printer className="h-4 w-4" />
+                </Button>
+              ) : null}
+            </>
+          )}
+          {file.source === 'upload' ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 w-8 p-0 text-[#c62828] hover:bg-[#ffebee]"
+              onClick={() => remove(file)}
+              aria-label={`Remove ${file.name}`}
+              title="Remove file"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          ) : null}
+        </div>
+      </li>
+    );
+  };
 
   return (
     <>
-    <div
-      className={cn('relative flex flex-col rounded-lg border border-border bg-white shadow-sm', isDragging && 'ring-2 ring-primary/40')}
-      onDragOver={(event) => {
-        event.preventDefault();
-        setIsDragging(true);
-      }}
-      onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
-      }}
-      onDrop={handlePanelDrop}
-    >
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
-        <h3 className="mr-auto text-base font-bold text-primary">
-          Session Files and Attachments <span className="text-xs font-normal text-text-muted">({filtered.length})</span>
-        </h3>
-        <div className="relative w-full sm:w-60">
-          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
-          <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search files" aria-label="Search session files" className="h-9 pl-8 text-sm" />
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-primary">Session Files</h1>
+          <p className="text-sm text-text-muted">Agendas, minutes, recordings, and supporting documents for each session.</p>
         </div>
-        <select value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)} className={selectClass} aria-label="Filter by session">
-          <option value="all">All sessions</option>
-          {mockSessions.map((session) => (
-            <option key={session.id} value={session.id}>
-              {session.title}
-            </option>
-          ))}
-        </select>
-        <Button size="sm" onClick={openUpload}>
+        <Button onClick={() => openUpload()}>
           <Upload className="mr-2 h-4 w-4" />
-          Upload Files
+          Upload files
         </Button>
       </div>
 
-      <div className="hidden grid-cols-12 gap-3 bg-[#fafafa] px-4 py-2 text-[11px] font-semibold uppercase text-text-muted md:grid">
-        <div className="col-span-5">File</div>
-        <div className="col-span-2">Category</div>
-        <div className="col-span-2">Uploaded</div>
-        <div className="col-span-3 text-right">Actions</div>
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        {stats.map((stat) => (
+          <div key={stat.label} className="rounded-xl border border-border bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-text-muted">{stat.label}</span>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/[0.07] text-primary">
+                <stat.icon className="h-4 w-4" />
+              </span>
+            </div>
+            <p className="mt-2 text-2xl font-bold tabular-nums text-text-main">{stat.value}</p>
+            <p className="mt-1 text-xs text-text-muted">{stat.hint}</p>
+          </div>
+        ))}
       </div>
-      <div className="divide-y divide-border">
-        {filtered.map((file) => {
-          const Icon = KIND_ICONS[file.kind];
-          const missing = !file.blob && !file.src;
-          return (
-            <div key={file.id} className="grid grid-cols-1 items-center gap-2 px-4 py-2.5 md:grid-cols-12 md:gap-3">
-              <div className="flex min-w-0 items-center gap-3 md:col-span-5">
-                <Icon className="h-5 w-5 shrink-0 text-primary" />
-                <div className="min-w-0">
-                  <div className="truncate text-[13px] font-semibold" title={file.name}>{file.name}</div>
-                  <div className="truncate text-[11px] text-text-muted">
-                    {sessionTitle(file.sessionId)} · {missing ? <span className="font-medium text-[#ef6c00]">Recording not yet attached</span> : formatBytes(file.size)}
-                  </div>
+
+      <div className="grid items-start gap-6 xl:grid-cols-[1fr_320px]">
+        <section
+          className={cn('relative overflow-hidden rounded-xl border border-border bg-white shadow-sm', isDragging && 'ring-2 ring-primary/40')}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragging(false);
+          }}
+          onDrop={handlePanelDrop}
+        >
+          <header className="space-y-3 border-b border-border px-5 py-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="mr-auto">
+                <h2 className="text-base font-semibold text-text-main">
+                  Files <span className="text-sm font-normal text-text-muted">({filtered.length})</span>
+                </h2>
+                <p className="hidden text-xs text-text-muted sm:block">Drag files here to upload</p>
+              </div>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative sm:w-56">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
+                  <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search files" aria-label="Search session files" className="h-9 pl-8 text-sm" />
                 </div>
-              </div>
-              <div className="md:col-span-2">
-                <Badge variant="outline" className="whitespace-nowrap text-[10px] font-normal text-text-muted">{file.category}</Badge>
-              </div>
-              <div className="text-[11px] text-text-muted md:col-span-2">
-                <div>{file.uploadedAt}</div>
-                <div className="truncate">{file.uploadedBy}</div>
-              </div>
-              <div className="flex flex-wrap items-center gap-1 md:col-span-3 md:justify-end">
-                {missing ? (
-                  <Button size="sm" variant="outline" className={actionButton} onClick={() => startAttach(file)}>
-                    <Paperclip className="mr-1 h-3.5 w-3.5" />
-                    Attach recording
-                  </Button>
-                ) : (
-                  <>
-                    {file.kind === 'audio' || file.kind === 'video' ? (
-                      <Button size="sm" variant="outline" className={actionButton} onClick={() => openPreview(file)}>
-                        <Play className="mr-1 h-3.5 w-3.5" />
-                        Play
-                      </Button>
-                    ) : null}
-                    {file.kind === 'pdf' || file.kind === 'image' ? (
-                      <Button size="sm" variant="outline" className={actionButton} onClick={() => openPreview(file)}>
-                        <Eye className="mr-1 h-3.5 w-3.5" />
-                        View
-                      </Button>
-                    ) : null}
-                    <Button size="sm" variant="outline" className={actionButton} onClick={() => download(file)}>
-                      <Download className="mr-1 h-3.5 w-3.5" />
-                      Download
-                    </Button>
-                    {file.kind === 'pdf' || file.kind === 'image' ? (
-                      <Button size="sm" variant="outline" className={actionButton} onClick={() => print(file)}>
-                        <Printer className="mr-1 h-3.5 w-3.5" />
-                        Print
-                      </Button>
-                    ) : null}
-                  </>
-                )}
-                {file.source === 'upload' ? (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 w-7 p-0 text-[#c62828] hover:bg-[#ffebee]"
-                    onClick={() => remove(file)}
-                    aria-label={`Remove ${file.name}`}
-                    title="Remove file"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
-                ) : null}
+                <select value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)} className={selectClass} aria-label="Filter by session">
+                  <option value="all">All sessions</option>
+                  {mockSessions.map((session) => (
+                    <option key={session.id} value={session.id}>
+                      {session.title}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
-          );
-        })}
-        {filtered.length === 0 ? <p className="px-4 py-8 text-center text-sm text-text-muted">No session files match your search.</p> : null}
-      </div>
-      <p className="border-t border-border px-4 py-2 text-[11px] text-text-muted">
-        Tip: drag files onto this panel to upload. Accepted: PDF, audio, video, images and Office documents up to {formatBytes(MAX_UPLOAD_BYTES)} each.
-      </p>
+            <div className="-mx-1 overflow-x-auto px-1">
+              <div className="inline-flex gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="File category">
+                {CATEGORY_TABS.map((tab) => {
+                  const active = categoryFilter === tab.value;
+                  const count = files.filter((file) => matchesCategory(file, tab.value)).length;
+                  return (
+                    <button
+                      key={tab.value}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      onClick={() => setCategoryFilter(tab.value)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
+                        active ? 'bg-white text-text-main shadow-sm' : 'text-text-muted hover:text-text-main'
+                      )}
+                    >
+                      {tab.label}
+                      <span className={cn('rounded-full px-1.5 text-[10px] tabular-nums', active ? 'bg-primary/10 text-primary' : 'bg-white/70')}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </header>
 
-      {isDragging ? (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg bg-primary/5">
-          <div className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-primary shadow">Drop files to upload</div>
-        </div>
-      ) : null}
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
+              <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-text-muted">
+                <FolderOpen className="h-6 w-6" />
+              </span>
+              <p className="text-sm font-semibold text-text-main">No files found</p>
+              <p className="text-xs text-text-muted">Try another search or category, or upload a new file.</p>
+            </div>
+          ) : (
+            <div>
+              {groups.map(({ session, items }) => {
+                const date = new Date(`${session.date}T00:00:00`);
+                return (
+                  <div key={session.id}>
+                    <div className="flex items-center gap-3 border-b border-border bg-muted/40 px-5 py-2.5">
+                      <span className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-md bg-white text-primary ring-1 ring-border">
+                        <span className="text-[8px] font-bold uppercase leading-none">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
+                        <span className="text-sm font-bold leading-none">{date.getDate()}</span>
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-text-main">{session.title}</p>
+                        <p className="text-[11px] text-text-muted">
+                          {session.type} · {items.length} file{items.length === 1 ? '' : 's'}
+                        </p>
+                      </div>
+                    </div>
+                    <ul className="divide-y divide-border border-b border-border last:border-b-0">{items.map(renderFile)}</ul>
+                  </div>
+                );
+              })}
+              {ungrouped.length > 0 ? <ul className="divide-y divide-border">{ungrouped.map(renderFile)}</ul> : null}
+            </div>
+          )}
+
+          <p className="border-t border-border bg-muted/30 px-5 py-2.5 text-[11px] text-text-muted">
+            Accepted: PDF, audio, video, images and Office documents up to {formatBytes(MAX_UPLOAD_BYTES)} each.
+          </p>
+
+          {isDragging ? (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center rounded-xl border-2 border-dashed border-primary/50 bg-primary/5">
+              <div className="flex items-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-primary shadow">
+                <Upload className="h-4 w-4" />
+                Drop files to upload
+              </div>
+            </div>
+          ) : null}
+        </section>
+
+        {/* Session checklist */}
+        <aside className="rounded-xl border border-border bg-white p-5 shadow-sm">
+          <h2 className="text-base font-semibold text-text-main">Session Checklist</h2>
+          <p className="text-xs text-text-muted">{checklistSession ? checklistSession.title : 'No session selected'}</p>
+          <div className="mt-4 flex items-center gap-3">
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
+              <div
+                className={cn('h-full rounded-full transition-all duration-500', readyCount === checklist.length ? 'bg-green-600' : 'bg-primary')}
+                style={{ width: `${Math.round((readyCount / checklist.length) * 100)}%` }}
+              />
+            </div>
+            <span className="text-xs font-semibold tabular-nums text-text-main">
+              {readyCount}/{checklist.length}
+            </span>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {checklist.map((item) => (
+              <li key={item.category} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5">
+                <span
+                  className={cn(
+                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full',
+                    item.status === 'ready' ? 'bg-green-600 text-white' : item.status === 'awaiting' ? 'bg-amber-100 text-amber-700' : 'bg-muted text-text-muted'
+                  )}
+                >
+                  {item.status === 'ready' ? <Check className="h-3.5 w-3.5" /> : item.status === 'awaiting' ? <Clock className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-text-main">{item.category}</p>
+                  <p className="text-[11px] text-text-muted">{item.status === 'ready' ? 'On file' : item.status === 'awaiting' ? 'Listed, file not attached' : 'Not yet uploaded'}</p>
+                </div>
+                {item.status === 'missing' ? (
+                  <button type="button" onClick={() => openUpload(checklistSessionId)} className="text-xs font-semibold text-primary hover:underline">
+                    Upload
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-4 text-[11px] text-text-muted">Pick a session in the filter to check its files.</p>
+        </aside>
+      </div>
     </div>
 
     <input

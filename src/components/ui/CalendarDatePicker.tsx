@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { holidayTitle, holidayTone, useHolidays } from '@/lib/holidays';
+import { SCOPE_LABEL } from '@/lib/local-holidays';
 
 type CalendarDatePickerProps = {
   value: string;
@@ -103,6 +105,9 @@ export function CalendarDatePicker({
   }, [viewDate]);
 
   const selectedIso = selectedDate ? toIsoDate(selectedDate) : '';
+  const { byDate: holidaysByDate, holidays } = useHolidays(viewDate.getFullYear());
+  const viewMonthPrefix = toIsoDate(new Date(viewDate.getFullYear(), viewDate.getMonth(), 1)).slice(0, 7);
+  const monthHolidays = holidays.filter((holiday) => holiday.date.startsWith(viewMonthPrefix));
 
   return (
     <div ref={containerRef} className={cn('relative w-full', className)}>
@@ -159,14 +164,17 @@ export function CalendarDatePicker({
               const candidate = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
               const iso = toIsoDate(candidate);
               const isSelected = iso === selectedIso;
+              const holiday = holidaysByDate.get(iso);
 
               return (
                 <button
                   key={iso}
                   type="button"
+                  title={holiday ? holidayTitle(holiday) : undefined}
+                  aria-label={holiday ? `${day}, holiday: ${holiday.name}` : undefined}
                   className={cn(
-                    'h-8 rounded-md text-sm transition-colors',
-                    isSelected ? 'bg-primary text-white' : 'hover:bg-muted'
+                    'relative h-8 rounded-md text-sm transition-colors',
+                    isSelected ? 'bg-primary text-white' : holiday ? cn(holidayTone(holiday).cell, 'hover:brightness-95') : 'hover:bg-muted'
                   )}
                   onClick={() => {
                     onChange(iso);
@@ -174,10 +182,27 @@ export function CalendarDatePicker({
                   }}
                 >
                   {day}
+                  {holiday && !isSelected ? (
+                    <span className={cn('absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full', holidayTone(holiday).dot)} aria-hidden />
+                  ) : null}
                 </button>
               );
             })}
           </div>
+
+          {monthHolidays.length ? (
+            <ul className="mt-3 space-y-1 border-t border-border pt-2.5">
+              {monthHolidays.map((holiday) => (
+                <li key={`${holiday.date}-${holiday.name}`} className="flex gap-2 text-[11px]" title={holiday.basis}>
+                  <span className={cn('w-6 shrink-0 text-right font-semibold tabular-nums', holidayTone(holiday).text)}>{Number(holiday.date.slice(8, 10))}</span>
+                  <span className="min-w-0 flex-1 text-text-muted">{holiday.name}</span>
+                  {holiday.scope !== 'national' ? (
+                    <span className="h-fit shrink-0 rounded bg-amber-50 px-1 text-[9px] font-semibold uppercase text-amber-800">{SCOPE_LABEL[holiday.scope]}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
     </div>

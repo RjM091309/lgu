@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -53,6 +53,7 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
+import { EgovAiChat } from '@/components/public/EgovAiChat';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -204,6 +205,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const t = COPY[lang];
   const [now, setNow] = useState(() => new Date());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const headerRef = useRef<HTMLElement | null>(null);
   const [activeSection, setActiveSection] = useState<string>('home');
   const [heroKeyword, setHeroKeyword] = useState('');
 
@@ -283,9 +285,22 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     second: '2-digit',
   }).format(now);
 
+  // Lands each section right under the sticky header (measured, so it stays exact on every screen size);
+  // Home goes to the very top so the GOVPH bar shows too. Cards inside a section get a little breathing room.
   const scrollToSection = (id: string) => {
     setMobileNavOpen(false);
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+    // Measure after the mobile menu has closed and the header is back to its normal height.
+    requestAnimationFrame(() => {
+      const target = document.getElementById(id);
+      if (!target) return;
+      if (id === 'home') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+      const headerHeight = headerRef.current?.offsetHeight ?? 0;
+      const gap = target.tagName === 'SECTION' || target.tagName === 'FOOTER' ? 0 : 24;
+      window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY - headerHeight - gap, behavior: 'smooth' });
+    });
   };
 
   const handlePortalLogin = (e: FormEvent<HTMLFormElement>) => {
@@ -777,17 +792,23 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     { title: 'Register for Updates', description: 'Get notified of new legislation', icon: UserPlus, action: () => scrollToSection('register') },
   ];
 
-  const sectionHeading = (kicker: string, title: string, description: string, light = false) => (
-    <div className="mb-10">
-      <p className={`text-xs font-bold uppercase tracking-[0.2em] ${light ? 'text-[#86b6ef]' : 'text-secondary'}`}>{kicker}</p>
-      <h2 className={`mt-2 text-3xl font-bold ${light ? 'text-white' : 'text-primary'}`}>{title}</h2>
-      <div className={`mt-3 h-1 w-16 ${light ? 'bg-[#86b6ef]' : 'bg-secondary'}`} />
-      <p className={`mt-4 max-w-3xl ${light ? 'text-white/75' : 'text-text-muted'}`}>{description}</p>
+  const container = 'mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8';
+
+  const sectionHeading = (kicker: string, title: string, description: string) => (
+    <div className="mb-10 max-w-3xl">
+      <p className="text-sm font-semibold text-primary">{kicker}</p>
+      <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">{title}</h2>
+      <p className="mt-3 text-base leading-relaxed text-slate-600">{description}</p>
     </div>
   );
 
+  const sessionTypeStyle = (type: string) =>
+    type === 'Special' ? 'bg-orange-50 text-orange-700 ring-orange-200' : type === 'Committee Hearing' ? 'bg-violet-50 text-violet-700 ring-violet-200' : 'bg-primary/5 text-primary ring-primary/15';
+
+  const nextSessionDate = nextSession ? new Date(`${nextSession.date}T00:00:00`) : null;
+
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="min-h-screen bg-white font-sans text-slate-900">
       <a
         href="#legislation"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-primary focus:shadow"
@@ -796,27 +817,27 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       </a>
 
       {/* GOVPH top bar */}
-      <div className="bg-[#0b1033] text-white/80 text-xs">
-        <div className="container mx-auto flex h-10 items-center justify-between gap-4 px-6">
-          <div className="flex items-center gap-4">
-            <a href="https://www.gov.ph" target="_blank" rel="noopener noreferrer" className="font-bold tracking-wider text-white hover:text-[#86b6ef]">
+      <div className="bg-[#0a0f3d] text-xs text-white/70">
+        <div className={cn(container, 'flex h-9 items-center justify-between gap-4')}>
+          <div className="flex items-center gap-3">
+            <a href="https://www.gov.ph" target="_blank" rel="noopener noreferrer" className="font-bold tracking-wider text-white hover:text-white/80">
               GOVPH
             </a>
-            <span className="hidden text-white/40 sm:inline">|</span>
+            <span className="hidden h-3 w-px bg-white/25 sm:block" aria-hidden />
             <span className="hidden sm:inline">Republic of the Philippines</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1.5 lg:flex">
               <Clock className="h-3.5 w-3.5" />
               {t.pst}: {philippineTime}
             </span>
-            <div className="flex overflow-hidden rounded border border-white/20" role="group" aria-label="Language">
+            <div className="flex rounded-md bg-white/10 p-0.5" role="group" aria-label="Language">
               {(['EN', 'FIL'] as Lang[]).map((code) => (
                 <button
                   key={code}
                   type="button"
                   onClick={() => setLang(code)}
-                  className={`px-2 py-0.5 font-semibold ${lang === code ? 'bg-white text-[#0b1033]' : 'hover:bg-white/10'}`}
+                  className={cn('rounded px-2 py-0.5 font-semibold transition-colors', lang === code ? 'bg-white text-[#0a0f3d]' : 'text-white/75 hover:text-white')}
                   aria-pressed={lang === code}
                 >
                   {code}
@@ -826,7 +847,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <button
               type="button"
               onClick={() => setLoginOpen(true)}
-              className="inline-flex items-center gap-1.5 rounded bg-white/10 px-2.5 py-1 font-semibold text-white hover:bg-white/20"
+              className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 font-semibold text-white transition-colors hover:bg-white/10"
             >
               <Lock className="h-3.5 w-3.5" />
               {t.staffLogin}
@@ -835,188 +856,218 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </div>
       </div>
 
-      {/* Masthead */}
-      <header className="bg-white">
-        <div className="container mx-auto flex flex-col gap-4 px-6 py-5 md:flex-row md:items-center md:justify-between">
-          <button type="button" onClick={() => scrollToSection('home')} className="flex items-center gap-4 text-left">
-            <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-16 w-16 shrink-0 rounded-full object-cover md:h-20 md:w-20" />
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-text-muted">
-                Republic of the Philippines · Province of Tarlac
-              </p>
-              <p className="font-serif text-2xl font-bold leading-tight text-primary md:text-3xl">Sangguniang Bayan ng Capas</p>
-              <p className="text-sm font-medium text-text-muted">Legislative Information System</p>
-            </div>
+      {/* Header and main navigation */}
+      <header ref={headerRef} className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80">
+        <div className={cn(container, 'flex h-16 items-center gap-6')}>
+          <button type="button" onClick={() => scrollToSection('home')} className="flex min-w-0 items-center gap-3 text-left">
+            <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+            <span className="min-w-0">
+              <span className="block truncate text-[15px] font-bold leading-tight text-slate-900">Sangguniang Bayan ng Capas</span>
+              <span className="block truncate text-xs text-slate-500">Legislative Information System</span>
+            </span>
           </button>
 
-          <form onSubmit={handleHeroSearch} className="flex w-full max-w-md" role="search">
-            <label htmlFor="masthead-search" className="sr-only">
-              {t.searchPlaceholder}
-            </label>
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
-              <input
-                id="masthead-search"
-                value={heroKeyword}
-                onChange={(e) => setHeroKeyword(e.target.value)}
-                placeholder={t.searchPlaceholder}
-                className="h-11 w-full rounded-l-md border border-r-0 border-border bg-white pl-9 pr-3 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
-              />
-            </div>
-            <button type="submit" className="h-11 rounded-r-md bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-light">
-              {t.search}
+          <nav className="hidden flex-1 justify-center lg:flex" aria-label="Main">
+            <ul className="flex items-center gap-1">
+              {NAV_IDS.map((id) => (
+                <li key={id}>
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection(id)}
+                    className={cn(
+                      'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      activeSection === id ? 'bg-primary/5 text-primary' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    )}
+                    aria-current={activeSection === id ? 'true' : undefined}
+                  >
+                    {t.nav[id]}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <div className="ml-auto flex items-center gap-2 lg:ml-0">
+            <Button onClick={() => openRequestDialog()} className="hidden h-9 rounded-lg px-4 font-semibold sm:inline-flex">
+              <FileSearch className="mr-2 h-4 w-4" />
+              Request a Document
+            </Button>
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen((open) => !open)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 lg:hidden"
+              aria-expanded={mobileNavOpen}
+              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+            >
+              {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
-          </form>
-        </div>
-      </header>
-
-      {/* Main navigation */}
-      <nav className="sticky top-0 z-40 bg-primary shadow-md" aria-label="Main">
-        <div className="container mx-auto flex items-center justify-between px-6">
-          <ul className="hidden lg:flex">
-            {NAV_IDS.map((id) => (
-              <li key={id}>
-                <button
-                  type="button"
-                  onClick={() => scrollToSection(id)}
-                  className={`border-b-[3px] px-4 py-3.5 text-sm font-semibold transition-colors ${
-                    activeSection === id ? 'border-white bg-white/10 text-white' : 'border-transparent text-white/85 hover:bg-white/10 hover:text-white'
-                  }`}
-                  aria-current={activeSection === id ? 'true' : undefined}
-                >
-                  {t.nav[id]}
-                </button>
-              </li>
-            ))}
-          </ul>
-          <button
-            type="button"
-            onClick={() => setMobileNavOpen((open) => !open)}
-            className="flex items-center gap-2 py-3 text-sm font-semibold text-white lg:hidden"
-            aria-expanded={mobileNavOpen}
-          >
-            {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            Menu
-          </button>
-          <button
-            type="button"
-            onClick={() => openRequestDialog()}
-            className="my-2 hidden rounded bg-secondary px-4 py-1.5 text-sm font-semibold text-white hover:bg-secondary/90 sm:inline-flex"
-          >
-            Request a Document
-          </button>
+          </div>
         </div>
         {mobileNavOpen ? (
-          <ul className="border-t border-white/10 bg-primary px-6 pb-3 lg:hidden">
-            {NAV_IDS.map((id) => (
-              <li key={id}>
-                <button
-                  type="button"
-                  onClick={() => scrollToSection(id)}
-                  className={`w-full px-2 py-2.5 text-left text-sm font-semibold ${activeSection === id ? 'text-white underline underline-offset-4' : 'text-white/90'}`}
-                >
-                  {t.nav[id]}
-                </button>
+          <nav className="border-t border-slate-200 bg-white lg:hidden" aria-label="Main">
+            <ul className={cn(container, 'grid gap-1 py-3')}>
+              {NAV_IDS.map((id) => (
+                <li key={id}>
+                  <button
+                    type="button"
+                    onClick={() => scrollToSection(id)}
+                    className={cn(
+                      'w-full rounded-md px-3 py-2.5 text-left text-sm font-medium',
+                      activeSection === id ? 'bg-primary/5 text-primary' : 'text-slate-700 hover:bg-slate-50'
+                    )}
+                  >
+                    {t.nav[id]}
+                  </button>
+                </li>
+              ))}
+              <li className="pt-2 sm:hidden">
+                <Button onClick={() => openRequestDialog()} className="w-full rounded-lg font-semibold">
+                  <FileSearch className="mr-2 h-4 w-4" />
+                  Request a Document
+                </Button>
               </li>
-            ))}
-          </ul>
+            </ul>
+          </nav>
         ) : null}
-      </nav>
+      </header>
 
       <main>
         {/* Hero */}
-        <section id="home" className="relative scroll-mt-16 overflow-hidden bg-gradient-to-br from-primary via-[#1c2a8f] to-[#0d1452] text-white">
-          <img
-            src="/capas-logo.jpg"
-            alt=""
+        <section id="home" className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-b from-[#f4f6fd] to-white">
+          <div
+            className="pointer-events-none absolute inset-0 bg-[radial-gradient(#1a237e1a_1px,transparent_1px)] [background-size:24px_24px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
             aria-hidden
-            className="pointer-events-none absolute -right-24 top-1/2 hidden h-[520px] w-[520px] -translate-y-1/2 rounded-full object-cover opacity-[0.07] md:block"
           />
-          <div className="container relative mx-auto px-6 pb-28 pt-16 md:pt-20">
-            <div className="grid gap-10 lg:grid-cols-[1.2fr_minmax(320px,400px)] lg:items-center">
-              <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-                <p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.18em] text-[#86b6ef]">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  {t.heroKicker}
-                </p>
-                <h1 className="mt-5 text-4xl font-extrabold leading-tight md:text-5xl">{t.heroTitle}</h1>
-                <p className="mt-5 max-w-2xl text-lg leading-relaxed text-white/80">{t.heroText}</p>
-                <div className="mt-8 flex flex-wrap gap-3">
-                  <Button onClick={() => applyQuickFilter({})} className="h-12 bg-white px-6 text-base font-bold text-primary hover:bg-white/90">
-                    <Search className="mr-2 h-4 w-4" />
-                    Search Legislation
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => scrollToSection('public-sessions')}
-                    className="h-12 border-white/40 px-6 text-base font-semibold text-white hover:bg-white/10"
+          <div className={cn(container, 'relative grid gap-12 py-16 md:py-24 lg:grid-cols-[1.3fr_1fr] lg:items-center')}>
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
+              <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#d4a72c]" aria-hidden />
+                {t.heroKicker} · Capas, Tarlac
+              </p>
+              <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 md:text-5xl">{t.heroTitle}</h1>
+              <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">{t.heroText}</p>
+
+              <form onSubmit={handleHeroSearch} className="mt-8 flex max-w-xl items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/10" role="search">
+                <label htmlFor="hero-search" className="sr-only">
+                  {t.searchPlaceholder}
+                </label>
+                <Search className="ml-2.5 h-5 w-5 shrink-0 text-slate-400" />
+                <input
+                  id="hero-search"
+                  value={heroKeyword}
+                  onChange={(e) => setHeroKeyword(e.target.value)}
+                  placeholder={t.searchPlaceholder}
+                  className="h-10 min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                />
+                <Button type="submit" className="h-10 shrink-0 rounded-lg px-5 font-semibold">
+                  {t.search}
+                </Button>
+              </form>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-slate-500">Quick links:</span>
+                {[
+                  { label: 'Ordinances', action: () => applyQuickFilter({ classification: 'Ordinance' }) },
+                  { label: 'Resolutions', action: () => applyQuickFilter({ classification: 'Resolution' }) },
+                  { label: 'Session calendar', action: () => scrollToSection('public-sessions') },
+                ].map((link) => (
+                  <button
+                    key={link.label}
+                    type="button"
+                    onClick={link.action}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
                   >
-                    <CalendarDays className="mr-2 h-4 w-4" />
-                    Session Calendar
+                    {link.label}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            {nextSession && nextSessionDate ? (
+              <motion.aside
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.1 }}
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.25)]"
+                aria-label="Next session"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                    </span>
+                    Next session
+                  </p>
+                  <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(nextSession.type))}>{nextSession.type}</span>
+                </div>
+
+                <div className="mt-5 flex items-start gap-4">
+                  <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-primary text-white">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-white/75">
+                      {nextSessionDate.toLocaleDateString('en-PH', { month: 'short' })}
+                    </span>
+                    <span className="text-2xl font-bold leading-none">{nextSessionDate.getDate()}</span>
+                  </div>
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-semibold leading-snug text-slate-900">{nextSession.title}</h2>
+                    <p className="mt-1 text-sm text-slate-500">{formatLongDate(nextSession.date)}</p>
+                  </div>
+                </div>
+
+                <dl className="mt-5 space-y-2.5 border-t border-slate-100 pt-5 text-sm">
+                  <div className="flex items-center gap-2.5 text-slate-600">
+                    <Clock className="h-4 w-4 shrink-0 text-slate-400" />
+                    <dt className="sr-only">Time</dt>
+                    <dd>{nextSession.time}</dd>
+                  </div>
+                  <div className="flex items-center gap-2.5 text-slate-600">
+                    <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
+                    <dt className="sr-only">Venue</dt>
+                    <dd>{nextSession.location}</dd>
+                  </div>
+                </dl>
+
+                <div className="mt-6 grid grid-cols-2 gap-2">
+                  <Button onClick={() => setAgendaSessionId(nextSession.id)} className="rounded-lg font-semibold">
+                    <Eye className="mr-2 h-4 w-4" />
+                    View Agenda
+                  </Button>
+                  <Button variant="outline" onClick={() => addSessionToCalendar(nextSession)} className="rounded-lg font-semibold">
+                    <CalendarPlus className="mr-2 h-4 w-4" />
+                    Add to Calendar
                   </Button>
                 </div>
-              </motion.div>
-
-              {nextSession ? (
-                <motion.aside
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: 0.1 }}
-                  className="rounded-xl border border-white/15 bg-white text-text-main shadow-2xl"
-                >
-                  <div className="rounded-t-xl bg-secondary px-6 py-3 text-xs font-bold uppercase tracking-[0.18em] text-white">Next Session</div>
-                  <div className="p-6">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-secondary">{nextSession.type}</p>
-                    <h2 className="mt-1 text-xl font-bold text-primary">{nextSession.title}</h2>
-                    <ul className="mt-4 space-y-2 text-sm text-text-muted">
-                      <li className="flex items-center gap-2">
-                        <CalendarDays className="h-4 w-4 text-primary" />
-                        {formatLongDate(nextSession.date)}
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-primary" />
-                        {nextSession.time}
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-primary" />
-                        {nextSession.location}
-                      </li>
-                    </ul>
-                    <div className="mt-6 grid grid-cols-2 gap-2">
-                      <Button onClick={() => setAgendaSessionId(nextSession.id)} className="bg-primary font-semibold">
-                        <Eye className="mr-2 h-4 w-4" />
-                        View Agenda
-                      </Button>
-                      <Button variant="outline" onClick={() => addSessionToCalendar(nextSession)} className="font-semibold">
-                        <CalendarPlus className="mr-2 h-4 w-4" />
-                        Add to Calendar
-                      </Button>
-                    </div>
-                  </div>
-                </motion.aside>
-              ) : null}
-            </div>
+              </motion.aside>
+            ) : null}
           </div>
         </section>
 
-        {/* Public service tiles */}
-        <section aria-label={t.services} className="relative z-10 -mt-16">
-          <div className="container mx-auto px-6">
-            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border shadow-xl md:grid-cols-3 lg:grid-cols-6">
+        {/* Public services */}
+        <section aria-labelledby="services-heading" className="py-16 md:py-20">
+          <div className={container}>
+            <div className="mb-10 max-w-3xl">
+              <p className="text-sm font-semibold text-primary">{t.services}</p>
+              <h2 id="services-heading" className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+                How can we help you?
+              </h2>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {serviceTiles.map((tile) => (
                 <button
                   key={tile.title}
                   type="button"
                   onClick={tile.action}
-                  className="group flex flex-col items-start gap-3 bg-white p-5 text-left transition-colors hover:bg-primary"
+                  className="group flex items-start gap-4 rounded-xl border border-slate-200 bg-white p-5 text-left transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-[0_12px_30px_-18px_rgba(26,35,126,0.45)]"
                 >
-                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-white/15 group-hover:text-white">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                     <tile.icon className="h-5 w-5" />
                   </span>
-                  <span>
-                    <span className="block text-sm font-bold text-primary group-hover:text-white">{tile.title}</span>
-                    <span className="mt-1 block text-xs text-text-muted group-hover:text-white/75">{tile.description}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold text-slate-900">{tile.title}</span>
+                    <span className="mt-1 block text-sm text-slate-600">{tile.description}</span>
                   </span>
+                  <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
                 </button>
               ))}
             </div>
@@ -1024,19 +1075,28 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </section>
 
         {/* Records at a glance */}
-        <section className="bg-white py-16">
-          <div className="container mx-auto px-6">
+        <section className="border-y border-slate-200 bg-slate-50 py-16 md:py-20">
+          <div className={container}>
             {sectionHeading('Transparency', t.overview, 'Totals of legislative records on file with the Office of the Secretary to the Sanggunian.')}
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-              {publicStats.map((stat) => (
-                <article key={stat.label} className="flex flex-col border border-border border-t-4 border-t-primary bg-white p-6 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold uppercase tracking-wider text-text-muted">{stat.label}</p>
-                    <stat.icon className="h-5 w-5 text-primary" />
-                  </div>
-                  <p className="mt-3 text-4xl font-bold text-primary">{stat.value}</p>
-                  <p className="mt-3 flex-1 text-sm leading-relaxed text-text-muted">{stat.description}</p>
-                  <button type="button" onClick={stat.action} className="mt-4 inline-flex items-center gap-1 text-sm font-semibold text-secondary hover:underline">
+            <div className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 lg:grid-cols-4">
+              {publicStats.map((stat, index) => (
+                <article
+                  key={stat.label}
+                  className={cn(
+                    'flex flex-col p-6',
+                    index > 0 && 'border-t border-slate-200 sm:border-t-0',
+                    index % 2 === 1 && 'sm:border-l',
+                    index >= 2 && 'sm:border-t lg:border-t-0',
+                    index === 2 && 'lg:border-l'
+                  )}
+                >
+                  <p className="flex items-center gap-2 text-sm font-medium text-slate-500">
+                    <stat.icon className="h-4 w-4 text-primary" />
+                    {stat.label}
+                  </p>
+                  <p className="mt-3 text-4xl font-bold tracking-tight text-slate-900">{stat.value}</p>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{stat.description}</p>
+                  <button type="button" onClick={stat.action} className="mt-4 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
                     {stat.actionLabel}
                     <ArrowRight className="h-4 w-4" />
                   </button>
@@ -1047,41 +1107,45 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </section>
 
         {/* Legislation */}
-        <section id="legislation" className="scroll-mt-16 border-y border-border bg-background py-16">
-          <div className="container mx-auto px-6">
+        <section id="legislation" className="scroll-mt-[65px] py-16 md:py-20">
+          <div className={container}>
             {sectionHeading(
               'Public Inquiry',
               t.legislation,
               'Search ordinances, resolutions, incoming documents, and public resources. Open a record to view, download, or print a watermarked public copy.'
             )}
 
-            <div className="rounded-xl border border-border bg-white shadow-sm">
-              <div className="flex flex-wrap gap-1 border-b border-border px-4 pt-3" role="tablist">
-                {recordTabs.map((tab) => (
-                  <button
-                    key={tab.label}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab.active}
-                    onClick={tab.apply}
-                    className={`-mb-px border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors ${
-                      tab.active ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-primary'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="space-y-4 border-b border-slate-200 p-4 sm:p-5">
+                <div className="-mx-1 overflow-x-auto px-1">
+                  <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Record type">
+                    {recordTabs.map((tab) => (
+                      <button
+                        key={tab.label}
+                        type="button"
+                        role="tab"
+                        aria-selected={tab.active}
+                        onClick={tab.apply}
+                        className={cn(
+                          'whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                          tab.active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                        )}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-              <div className="space-y-3 p-4">
                 <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto_auto]">
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input
                       value={inquiryKeyword}
                       onChange={(e) => setInquiryKeyword(e.target.value)}
                       placeholder="Keyword, record no., author, subject..."
                       className="pl-9"
+                      aria-label="Search records"
                     />
                   </div>
                   <Select
@@ -1107,7 +1171,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </div>
 
                 {showAdvancedFilters ? (
-                  <div className="grid gap-3 border-t border-border pt-3 md:grid-cols-4">
+                  <div className="grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-4">
                     <Select options={typeOptions} value={pickOption(typeOptions, selectedType)} onChange={(opt) => setSelectedType(opt?.value ?? 'All')} placeholder="Type" isSearchable={false} />
                     <Select options={subjectOptions} value={pickOption(subjectOptions, selectedSubject)} onChange={(opt) => setSelectedSubject(opt?.value ?? 'All')} placeholder="Subject" />
                     <Select options={referralOptions} value={pickOption(referralOptions, selectedReferral)} onChange={(opt) => setSelectedReferral(opt?.value ?? 'All')} placeholder="Referral" />
@@ -1135,7 +1199,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   </div>
                 ) : null}
 
-                <p className="text-xs text-text-muted">
+                <p className="text-xs text-slate-500">
                   {unifiedInquiryResults.length} record{unifiedInquiryResults.length === 1 ? '' : 's'} found
                   {activeFilterCount > 0 ? ` · ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} applied` : ''}
                 </p>
@@ -1154,26 +1218,28 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>RECORD NO.</TableHead>
-                      <TableHead>TITLE</TableHead>
-                      <TableHead>TYPE</TableHead>
-                      <TableHead>DATE</TableHead>
-                      <TableHead>STATUS</TableHead>
-                      <TableHead>ACTIONS</TableHead>
+                      <TableHead className="text-left">Record No.</TableHead>
+                      <TableHead className="text-left">Title</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>
+                        <span className="sr-only">Actions</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {paginatedInquiryResults.map((record) => (
                       <TableRow key={record.id}>
-                        <TableCell className="whitespace-nowrap">{record.number}</TableCell>
-                        <TableCell>
-                          <button type="button" onClick={() => openDoc(record.id)} className="text-center font-semibold text-primary hover:underline">
+                        <TableCell className="whitespace-nowrap text-left text-slate-600">{record.number}</TableCell>
+                        <TableCell className="min-w-[280px] text-left">
+                          <button type="button" onClick={() => openDoc(record.id)} className="text-left font-semibold text-slate-900 hover:text-primary hover:underline">
                             {record.title}
                           </button>
-                          <div className="mt-0.5 text-[11px] text-text-muted">{record.referral}</div>
+                          <div className="mt-0.5 text-xs text-slate-500">{record.referral}</div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap">{record.classification}</TableCell>
-                        <TableCell className="whitespace-nowrap">{record.date}</TableCell>
+                        <TableCell className="whitespace-nowrap text-slate-600">{record.classification}</TableCell>
+                        <TableCell className="whitespace-nowrap text-slate-600">{record.date}</TableCell>
                         <TableCell>
                           <StatusBadge status={record.status} />
                         </TableCell>
@@ -1196,7 +1262,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     ))}
                     {paginatedInquiryResults.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={6} className="px-4 py-8 text-center text-sm text-text-muted">
+                        <TableCell colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
                           No matching public records found.{' '}
                           <button type="button" onClick={resetFilters} className="font-semibold text-primary hover:underline">
                             Clear filters
@@ -1212,40 +1278,39 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </section>
 
         {/* Sangguniang Bayan */}
-        <section id="sangguniang-bayan" className="scroll-mt-16 bg-gradient-to-br from-primary to-[#0d1452] py-16">
-          <div className="container mx-auto px-6">
+        <section id="sangguniang-bayan" className="scroll-mt-[65px] border-y border-slate-200 bg-slate-50 py-16 md:py-20">
+          <div className={container}>
             {sectionHeading(
               'Legislative Body',
               t.sb,
-              'The legislative body of the Municipality of Capas, presided over by the Municipal Vice Mayor. It enacts ordinances, adopts resolutions, and appropriates funds for the general welfare of the municipality and its inhabitants.',
-              true
+              'The legislative body of the Municipality of Capas, presided over by the Municipal Vice Mayor. It enacts ordinances, adopts resolutions, and appropriates funds for the general welfare of the municipality and its inhabitants.'
             )}
 
-            <div className="mb-8 grid gap-4 sm:grid-cols-3">
+            <div className="mb-6 grid gap-4 sm:grid-cols-3">
               {[
                 { label: 'Municipal Councilors', value: '8', icon: Users },
                 { label: 'Ex-officio Members', value: '3', icon: ShieldCheck },
                 { label: 'Standing Committees', value: String(mockCommittees.length), icon: Landmark },
               ].map((item) => (
-                <div key={item.label} className="flex items-center gap-4 rounded-xl border border-white/15 bg-white/10 p-5">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-white/15 text-[#86b6ef]">
+                <div key={item.label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                     <item.icon className="h-5 w-5" />
                   </span>
                   <div>
-                    <p className="text-2xl font-bold text-white">{item.value}</p>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-white/70">{item.label}</p>
+                    <p className="text-2xl font-bold tracking-tight text-slate-900">{item.value}</p>
+                    <p className="text-sm text-slate-500">{item.label}</p>
                   </div>
                 </div>
               ))}
             </div>
 
-            <div className="overflow-hidden rounded-2xl bg-white shadow-xl">
-              <div className="flex flex-col gap-2 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+              <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="text-base font-semibold text-text-main">Composition of the Sangguniang Bayan</h3>
-                  <p className="text-xs text-text-muted">{mockMembers.length} members · select a member to see their committee assignments</p>
+                  <h3 className="font-semibold text-slate-900">Composition of the Sangguniang Bayan</h3>
+                  <p className="text-sm text-slate-500">{mockMembers.length} members · select a member to see their committee assignments</p>
                 </div>
-                <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
+                <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#fdf6e3] px-2 py-0.5 font-semibold text-[#8a6a12]">
                     <Gavel className="h-3 w-3" /> Chair
                   </span>
@@ -1256,8 +1321,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             </div>
 
             <div className="mt-10">
-              <h3 className="text-lg font-bold text-white">Standing Committees</h3>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              <h3 className="text-lg font-semibold text-slate-900">Standing Committees</h3>
+              <p className="mt-1 text-sm text-slate-500">Select a committee to see the measures referred to it.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mockCommittees.map((committee) => (
                   <button
                     key={committee.id}
@@ -1267,59 +1333,62 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       setSelectedReferral(committee.name);
                       scrollToSection('legislation');
                     }}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-left text-sm text-white/90 transition-colors hover:bg-white/15"
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left text-sm font-medium text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
                   >
                     {committee.name}
-                    <ArrowRight className="h-4 w-4 shrink-0 text-[#86b6ef]" />
+                    <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
                   </button>
                 ))}
               </div>
-              <p className="mt-2 text-xs text-white/60">Select a committee to see the measures referred to it.</p>
             </div>
           </div>
         </section>
 
         {/* Sessions */}
-        <section id="public-sessions" className="scroll-mt-16 bg-white py-16">
-          <div className="container mx-auto px-6">
+        <section id="public-sessions" className="scroll-mt-[65px] py-16 md:py-20">
+          <div className={container}>
             {sectionHeading(
               'Schedule',
               t.sessions,
               `Sessions are open to the public and held at the ${LGU_PROFILE.sessionHall}. View the order of business, add a session to your calendar, or print the agenda.`
             )}
 
-            <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr]">
-              <div className="space-y-4">
+            <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
+              <div className="space-y-3">
                 {mockSessions.map((session) => {
                   const date = new Date(`${session.date}T00:00:00`);
                   return (
-                    <article key={session.id} className="flex flex-col gap-4 rounded-xl border border-border bg-white p-5 shadow-sm sm:flex-row sm:items-center">
-                      <div className="flex h-20 w-20 shrink-0 flex-col items-center justify-center rounded-lg bg-primary text-white">
-                        <span className="text-xs font-bold uppercase">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
-                        <span className="text-3xl font-bold leading-none">{date.getDate()}</span>
+                    <article
+                      key={session.id}
+                      className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white p-5 transition-colors hover:border-slate-300 sm:flex-row sm:items-center"
+                    >
+                      <div className="flex min-w-0 flex-1 items-start gap-4 sm:items-center">
+                        <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
+                          <span className="text-2xl font-bold leading-none text-slate-900">{date.getDate()}</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(session.type))}>{session.type}</span>
+                          <h3 className="mt-1.5 font-semibold text-slate-900">{session.title}</h3>
+                          <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
+                            <span className="inline-flex items-center gap-1.5">
+                              <Clock className="h-3.5 w-3.5" />
+                              {session.time}
+                            </span>
+                            <span className="inline-flex items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5" />
+                              {session.location}
+                            </span>
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1">
-                        <p className="text-xs font-bold uppercase tracking-wider text-secondary">{session.type}</p>
-                        <h3 className="text-lg font-bold text-primary">{session.title}</h3>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-muted">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5" />
-                            {session.time}
-                          </span>
-                          <span className="inline-flex items-center gap-1.5">
-                            <MapPin className="h-3.5 w-3.5" />
-                            {session.location}
-                          </span>
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2 sm:flex-col">
-                        <Button size="sm" onClick={() => setAgendaSessionId(session.id)}>
+                      <div className="flex gap-2 sm:shrink-0">
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setAgendaSessionId(session.id)}>
                           <Eye className="mr-1.5 h-4 w-4" />
                           Agenda
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => addSessionToCalendar(session)}>
-                          <CalendarPlus className="mr-1.5 h-4 w-4" />
-                          Calendar
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => addSessionToCalendar(session)} aria-label={`Add ${session.title} to calendar`}>
+                          <CalendarPlus className="h-4 w-4" />
                         </Button>
                       </div>
                     </article>
@@ -1327,23 +1396,23 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 })}
               </div>
 
-              <aside className="rounded-xl border border-border bg-background p-6">
-                <h3 className="text-lg font-bold text-primary">Recently Approved Measures</h3>
-                <p className="mt-1 text-sm text-text-muted">Ordinances and resolutions approved by the SB.</p>
-                <ul className="mt-4 divide-y divide-border">
+              <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+                <h3 className="font-semibold text-slate-900">Recently Approved Measures</h3>
+                <p className="mt-1 text-sm text-slate-500">Ordinances and resolutions approved by the SB.</p>
+                <ul className="mt-4 divide-y divide-slate-200">
                   {publicLegislationRecords
                     .filter((r) => ['Passed', 'Enacted'].includes(r.status))
                     .slice(0, 5)
                     .map((record) => (
                       <li key={record.id} className="py-3">
                         <button type="button" onClick={() => openDoc(record.id)} className="group w-full text-left">
-                          <span className="font-mono text-[11px] font-semibold text-secondary">{record.number}</span>
-                          <span className="mt-0.5 block text-sm font-semibold text-text-main group-hover:text-primary group-hover:underline">{record.title}</span>
+                          <span className="text-xs font-semibold text-primary">{record.number}</span>
+                          <span className="mt-0.5 block text-sm font-medium text-slate-800 group-hover:text-primary group-hover:underline">{record.title}</span>
                         </button>
                       </li>
                     ))}
                 </ul>
-                <Button variant="outline" className="mt-4 w-full" onClick={() => applyQuickFilter({ type: 'Legislation' })}>
+                <Button variant="outline" className="mt-4 w-full rounded-lg bg-white" onClick={() => applyQuickFilter({ type: 'Legislation' })}>
                   View all legislation
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -1353,28 +1422,29 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </section>
 
         {/* Resources */}
-        <section id="resources" className="scroll-mt-16 border-y border-border bg-background py-16">
-          <div className="container mx-auto px-6">
+        <section id="resources" className="scroll-mt-[65px] border-y border-slate-200 bg-slate-50 py-16 md:py-20">
+          <div className={container}>
             {sectionHeading('Downloads', t.resources, 'Guides, archives, and forms for citizens and organizations. Downloaded and printed copies carry a public-copy watermark.')}
 
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {resourceCards.map((card) => {
                 const record = recordById(card.id);
                 return (
-                  <article key={card.id} className="flex flex-col rounded-xl border border-border bg-white p-5 shadow-sm">
-                    <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <article key={card.id} className="flex flex-col rounded-xl border border-slate-200 bg-white p-5">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                       <card.icon className="h-5 w-5" />
                     </span>
-                    <h3 className="mt-4 font-bold text-primary">{card.title}</h3>
-                    <p className="mt-1 flex-1 text-sm text-text-muted">{card.description}</p>
-                    <div className="mt-4 grid grid-cols-3 gap-2">
-                      <Button size="sm" variant="outline" onClick={() => openDoc(card.id)} aria-label={`View ${card.title}`}>
-                        <Eye className="h-4 w-4" />
+                    <h3 className="mt-4 font-semibold text-slate-900">{card.title}</h3>
+                    <p className="mt-1 flex-1 text-sm text-slate-600">{card.description}</p>
+                    <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4">
+                      <Button size="sm" variant="outline" className="h-8 flex-1 rounded-lg" onClick={() => openDoc(card.id)}>
+                        <Eye className="mr-1.5 h-4 w-4" />
+                        View
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => downloadRecord(record)} aria-label={`Download ${card.title}`}>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => downloadRecord(record)} aria-label={`Download ${card.title}`} title="Download">
                         <Download className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => printRecord(record)} aria-label={`Print ${card.title}`}>
+                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => printRecord(record)} aria-label={`Print ${card.title}`} title="Print">
                         <Printer className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1383,22 +1453,27 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               })}
             </div>
 
-            <div className="mt-8 grid gap-5 lg:grid-cols-2">
-              <article id="register" className="scroll-mt-20 rounded-xl border border-border bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-primary">Register for Legislative Updates</h3>
-                <p className="mt-1 text-sm text-text-muted">Receive notices of new ordinances, resolutions, and public hearings.</p>
-                <form onSubmit={handlePublicRegistration} className="mt-4 space-y-3">
+            <div className="mt-6 grid gap-4 lg:grid-cols-2">
+              <article id="register" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-6">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
+                  <UserPlus className="h-5 w-5" />
+                </span>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">Register for Legislative Updates</h3>
+                <p className="mt-1 text-sm text-slate-600">Receive notices of new ordinances, resolutions, and public hearings.</p>
+                <form onSubmit={handlePublicRegistration} className="mt-5 space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
                     <Input value={publicName} onChange={(e) => setPublicName(e.target.value)} placeholder="Full name" aria-label="Full name" />
                     <Input value={publicEmail} onChange={(e) => setPublicEmail(e.target.value)} type="email" placeholder="Email address" aria-label="Email address" />
                   </div>
-                  <label className="flex items-center gap-2 text-sm text-text-muted">
+                  <label className="flex items-center gap-2 text-sm text-slate-600">
                     <input type="checkbox" checked={notifyUpdates} onChange={(e) => setNotifyUpdates(e.target.checked)} className="h-4 w-4 accent-primary" />
                     Subscribe to ordinance and resolution updates
                   </label>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button type="submit">Register</Button>
-                    <button type="button" onClick={() => setPolicyDialog('privacy')} className="text-xs text-text-muted underline hover:text-primary">
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <Button type="submit" className="rounded-lg font-semibold">
+                      Register
+                    </Button>
+                    <button type="button" onClick={() => setPolicyDialog('privacy')} className="text-xs text-slate-500 underline hover:text-primary">
                       How we use your data
                     </button>
                   </div>
@@ -1406,10 +1481,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </form>
               </article>
 
-              <article className="rounded-xl border border-border bg-white p-6 shadow-sm">
-                <h3 className="text-lg font-bold text-primary">Check Accreditation Status</h3>
-                <p className="mt-1 text-sm text-text-muted">Enter the reference number of your organization&apos;s accreditation request.</p>
-                <form onSubmit={handleAccreditationLookup} className="mt-4 flex gap-2">
+              <article className="rounded-2xl border border-slate-200 bg-white p-6">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
+                  <ShieldCheck className="h-5 w-5" />
+                </span>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">Check Accreditation Status</h3>
+                <p className="mt-1 text-sm text-slate-600">Enter the reference number of your organization&apos;s accreditation request.</p>
+                <form onSubmit={handleAccreditationLookup} className="mt-5 flex gap-2">
                   <Input
                     value={accreditationQuery}
                     onChange={(e) => {
@@ -1419,17 +1497,19 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     placeholder="e.g. ACC-2026-005"
                     aria-label="Accreditation reference number"
                   />
-                  <Button type="submit">Check</Button>
+                  <Button type="submit" className="rounded-lg font-semibold">
+                    Check
+                  </Button>
                 </form>
                 {accreditationResult ? (
-                  <p className="mt-3 rounded-md border border-border bg-background px-3 py-2 text-sm font-semibold text-primary">{accreditationResult}</p>
+                  <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-primary">{accreditationResult}</p>
                 ) : null}
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <Button size="sm" variant="outline" onClick={() => downloadRecord(recordById('res-2'))}>
+                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => downloadRecord(recordById('res-2'))}>
                     <Download className="mr-1.5 h-4 w-4" />
                     Download accreditation form
                   </Button>
-                  <Button size="sm" variant="outline" onClick={() => openRequestDialog()}>
+                  <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openRequestDialog()}>
                     <FileSearch className="mr-1.5 h-4 w-4" />
                     Request a document
                   </Button>
@@ -1440,27 +1520,28 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </section>
 
         {/* News */}
-        <section id="news" className="scroll-mt-16 bg-white py-16">
-          <div className="container mx-auto px-6">
+        <section id="news" className="scroll-mt-[65px] py-16 md:py-20">
+          <div className={container}>
             {sectionHeading('Updates', t.news, 'Recent actions, notices, and announcements from the Sangguniang Bayan ng Capas.')}
-            <div className="grid gap-5 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-3">
               {NEWS.map((item) => (
-                <article key={item.id} className="flex flex-col overflow-hidden rounded-xl border border-border bg-white shadow-sm transition-shadow hover:shadow-md">
-                  <div className="flex h-36 items-center justify-center bg-gradient-to-br from-primary/10 to-primary/5 text-primary">
-                    <item.icon className="h-14 w-14" />
+                <article
+                  key={item.id}
+                  className="group flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-all hover:-translate-y-0.5 hover:shadow-[0_12px_30px_-18px_rgba(15,23,42,0.35)]"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
+                      <item.icon className="h-5 w-5" />
+                    </span>
+                    <span className="text-xs font-medium text-slate-500">{item.date}</span>
                   </div>
-                  <div className="flex flex-1 flex-col p-5">
-                    <p className="text-xs font-bold uppercase tracking-wider text-secondary">{item.category}</p>
-                    <h3 className="mt-2 text-lg font-bold leading-snug text-primary">{item.title}</h3>
-                    <p className="mt-2 flex-1 text-sm text-text-muted">{item.summary}</p>
-                    <div className="mt-4 flex items-center justify-between">
-                      <span className="text-xs font-medium uppercase text-text-muted">{item.date}</span>
-                      <button type="button" onClick={() => setActiveNewsId(item.id)} className="inline-flex items-center gap-1 text-sm font-semibold text-secondary hover:underline">
-                        Read more
-                        <ArrowRight className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </div>
+                  <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-primary">{item.category}</p>
+                  <h3 className="mt-1.5 text-lg font-semibold leading-snug text-slate-900">{item.title}</h3>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{item.summary}</p>
+                  <button type="button" onClick={() => setActiveNewsId(item.id)} className="mt-5 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
+                    Read more
+                    <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </button>
                 </article>
               ))}
             </div>
@@ -1468,68 +1549,77 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </section>
 
         {/* Transparency links */}
-        <section aria-label="Transparency and accountability" className="border-t border-border bg-background py-12">
-          <div className="container mx-auto grid gap-4 px-6 sm:grid-cols-2 lg:grid-cols-4">
-            {TRANSPARENCY_LINKS.map((link) => (
-              <a
-                key={link.label}
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group flex items-start gap-3 rounded-xl border border-border bg-white p-5 transition-colors hover:border-primary"
-              >
-                <link.icon className="mt-0.5 h-6 w-6 shrink-0 text-primary" />
-                <span>
-                  <span className="flex items-center gap-1 font-bold text-primary group-hover:underline">
-                    {link.label}
-                    <ExternalLink className="h-3.5 w-3.5" />
+        <section aria-labelledby="transparency-heading" className="border-t border-slate-200 bg-slate-50 py-12">
+          <div className={container}>
+            <h2 id="transparency-heading" className="text-sm font-semibold text-slate-900">
+              Transparency and Accountability
+            </h2>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {TRANSPARENCY_LINKS.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="group flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 transition-colors hover:border-primary/30"
+                >
+                  <link.icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                  <span>
+                    <span className="flex items-center gap-1 text-sm font-semibold text-slate-900 group-hover:text-primary">
+                      {link.label}
+                      <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
+                    </span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{link.description}</span>
                   </span>
-                  <span className="mt-1 block text-xs text-text-muted">{link.description}</span>
-                </span>
-              </a>
-            ))}
+                </a>
+              ))}
+            </div>
           </div>
         </section>
       </main>
 
       {/* GOVPH footer */}
-      <footer id="contact" className="scroll-mt-16 bg-[#0b1033] text-white/75">
-        <div className="container mx-auto grid gap-10 px-6 py-14 md:grid-cols-2 lg:grid-cols-4">
+      <footer id="contact" className="scroll-mt-[65px] bg-[#0a0f3d] text-sm text-white/65">
+        <div className={cn(container, 'grid gap-10 py-14 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]')}>
           <div>
-            <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-20 w-20 rounded-full object-cover ring-2 ring-white/20" />
-            <p className="mt-4 text-sm font-bold uppercase tracking-wider text-white">Republic of the Philippines</p>
-            <p className="mt-2 text-sm leading-relaxed">
-              All content is in the public domain unless otherwise stated. {LGU_PROFILE.legislature}, {LGU_PROFILE.municipality},{' '}
-              {LGU_PROFILE.province}.
-            </p>
+            <div className="flex items-center gap-3">
+              <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-12 w-12 rounded-full object-cover ring-2 ring-white/15" />
+              <div>
+                <p className="font-semibold text-white">{LGU_PROFILE.legislature}</p>
+                <p className="text-xs text-white/55">
+                  {LGU_PROFILE.municipality}, {LGU_PROFILE.province}
+                </p>
+              </div>
+            </div>
+            <p className="mt-5 max-w-sm leading-relaxed">All content is in the public domain unless otherwise stated.</p>
           </div>
 
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white">Contact the SB Office</h2>
-            <ul className="mt-4 space-y-3 text-sm">
-              <li className="flex gap-2">
-                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-[#86b6ef]" />
+            <h2 className="font-semibold text-white">Contact the SB Office</h2>
+            <ul className="mt-4 space-y-3">
+              <li className="flex gap-2.5">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/45" />
                 <span>
                   Office of the Sangguniang Bayan
                   <br />
                   {LGU_PROFILE.address}
                 </span>
               </li>
-              <li className="flex items-center gap-2">
-                <Mail className="h-4 w-4 shrink-0 text-[#86b6ef]" />
-                <a href={`mailto:${LGU_PROFILE.email}`} className="hover:text-white hover:underline">
+              <li className="flex items-center gap-2.5">
+                <Mail className="h-4 w-4 shrink-0 text-white/45" />
+                <a href={`mailto:${LGU_PROFILE.email}`} className="hover:text-white">
                   {LGU_PROFILE.email}
                 </a>
               </li>
-              <li className="flex items-center gap-2">
-                <Phone className="h-4 w-4 shrink-0 text-[#86b6ef]" />
-                <a href={`viber://chat?number=${LGU_PROFILE.viber.replace(/\s+/g, '')}`} className="hover:text-white hover:underline">
+              <li className="flex items-center gap-2.5">
+                <Phone className="h-4 w-4 shrink-0 text-white/45" />
+                <a href={`viber://chat?number=${LGU_PROFILE.viber.replace(/\s+/g, '')}`} className="hover:text-white">
                   Viber: {LGU_PROFILE.viber}
                 </a>
               </li>
-              <li className="flex items-center gap-2">
-                <ExternalLink className="h-4 w-4 shrink-0 text-[#86b6ef]" />
-                <a href="https://www.capas.gov.ph" target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
+              <li className="flex items-center gap-2.5">
+                <ExternalLink className="h-4 w-4 shrink-0 text-white/45" />
+                <a href="https://www.capas.gov.ph" target="_blank" rel="noopener noreferrer" className="hover:text-white">
                   Municipality of Capas website
                 </a>
               </li>
@@ -1537,12 +1627,12 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
 
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white">About GOVPH</h2>
-            <p className="mt-4 text-sm">Learn more about the Philippine government, its structure, how government works, and the people behind it.</p>
-            <ul className="mt-3 space-y-2 text-sm">
+            <h2 className="font-semibold text-white">About GOVPH</h2>
+            <p className="mt-4 leading-relaxed">Learn more about the Philippine government, its structure, how government works, and the people behind it.</p>
+            <ul className="mt-3 space-y-2">
               {ABOUT_GOVPH_LINKS.map((link) => (
                 <li key={link.label}>
-                  <a href={link.href} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
+                  <a href={link.href} target="_blank" rel="noopener noreferrer" className="hover:text-white">
                     {link.label}
                   </a>
                 </li>
@@ -1551,11 +1641,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
 
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider text-white">Government Links</h2>
-            <ul className="mt-4 space-y-2 text-sm">
+            <h2 className="font-semibold text-white">Government Links</h2>
+            <ul className="mt-4 space-y-2">
               {GOVERNMENT_LINKS.map((link) => (
                 <li key={link.label}>
-                  <a href={link.href} target="_blank" rel="noopener noreferrer" className="hover:text-white hover:underline">
+                  <a href={link.href} target="_blank" rel="noopener noreferrer" className="hover:text-white">
                     {link.label}
                   </a>
                 </li>
@@ -1565,9 +1655,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         </div>
 
         <div className="border-t border-white/10">
-          <div className="container mx-auto flex flex-col items-center justify-between gap-4 px-6 py-5 text-xs md:flex-row">
+          <div className={cn(container, 'flex flex-col items-center justify-between gap-4 py-5 text-xs md:flex-row')}>
             <p>© 2026 {LGU_PROFILE.legislature}. All rights reserved.</p>
-            <div className="flex flex-wrap items-center gap-5">
+            <div className="flex flex-wrap items-center justify-center gap-5">
               <button type="button" onClick={() => setPolicyDialog('privacy')} className="hover:text-white">
                 Privacy Notice
               </button>
@@ -1580,7 +1670,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <button
                 type="button"
                 onClick={() => scrollToSection('home')}
-                className="inline-flex items-center gap-1 rounded border border-white/20 px-2.5 py-1 hover:bg-white/10 hover:text-white"
+                className="inline-flex items-center gap-1 rounded-md border border-white/15 px-2.5 py-1 hover:bg-white/10 hover:text-white"
               >
                 <ArrowUp className="h-3.5 w-3.5" />
                 Back to top
@@ -1956,6 +2046,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           ) : null}
         </DialogContent>
       </Dialog>
+
+      <EgovAiChat />
     </div>
   );
 }

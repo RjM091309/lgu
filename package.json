@@ -11,6 +11,7 @@
     "dev:pm2:logs": "pm2 logs react-lgus-dev",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "node server/index.mjs",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
   },

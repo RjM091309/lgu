@@ -11,7 +11,27 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Bell, ChevronDown, ChevronRight, CircleHelp, KeyRound, LogOut, Mail, Menu, Search, User, X } from 'lucide-react';
+import {
+  Bell,
+  BellOff,
+  CalendarDays,
+  CheckCheck,
+  ChevronDown,
+  ChevronRight,
+  CircleHelp,
+  ClipboardList,
+  History,
+  KeyRound,
+  LogOut,
+  Mail,
+  Menu,
+  PenLine,
+  Search,
+  Settings,
+  User,
+  UserPlus,
+  X,
+} from 'lucide-react';
 import { LGU_PROFILE, mockBills, mockMembers, mockSessions } from '@/lib/mock-data';
 import { NAV_GROUPS, findNavItem } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
@@ -26,36 +46,64 @@ interface NavbarProps {
   onNavigate: (tab: string) => void;
 }
 
-const INITIAL_NOTIFICATIONS = [
+type NotificationKind = 'committee' | 'signature' | 'agenda' | 'account';
+
+const NOTIFICATION_KIND: Record<NotificationKind, { icon: typeof Bell; tile: string; label: string }> = {
+  committee: { icon: ClipboardList, tile: 'bg-amber-50 text-amber-700 ring-amber-200', label: 'Legislative Tracking' },
+  signature: { icon: PenLine, tile: 'bg-violet-50 text-violet-700 ring-violet-200', label: 'E-Signature' },
+  agenda: { icon: CalendarDays, tile: 'bg-sky-50 text-sky-700 ring-sky-200', label: 'Sessions' },
+  account: { icon: UserPlus, tile: 'bg-emerald-50 text-emerald-700 ring-emerald-200', label: 'Administration' },
+};
+
+interface AppNotification {
+  id: string;
+  kind: NotificationKind;
+  title: string;
+  body: string;
+  time: string;
+  day: 'Today' | 'Earlier';
+  tab: string;
+  unread: boolean;
+}
+
+const INITIAL_NOTIFICATIONS: AppNotification[] = [
   {
     id: 'n1',
+    kind: 'committee',
     title: 'Committee report due',
     body: 'Committee on Transportation report on Prop. Ord. No. 2026-P-012 is due this week.',
     time: '2 hours ago',
+    day: 'Today',
     tab: 'manage-legislation',
     unread: true,
   },
   {
     id: 'n2',
+    kind: 'signature',
     title: 'Signature requested',
     body: 'Mun. Ord. No. 2026-007 is awaiting electronic signatures.',
     time: '5 hours ago',
+    day: 'Today',
     tab: 'esig-electronic-signature',
     unread: true,
   },
   {
     id: 'n3',
+    kind: 'agenda',
     title: 'Agenda ready for review',
     body: 'The order of business for the 38th Regular Session is ready.',
     time: 'Yesterday',
+    day: 'Earlier',
     tab: 'manage-transactions',
     unread: true,
   },
   {
     id: 'n4',
+    kind: 'account',
     title: 'Account request',
     body: 'A new committee staff account is pending approval.',
     time: '2 days ago',
+    day: 'Earlier',
     tab: 'access-users',
     unread: false,
   },
@@ -66,6 +114,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [notifications, setNotifications] = useState(INITIAL_NOTIFICATIONS);
+  const [notificationFilter, setNotificationFilter] = useState<'all' | 'unread'>('all');
   const [dialog, setDialog] = useState<'help' | 'profile' | 'settings' | null>(null);
   const [passwordForm, setPasswordForm] = useState({ current: '', next: '', confirm: '' });
   const [passwordError, setPasswordError] = useState('');
@@ -211,6 +260,13 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
     setNotifications((prev) => prev.map((item) => (item.id === id ? { ...item, unread: false } : item)));
     onNavigate(tab);
   };
+
+  const dismissNotification = (id: string) => setNotifications((prev) => prev.filter((item) => item.id !== id));
+
+  const visibleNotifications = notifications.filter((item) => notificationFilter === 'all' || item.unread);
+  const notificationGroups = (['Today', 'Earlier'] as const)
+    .map((day) => ({ day, items: visibleNotifications.filter((item) => item.day === day) }))
+    .filter((group) => group.items.length > 0);
 
   const handlePasswordSave = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -376,37 +432,125 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon" className="relative" aria-label={`Notifications (${unreadCount} unread)`} title="Notifications">
-              <Bell className="h-5 w-5 text-text-muted" />
+              <Bell className={cn('h-5 w-5', unreadCount > 0 ? 'bell-ring text-primary' : 'text-text-muted')} />
               {unreadCount > 0 ? (
-                <span className="absolute right-1.5 top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white">
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-white">
                   {unreadCount}
                 </span>
               ) : null}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-80 p-0">
-            <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <span className="text-sm font-semibold">Notifications</span>
-              <button
-                type="button"
-                onClick={() => setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })))}
-                className="text-xs font-semibold text-primary hover:underline disabled:text-text-muted disabled:no-underline"
-                disabled={unreadCount === 0}
-              >
-                Mark all as read
-              </button>
+          <DropdownMenuContent
+            align="end"
+            className="w-[380px] overflow-hidden rounded-xl p-0 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-16 max-sm:w-auto"
+          >
+            <div className="px-4 pb-3 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-base font-semibold text-text-main">Notifications</span>
+                  {unreadCount > 0 ? (
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">{unreadCount} new</span>
+                  ) : null}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setNotifications((prev) => prev.map((item) => ({ ...item, unread: false })))}
+                  className="inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold text-primary hover:bg-primary/5 disabled:text-text-muted disabled:hover:bg-transparent"
+                  disabled={unreadCount === 0}
+                >
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Mark all as read
+                </button>
+              </div>
+              <div className="mt-3 inline-flex rounded-lg bg-muted p-0.5" role="tablist" aria-label="Filter notifications">
+                {(['all', 'unread'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    role="tab"
+                    aria-selected={notificationFilter === filter}
+                    onClick={() => setNotificationFilter(filter)}
+                    className={cn(
+                      'rounded-md px-3 py-1 text-xs font-semibold transition-colors',
+                      notificationFilter === filter ? 'bg-white text-text-main shadow-sm' : 'text-text-muted hover:text-text-main'
+                    )}
+                  >
+                    {filter === 'all' ? `All (${notifications.length})` : `Unread (${unreadCount})`}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="max-h-80 overflow-y-auto p-1">
-              {notifications.map((item) => (
-                <DropdownMenuItem key={item.id} onClick={() => openNotification(item.id, item.tab)} className="items-start gap-3 px-3 py-2.5">
-                  <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${item.unread ? 'bg-primary' : 'bg-transparent'}`} />
-                  <span className="min-w-0">
-                    <span className={`block text-sm ${item.unread ? 'font-semibold' : ''}`}>{item.title}</span>
-                    <span className="mt-0.5 block text-xs text-text-muted">{item.body}</span>
-                    <span className="mt-1 block text-[11px] text-text-muted">{item.time}</span>
+
+            <div className="max-h-[min(420px,calc(100vh-14rem))] overflow-y-auto border-t border-border">
+              {notificationGroups.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
+                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-text-muted">
+                    <BellOff className="h-5 w-5" />
                   </span>
-                </DropdownMenuItem>
-              ))}
+                  <p className="text-sm font-semibold text-text-main">{notifications.length === 0 ? 'No notifications' : "You're all caught up"}</p>
+                  <p className="text-xs text-text-muted">New updates on measures, sessions, and signatures will show here.</p>
+                </div>
+              ) : (
+                notificationGroups.map((group) => (
+                  <div key={group.day}>
+                    <p className="sticky top-0 z-10 bg-white/95 px-4 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wide text-text-muted backdrop-blur">
+                      {group.day}
+                    </p>
+                    <ul className="space-y-1 px-2 pb-2">
+                      {group.items.map((item) => {
+                        const kind = NOTIFICATION_KIND[item.kind];
+                        return (
+                          <li key={item.id} className="group relative">
+                            <DropdownMenuItem
+                              onClick={() => openNotification(item.id, item.tab)}
+                              className={cn('items-start gap-3 rounded-lg px-2.5 py-2.5 pr-9', item.unread ? 'bg-primary/[0.04] hover:bg-primary/[0.07]' : 'hover:bg-muted')}
+                            >
+                              <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset', kind.tile)}>
+                                <kind.icon className="h-4 w-4" />
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="flex items-center gap-2">
+                                  <span className={cn('truncate text-sm', item.unread ? 'font-semibold text-text-main' : 'font-medium text-text-main/80')}>{item.title}</span>
+                                  {item.unread ? <span className="h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" /> : null}
+                                </span>
+                                <span className="mt-0.5 line-clamp-2 block text-xs leading-relaxed text-text-muted">{item.body}</span>
+                                <span className="mt-1.5 flex items-center gap-1.5 text-[11px] text-text-muted">
+                                  <span>{item.time}</span>
+                                  <span aria-hidden>·</span>
+                                  <span>{kind.label}</span>
+                                </span>
+                              </span>
+                            </DropdownMenuItem>
+                            <button
+                              type="button"
+                              onClick={() => dismissNotification(item.id)}
+                              className="absolute right-2 top-2.5 rounded-md p-1 text-text-muted opacity-0 transition-opacity hover:bg-white hover:text-text-main focus-visible:opacity-100 group-hover:opacity-100 max-sm:opacity-100"
+                              aria-label={`Dismiss: ${item.title}`}
+                              title="Dismiss"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 border-t border-border bg-muted/40 text-xs font-semibold">
+              <DropdownMenuItem onClick={() => onNavigate('activity-log')} className="justify-center gap-1.5 rounded-none py-2.5 text-xs text-text-muted hover:bg-muted hover:text-text-main">
+                <History className="h-3.5 w-3.5" />
+                Activity log
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => setDialog('settings')}
+                className="justify-center gap-1.5 rounded-none border-l border-border py-2.5 text-xs text-text-muted hover:bg-muted hover:text-text-main"
+              >
+                <Settings className="h-3.5 w-3.5" />
+                Notification settings
+              </DropdownMenuItem>
             </div>
           </DropdownMenuContent>
         </DropdownMenu>

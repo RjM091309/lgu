@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowRight, Bell, CalendarPlus, CheckCircle2, Clock, FileText, Inbox, Mail, MapPin, Plus, Printer, Send, Trash2, Undo2, Video } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Bell, CalendarPlus, CheckCircle2, Clock, FileText, Flag, Inbox, Mail, MapPin, Plus, Printer, Send, Trash2, Undo2, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,6 +12,8 @@ import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
 import { logActivity } from '@/lib/activity-log';
+import { HOLIDAY_SOURCE_LABEL, holidayTitle, holidayTone, useHolidays } from '@/lib/holidays';
+import { SCOPE_LABEL } from '@/lib/local-holidays';
 
 const STATUS_FLOW = ['In Routing', 'For Committee', 'For Agenda Build', 'Ready to Transmit', 'Completed'] as const;
 type Stage = (typeof STATUS_FLOW)[number];
@@ -180,6 +182,8 @@ export function SessionList() {
   const daysInMonth = new Date(Date.UTC(calYear, calMonth, 0)).getUTCDate();
   const sessionsByDay = new Map(mockSessions.filter((session) => session.date.startsWith(calendarMonth)).map((session) => [Number(session.date.slice(8, 10)), session]));
   const monthLabel = new Date(Date.UTC(calYear, calMonth - 1, 1)).toLocaleDateString('en-PH', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const { byDate: holidaysByDate, holidays, source: holidaySource } = useHolidays(calYear);
+  const monthHolidays = holidays.filter((holiday) => holiday.date.startsWith(calendarMonth));
   const sessionTone = (type: Session['type']) => (type === 'Regular' ? 'bg-primary text-white' : type === 'Special' ? 'bg-orange-500 text-white' : 'bg-violet-600 text-white');
 
   return (
@@ -424,16 +428,33 @@ export function SessionList() {
                 {Array.from({ length: daysInMonth }, (_, i) => {
                   const day = i + 1;
                   const session = sessionsByDay.get(day);
+                  const holiday = holidaysByDate.get(`${calendarMonth}-${String(day).padStart(2, '0')}`);
+                  if (!session) {
+                    return (
+                      <span
+                        key={day}
+                        title={holiday ? holidayTitle(holiday) : undefined}
+                        className={cn(
+                          'relative flex aspect-square items-center justify-center rounded-md text-[12px] tabular-nums',
+                          holiday ? holidayTone(holiday).cell : 'text-text-main'
+                        )}
+                      >
+                        {day}
+                        {holiday ? <span className={cn('absolute bottom-1 h-1 w-1 rounded-full', holidayTone(holiday).dot)} aria-hidden /> : null}
+                        {holiday ? <span className="sr-only">, holiday: {holiday.name}</span> : null}
+                      </span>
+                    );
+                  }
                   return (
                     <button
                       key={day}
                       type="button"
-                      disabled={!session}
-                      onClick={() => session && setAgendaSession(session)}
-                      title={session ? session.title : undefined}
+                      onClick={() => setAgendaSession(session)}
+                      title={holiday ? `${session.title} (falls on ${holiday.name})` : session.title}
                       className={cn(
-                        'flex aspect-square items-center justify-center rounded-md text-[12px] tabular-nums',
-                        session ? cn(sessionTone(session.type), 'font-semibold shadow-sm hover:opacity-90') : 'text-text-main'
+                        'flex aspect-square items-center justify-center rounded-md text-[12px] font-semibold tabular-nums shadow-sm hover:opacity-90',
+                        sessionTone(session.type),
+                        holiday && cn('ring-2 ring-offset-1', holidayTone(holiday).ring)
                       )}
                     >
                       {day}
@@ -448,6 +469,38 @@ export function SessionList() {
                     {type}
                   </span>
                 ))}
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-red-100 ring-1 ring-inset ring-red-300" />
+                  National holiday
+                </span>
+                <span className="inline-flex items-center gap-1">
+                  <span className="h-2.5 w-2.5 rounded-sm bg-amber-100 ring-1 ring-inset ring-amber-300" />
+                  Tarlac / Capas
+                </span>
+              </div>
+              <div className="mt-4 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
+                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-text-main">
+                  <Flag className="h-3.5 w-3.5 text-red-600" />
+                  Holidays this month
+                </p>
+                {monthHolidays.length ? (
+                  <ul className="mt-1.5 space-y-1">
+                    {monthHolidays.map((holiday) => (
+                      <li key={`${holiday.date}-${holiday.name}`} className="flex gap-2 text-[11px]" title={holiday.basis}>
+                        <span className={cn('w-11 shrink-0 font-semibold tabular-nums', holidayTone(holiday).text)}>
+                          {new Date(`${holiday.date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
+                        </span>
+                        <span className="min-w-0 flex-1 text-text-main">{holiday.name}</span>
+                        {holiday.scope !== 'national' ? (
+                          <span className="h-fit shrink-0 rounded bg-amber-50 px-1 text-[9px] font-semibold uppercase text-amber-800">{SCOPE_LABEL[holiday.scope]}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-[11px] text-text-muted">{holidaySource === 'loading' ? 'Loading…' : 'No public holidays.'}</p>
+                )}
+                <p className="mt-2 text-[10px] text-text-muted">{HOLIDAY_SOURCE_LABEL[holidaySource]}, with Tarlac and Capas local holidays</p>
               </div>
             </div>
             <ol className="space-y-3">
@@ -458,6 +511,12 @@ export function SessionList() {
                     <span className="text-[11px] text-text-muted">{formatLongDate(session.date)}</span>
                   </div>
                   <div className="mt-1 text-[13px] font-semibold text-text-main">{session.title}</div>
+                  {holidaysByDate.get(session.date) ? (
+                    <p className="mt-1 flex items-center gap-1 rounded bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700">
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                      Falls on a holiday: {holidaysByDate.get(session.date)!.name}. Consider rescheduling.
+                    </p>
+                  ) : null}
                   <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-text-muted">
                     <span className="inline-flex items-center gap-1">
                       <Clock className="h-3 w-3" />

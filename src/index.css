@@ -42,6 +42,35 @@
     color: var(--color-text-main);
     @apply font-sans antialiased;
   }
+  /* Tailwind v4 dropped the pointer cursor on buttons; restore it for every clickable control */
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="switch"],
+  [role="checkbox"],
+  a[href],
+  select,
+  summary,
+  label[for],
+  input[type="checkbox"],
+  input[type="radio"],
+  input[type="file"],
+  input[type="color"],
+  input[type="range"],
+  input[type="submit"],
+  input[type="button"],
+  input[type="reset"],
+  input[type="file"]::file-selector-button {
+    cursor: pointer;
+  }
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
 }
 
 /* Global scrollbar styling */
@@ -95,3 +124,41 @@
 
 
 
+
+/* "Ask the Sanggunian" robot: blinking eyes and a glowing antenna */
+@media (prefers-reduced-motion: no-preference) {
+  .capasbot-eyes {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: capasbot-blink 4.5s ease-in-out infinite;
+  }
+  .capasbot-antenna {
+    animation: capasbot-glow 2.4s ease-in-out infinite;
+  }
+}
+@keyframes capasbot-blink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  94% { transform: scaleY(0.1); }
+}
+@keyframes capasbot-glow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+/* Notification bell: rings in short bursts while there are unread notifications */
+@media (prefers-reduced-motion: no-preference) {
+  .bell-ring {
+    transform-origin: 50% 2px;
+    animation: bell-ring 2.8s ease-in-out infinite;
+  }
+}
+@keyframes bell-ring {
+  0%, 40%, 100% { transform: rotate(0); }
+  5% { transform: rotate(16deg); }
+  10% { transform: rotate(-14deg); }
+  15% { transform: rotate(11deg); }
+  20% { transform: rotate(-8deg); }
+  25% { transform: rotate(5deg); }
+  30% { transform: rotate(-3deg); }
+  35% { transform: rotate(1deg); }
+}
