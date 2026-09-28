@@ -30,12 +30,12 @@ export function SidePanel({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" closeOnOverlayClick={false} className={`${widthClassName} p-0`}>
         <div className="h-full flex flex-col bg-white">
-          <div className="border-b border-border px-6 py-4">
+          <div className="border-b border-border px-4 py-4 sm:px-6">
             <h2 className="text-lg font-bold text-primary">{title}</h2>
             {description && <p className="text-xs text-text-muted mt-1">{description}</p>}
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
-          <div className="border-t border-border px-6 py-4 flex items-center justify-end gap-2">
+          <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">{children}</div>
+          <div className="border-t border-border px-4 py-4 sm:px-6 flex items-center justify-end gap-2">
             <Button variant="outline" onClick={() => (onCancel ? onCancel() : onOpenChange(false))}>
               {cancelLabel}
             </Button>

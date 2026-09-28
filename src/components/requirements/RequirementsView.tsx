@@ -5,7 +5,7 @@ import { mockSystemRequirements } from '@/lib/system-requirements';
 import { mockBills, mockSessions } from '@/lib/mock-data';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
+import { gridTableCardsRef, gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
 
@@ -479,7 +479,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
               ))}
             </select>
           </div>
-          <div className={gridTableClassName}>
+          <div ref={gridTableCardsRef} className={gridTableClassName}>
             <div className={gridTableHeaderClassName}>
               <div className="col-span-2">Bill No.</div>
               <div className="col-span-4">Title</div>
@@ -560,7 +560,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
               .map((bill) => {
                 const isSigned = signedBills.includes(bill.id);
                 return (
-                  <div key={bill.id} className="flex items-center justify-between border border-border p-3">
+                  <div key={bill.id} className="flex flex-col gap-3 border border-border p-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <div className="text-sm font-semibold">{bill.number} - {bill.title}</div>
                       <StatusBadge status={bill.status} align="start" className="mt-1.5" />
@@ -603,7 +603,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
               <div className="mt-2 text-3xl font-bold text-primary">v2.4</div>
             </div>
           </div>
-          <div className={gridTableClassName}>
+          <div ref={gridTableCardsRef} className={gridTableClassName}>
             <div className={gridTableHeaderClassName}>
               <div className="col-span-5">Device</div>
               <div className="col-span-3">Status</div>
@@ -628,7 +628,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           </p>
           <div className="space-y-2">
             {attendanceForSignature.map((row, idx) => (
-              <div key={row.member} className="flex items-center justify-between border border-border p-3">
+              <div key={row.member} className="flex flex-wrap items-center justify-between gap-3 border border-border p-3">
                 <div>
                   <div className="text-sm font-semibold">{row.member}</div>
                   <div className="text-xs text-text-muted">
@@ -655,7 +655,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           <p className="text-sm text-text-muted">
             File browsing flow for agenda, minutes, and session media attachments.
           </p>
-          <div className={gridTableClassName}>
+          <div ref={gridTableCardsRef} className={gridTableClassName}>
             <div className={gridTableHeaderClassName}>
               <div className="col-span-6">File</div>
               <div className="col-span-2">Type</div>
@@ -710,7 +710,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
             <p className="text-sm text-text-muted">
               Review queue, compliance score, and evaluator remarks layout for pre-approval processing.
             </p>
-            <div className={gridTableClassName}>
+            <div ref={gridTableCardsRef} className={gridTableClassName}>
               <div className={gridTableHeaderClassName}>
                 <div className="col-span-2">Reference</div>
                 <div className="col-span-3">Applicant/Office</div>
@@ -732,7 +732,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
             <h4 className="text-lg font-bold">Approval and Issuance</h4>
-            <div className={gridTableClassName}>
+            <div ref={gridTableCardsRef} className={gridTableClassName}>
               <div className={gridTableHeaderClassName}>
                 <div className="col-span-2">Document No.</div>
                 <div className="col-span-4">Title</div>
@@ -754,7 +754,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
 
           <div className="border border-border bg-white p-6 shadow-sm space-y-4">
             <h4 className="text-lg font-bold">Notifications and Alerts</h4>
-            <div className={gridTableClassName}>
+            <div ref={gridTableCardsRef} className={gridTableClassName}>
               <div className={gridTableHeaderClassName}>
                 <div className="col-span-3">Event Trigger</div>
                 <div className="col-span-3">Channel</div>
@@ -816,7 +816,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
                 <Input placeholder="Session timeout (minutes)" defaultValue="30" />
               </div>
             </div>
-            <div className={gridTableClassName}>
+            <div ref={gridTableCardsRef} className={gridTableClassName}>
               <div className={gridTableHeaderClassName}>
                 <div className="col-span-3">Timestamp</div>
                 <div className="col-span-2">User</div>
@@ -839,7 +839,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
             <p className="text-sm text-text-muted">
               Duplicate measure checks, budget monitoring, and implementation date tracking preview.
             </p>
-            <div className={gridTableClassName}>
+            <div ref={gridTableCardsRef} className={gridTableClassName}>
               <div className={gridTableHeaderClassName}>
                 <div className="col-span-2">Measure</div>
                 <div className="col-span-4">Duplicate Check</div>

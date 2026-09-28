@@ -1218,7 +1218,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 onNextPage={() => setInquiryPage((prev) => Math.min(inquiryTotalPages, prev + 1))}
                 tableWrapperClassName="overflow-x-auto overflow-y-visible"
               >
-                <Table>
+                <Table className="min-w-[760px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead className="text-left">Record No.</TableHead>

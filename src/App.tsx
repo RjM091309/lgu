@@ -223,12 +223,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background font-sans antialiased md:flex">
+    <div className="min-h-screen bg-background font-sans antialiased lg:flex">
       {/* Desktop Sidebar: a floating panel that collapses to an icon rail. */}
       <aside
         className={cn(
-          'relative z-20 hidden shrink-0 transition-[width] duration-200 ease-out md:sticky md:top-0 md:block md:h-screen md:p-4',
-          isSidebarCollapsed ? 'md:w-[104px]' : 'md:w-[308px]'
+          'relative z-20 hidden shrink-0 transition-[width] duration-200 ease-out lg:sticky lg:top-0 lg:block lg:h-screen lg:p-4',
+          isSidebarCollapsed ? 'lg:w-[104px]' : 'lg:w-[308px]'
         )}
       >
         {/* Tinted glow beneath the panel so it lifts off the page. */}
@@ -263,7 +263,7 @@ export default function App() {
 
         {/* Mobile Sidebar */}
         <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-          <SheetContent side="left" className="p-0 w-72">
+          <SheetContent side="left" className="w-[85vw] max-w-[300px] p-0">
             <Sidebar
               activeTab={activeTab}
               setActiveTab={(tab) => {
@@ -271,13 +271,14 @@ export default function App() {
                 setIsSidebarOpen(false);
               }}
               onLogout={handleLogout}
+              compactHeader
             />
           </SheetContent>
         </Sheet>
 
         {/* Main Content */}
         <main ref={mainScrollRef} className="relative flex-1 overflow-y-auto bg-background">
-          <div className="mx-auto w-full max-w-[1600px] px-4 py-8 md:px-8">
+          <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:py-8 md:px-8">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${activeTab}-${showPageSkeleton ? 'loading' : 'ready'}`}

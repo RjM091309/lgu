@@ -29,7 +29,7 @@ export function DataTable({
   return (
     <>
       <div className={tableWrapperClassName ?? "overflow-x-auto"}>{children}</div>
-      <div className="flex items-center justify-between border-t border-border px-6 py-3 text-xs text-text-muted">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs text-text-muted sm:px-6">
         <span>
           Showing {start}-{end} of {totalItems}
         </span>
@@ -37,7 +37,7 @@ export function DataTable({
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onPreviousPage} disabled={currentPage === 1}>
             Previous
           </Button>
-          <span className="px-2">Page {currentPage} / {totalPages}</span>
+          <span className="whitespace-nowrap px-1 sm:px-2">Page {currentPage} / {totalPages}</span>
           <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onNextPage} disabled={currentPage === totalPages}>
             Next
           </Button>

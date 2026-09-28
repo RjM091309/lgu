@@ -193,7 +193,7 @@ export function RolesPage() {
 
       {/* Access matrix */}
       <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-        <header className="border-b border-border px-5 py-4">
+        <header className="border-b border-border px-4 py-4 sm:px-5">
           <h2 className="text-base font-semibold text-text-main">Access Matrix</h2>
           <p className="text-xs text-text-muted">Tick a cell to grant a role access to a module group. The Administrator role always has full access.</p>
         </header>
@@ -201,7 +201,7 @@ export function RolesPage() {
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="px-5 py-3 text-left text-xs font-bold uppercase text-text-main">Module group</th>
+                <th className="sticky left-0 z-10 w-[190px] bg-[#f9fbfd] px-4 py-3 text-left text-xs font-bold uppercase text-text-main sm:w-auto sm:px-5">Module group</th>
                 {roles.map((role) => (
                   <th key={role.name} className="px-3 py-3 text-center text-xs font-bold uppercase text-text-main">
                     <span className="inline-flex items-center gap-1.5">
@@ -215,7 +215,7 @@ export function RolesPage() {
             <tbody>
               {MODULE_GROUPS.map((group) => (
                 <tr key={group.name} className="border-b border-border last:border-b-0">
-                  <td className="px-5 py-3.5">
+                  <td className="sticky left-0 z-10 w-[190px] bg-white px-4 py-3.5 shadow-[1px_0_0_var(--color-border)] sm:w-auto sm:px-5">
                     <div className="font-semibold text-text-main">{group.name}</div>
                     <div className="mt-1 flex flex-wrap gap-1">
                       {group.pages.map((page) => (

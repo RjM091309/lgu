@@ -247,7 +247,7 @@ export function ArchiveList() {
       </div>
 
       {/* Digitization overview */}
-      <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-border bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-4">
             <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
@@ -322,7 +322,7 @@ export function ArchiveList() {
 
         {/* Year contents */}
         <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-          <header className="border-b border-border px-5 py-4">
+          <header className="border-b border-border px-4 py-4 sm:px-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-text-main">Legislative Year {archive.year}</h2>
@@ -331,8 +331,8 @@ export function ArchiveList() {
                   {yearDigitized} scanned
                 </p>
               </div>
-              <div className="flex gap-2">
-                <div className="relative">
+              <div className="flex w-full gap-2 md:w-auto">
+                <div className="relative min-w-0 flex-1 md:flex-none">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
                   <Input
                     value={keyword}
@@ -341,10 +341,10 @@ export function ArchiveList() {
                       setCurrentPage(1);
                     }}
                     placeholder={`Search ${archive.year} records`}
-                    className="w-56 pl-9"
+                    className="w-full pl-9 md:w-56"
                   />
                 </div>
-                <Button variant="outline" onClick={exportYear}>
+                <Button variant="outline" className="shrink-0" onClick={exportYear}>
                   <FileDown className="mr-1.5 h-4 w-4" />
                   CSV
                 </Button>
@@ -386,7 +386,7 @@ export function ArchiveList() {
             onPreviousPage={() => setCurrentPage(Math.max(1, page - 1))}
             onNextPage={() => setCurrentPage(Math.min(totalPages, page + 1))}
           >
-            <Table>
+            <Table className="min-w-[720px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Record</TableHead>
@@ -400,7 +400,7 @@ export function ArchiveList() {
                 {paginated.map((record) => (
                   <TableRow key={record.id} onClick={() => setOpenRecord(record)} className="cursor-pointer hover:bg-primary/[0.03]">
                     <TableCell>
-                      <div className="mx-auto max-w-md">
+                      <div className="mx-auto max-w-[16rem] sm:max-w-md">
                         <div className="font-medium text-text-main">{record.number}</div>
                         <div className="truncate text-xs text-text-muted" title={record.title}>
                           {record.title}

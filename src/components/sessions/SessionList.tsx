@@ -343,7 +343,7 @@ export function SessionList() {
             <p className="text-xs text-text-muted">Applications checked against their documentary requirements</p>
           </header>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[680px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Application</TableHead>

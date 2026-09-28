@@ -119,7 +119,7 @@ function AttendancePanel() {
           </div>
         </header>
         <div className="overflow-x-auto">
-          <Table className="min-w-[980px]">
+          <Table className="min-w-[980px]" mobileCards={false}>
             <TableHeader>
               <TableRow>
                 <TableHead className="text-left">Member</TableHead>
@@ -374,7 +374,7 @@ export function AttendancePublicationView({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 border-b border-border md:flex-row md:items-end md:justify-between">
+      <div className="flex flex-col gap-3 border-b border-border xl:flex-row xl:items-end xl:justify-between">
         <div className="flex gap-1" role="tablist" aria-label="Report sections">
           {tabs.map((item) => (
             <button
@@ -384,11 +384,11 @@ export function AttendancePublicationView({
               aria-selected={tab === item.id}
               onClick={() => setTab(item.id)}
               className={cn(
-                '-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors',
+                '-mb-px inline-flex min-w-0 flex-1 items-center justify-center gap-2 border-b-2 px-2 py-2.5 text-center text-sm font-semibold transition-colors sm:flex-none sm:px-4',
                 tab === item.id ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-main'
               )}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-4 w-4 shrink-0" />
               {item.label}
               <span className={cn('rounded-full px-1.5 py-px text-[10px] tabular-nums', tab === item.id ? 'bg-primary text-white' : 'bg-muted text-text-muted')}>
                 {item.count}

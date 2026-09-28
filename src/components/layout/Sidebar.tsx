@@ -9,10 +9,12 @@ interface SidebarProps {
   onLogout: () => void;
   /** Icon-only rail (desktop). */
   collapsed?: boolean;
+  /** Smaller seal and title, for the mobile drawer. */
+  compactHeader?: boolean;
   className?: string;
 }
 
-export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, className }: SidebarProps) {
+export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, compactHeader = false, className }: SidebarProps) {
   // Accordion: one group open at a time, starting with the group that holds the current page.
   const groupOf = (tab: string) => NAV_GROUPS.find((group) => group.items.some((item) => item.id === tab))?.id ?? null;
   const [openGroup, setOpenGroup] = useState<string | null>(() => groupOf(activeTab));
@@ -51,7 +53,7 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
         onMouseLeave={hideHint}
         className={cn(
           'flex shrink-0 flex-col items-center border-b border-white/10 text-center',
-          collapsed ? 'px-2 py-4' : 'gap-3 px-5 py-6'
+          collapsed ? 'px-2 py-4' : compactHeader ? 'gap-2 px-5 py-4' : 'gap-3 px-5 py-6'
         )}
         aria-label="Go to dashboard"
       >
@@ -60,12 +62,12 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
           alt="Seal of the Municipality of Capas"
           className={cn(
             'shrink-0 rounded-full object-cover ring-2 ring-[#d4a72c]/40 transition-all duration-200',
-            collapsed ? 'h-11 w-11' : 'h-36 w-36'
+            collapsed ? 'h-11 w-11' : compactHeader ? 'h-20 w-20' : 'h-36 w-36'
           )}
         />
         {!collapsed ? (
           <div className="min-w-0">
-            <div className="font-serif text-xl font-bold leading-tight text-balance">Sangguniang Bayan ng Capas</div>
+            <div className={cn('font-serif font-bold leading-tight text-balance', compactHeader ? 'text-lg' : 'text-xl')}>Sangguniang Bayan ng Capas</div>
             <div className="mt-1.5 text-sm text-white/60">Legislative Management System</div>
           </div>
         ) : null}

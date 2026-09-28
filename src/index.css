@@ -65,6 +65,12 @@
   input[type="file"]::file-selector-button {
     cursor: pointer;
   }
+  /* A grid with no column template (e.g. "grid md:grid-cols-2" on a phone) gets one column that
+     can shrink below its content, so long text or wide rows scroll inside their card instead of
+     pushing the page sideways. Any grid-cols-* utility overrides this. */
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
   button:disabled,
   [role="button"][aria-disabled="true"],
   select:disabled,
@@ -161,4 +167,136 @@
   25% { transform: rotate(5deg); }
   30% { transform: rotate(-3deg); }
   35% { transform: rotate(1deg); }
+}
+
+/* Phones: data tables become a stack of cards. Each cell shows its column name from data-th,
+   which src/components/ui/table.tsx copies from the header. The first cell is the card title;
+   an actions cell (empty or screen-reader-only header) sits in the top-right corner. */
+@media (max-width: 767.98px) {
+  table.table-cards {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  table.table-cards > thead,
+  .grid-table > .grid-table-head {
+    display: none;
+  }
+  table.table-cards > tbody,
+  table.table-cards > tfoot,
+  .grid-table {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px;
+    border: 0;
+    background: var(--color-background);
+  }
+  table.table-cards > tfoot {
+    padding-top: 0;
+    font-weight: inherit;
+  }
+  table.table-cards > tbody > tr,
+  table.table-cards > tfoot > tr,
+  .grid-table > .grid-table-row {
+    display: block;
+    position: relative;
+    min-width: 0;
+    padding: 2px 14px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 2px rgb(16 24 40 / 0.05);
+  }
+  table.table-cards > tbody > tr > td,
+  table.table-cards > tfoot > tr > td,
+  .grid-table > .grid-table-row > * {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
+    justify-items: end;
+    column-gap: 16px;
+    row-gap: 2px;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 8px 0;
+    border-top: 1px solid #eef0f3;
+    text-align: right;
+    white-space: normal;
+  }
+  table.table-cards > tbody > tr > td::before,
+  table.table-cards > tfoot > tr > td::before,
+  .grid-table > .grid-table-row > *::before {
+    content: attr(data-th);
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    max-width: 8.5rem;
+    padding-top: 2px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+  table.table-cards > tbody > tr > td > *,
+  table.table-cards > tfoot > tr > td > *,
+  .grid-table > .grid-table-row > * > * {
+    grid-column: 2;
+    max-width: 100%;
+    margin-inline: auto 0;
+  }
+
+  /* Card title */
+  table.table-cards > tbody > tr > td:first-child,
+  table.table-cards > tfoot > tr > td:first-child,
+  .grid-table > .grid-table-row > :first-child {
+    display: block;
+    padding: 10px 0 8px;
+    border-top: 0;
+    justify-items: normal;
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-text-main);
+  }
+  table.table-cards > tbody > tr > td:first-child > *,
+  table.table-cards > tfoot > tr > td:first-child > *,
+  .grid-table > .grid-table-row > :first-child > * {
+    margin-inline: 0;
+  }
+  table.table-cards > tbody > tr > td:first-child::before,
+  table.table-cards > tfoot > tr > td:first-child::before,
+  .grid-table > .grid-table-row > :first-child::before,
+  table.table-cards td[data-action]::before,
+  table.table-cards td[data-full]::before {
+    content: none;
+  }
+  table.table-cards > tbody > tr:has(> td[data-action]) > td:first-child {
+    padding-right: 44px;
+  }
+
+  /* Row actions and full-width rows (empty states) */
+  table.table-cards td[data-action] {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: block;
+    justify-items: normal;
+    padding: 0;
+    border: 0;
+  }
+  table.table-cards td[data-full] {
+    display: block;
+    justify-items: normal;
+    padding: 24px 8px;
+    border: 0;
+    text-align: center;
+  }
+  table.table-cards > tbody > tr:has(> td[data-full]) {
+    border-style: dashed;
+    box-shadow: none;
+  }
 }
