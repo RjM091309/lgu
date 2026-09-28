@@ -15,7 +15,9 @@ import { logActivity } from '@/lib/activity-log';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { motion, AnimatePresence } from 'motion/react';
 import { LandingPage } from '@/components/public/LandingPage';
-import { Toaster } from '@/components/ui/toast';
+import { Toaster, toast } from '@/components/ui/toast';
+import { setCurrentUser, useAccess } from '@/lib/access-store';
+import { findNavItem } from '@/lib/navigation';
 import { ConfirmDialogHost } from '@/components/ui/confirm';
 import { LandingSkeleton, PageSkeleton } from '@/components/ui/skeleton';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -65,12 +67,14 @@ const writeSidebarCollapsed = (collapsed: boolean) => {
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(readSession);
   const [isBooting, setIsBooting] = useState(true);
-  const [loadedTab, setLoadedTab] = useState<string | null>(null);
+  // `${tab}|${userId}` of the view whose skeleton has finished.
+  const [loadedView, setLoadedView] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const location = useLocation();
   const navigate = useNavigate();
   const mainScrollRef = useRef<HTMLElement | null>(null);
+  const { user, role, can } = useAccess();
 
   const tabToPath = useMemo(
     () => ({
@@ -91,6 +95,7 @@ export default function App() {
       'req-public-inquiry': '/requirements/public-inquiry',
       'req-reports-analytics': '/requirements/reports-analytics',
       'req-e-session-signature': '/requirements/e-session-esig',
+      'esig-calendar-sessions': '/e-session/calendar-sessions',
       'esig-platform': '/e-session/platform',
       'esig-electronic-signature': '/e-session/electronic-signature',
       'esig-session-files': '/e-session/session-files-attachments',
@@ -120,30 +125,53 @@ export default function App() {
     }
   }, [isLoggedIn, location.pathname, navigate, pathToTab]);
 
+  // Pages outside the signed-in role (typed URLs, or after switching accounts) fall back to the dashboard.
+  const isAllowed = can(activeTab);
+  const blockedTabRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isLoggedIn || isAllowed) {
+      blockedTabRef.current = null;
+      return;
+    }
+    // Effects can run twice for one visit (dev strict mode); tell the user once.
+    if (blockedTabRef.current === activeTab) return;
+    blockedTabRef.current = activeTab;
+    toast('Page not available', `${findNavItem(activeTab)?.item.label ?? 'That page'} is not part of the ${role?.name ?? 'current'} role.`, 'error');
+    navigate('/dashboard', { replace: true });
+  }, [isLoggedIn, isAllowed, activeTab, role?.name, navigate]);
+
   useEffect(() => {
     mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeTab]);
 
-  // Brief skeleton on first paint and on each page change; a page counts as loaded once its timer fires.
+  // Brief skeleton on first paint, on each page change, and on each account switch; a view counts as loaded once its timer fires.
   useEffect(() => {
     const timer = setTimeout(() => setIsBooting(false), 700);
     return () => clearTimeout(timer);
   }, []);
 
+  const viewKey = `${activeTab}|${user.id}`;
   useEffect(() => {
     if (!isLoggedIn) return;
-    const timer = setTimeout(() => setLoadedTab(activeTab), 450);
+    // Same page, different account: the whole view changes, so the skeleton stays up a little longer.
+    const switchedAccount = loadedView !== null && loadedView !== viewKey && loadedView.split('|')[0] === activeTab;
+    const timer = setTimeout(() => setLoadedView(viewKey), switchedAccount ? 900 : 450);
     return () => clearTimeout(timer);
-  }, [activeTab, isLoggedIn]);
+  }, [viewKey, isLoggedIn]);
 
-  const showPageSkeleton = loadedTab !== activeTab;
+  const showPageSkeleton = loadedView !== viewKey;
 
   const setActiveTab = (tab: string) => {
+    if (!can(tab)) {
+      toast('Page not available', `${findNavItem(tab)?.item.label ?? 'That page'} is not part of the ${role?.name ?? 'current'} role.`, 'error');
+      return;
+    }
     navigate(tabToPath[tab as keyof typeof tabToPath] ?? '/dashboard');
   };
 
   const renderContent = () => {
+    if (!isAllowed) return null;
     switch (activeTab) {
       case 'dashboard':
         return <Overview onNavigate={setActiveTab} />;
@@ -172,6 +200,7 @@ export default function App() {
       case 'req-reports-analytics':
       case 'req-e-session-signature':
         return <RequirementsView activeTab={activeTab} />;
+      case 'esig-calendar-sessions':
       case 'esig-platform':
       case 'esig-electronic-signature':
       case 'esig-session-files':
@@ -198,7 +227,8 @@ export default function App() {
     });
   };
 
-  const handleLogin = (remember: boolean) => {
+  const handleLogin = (remember: boolean, userId: string) => {
+    setCurrentUser(userId);
     logActivity({ module: 'Authentication', action: 'Signed in', summary: 'Signed in to the Secretariat portal' });
     writeSession(remember);
     setIsLoggedIn(true);
@@ -208,7 +238,7 @@ export default function App() {
     logActivity({ module: 'Authentication', action: 'Signed out', summary: 'Signed out of the Secretariat portal' });
     writeSession(null);
     setIsLoggedIn(false);
-    setLoadedTab(null);
+    setLoadedView(null);
     navigate('/', { replace: true });
   };
 
@@ -280,7 +310,7 @@ export default function App() {
           <div className="mx-auto w-full max-w-[1600px] px-4 py-8 md:px-8">
             <AnimatePresence mode="wait">
               <motion.div
-                key={`${activeTab}-${showPageSkeleton ? 'loading' : 'ready'}`}
+                key={`${viewKey}-${showPageSkeleton ? 'loading' : 'ready'}`}
                 initial={{ opacity: 0, y: showPageSkeleton ? 0 : 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}

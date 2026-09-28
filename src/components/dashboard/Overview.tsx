@@ -16,6 +16,8 @@ import {
   Minus,
   Printer,
   Table2,
+  Upload,
+  Users,
 } from 'lucide-react';
 import { mockBills, mockMonthlyActivity, mockSessions, type Bill } from '@/lib/mock-data';
 import { Button } from '@/components/ui/button';
@@ -27,6 +29,10 @@ import { openPrintWindow } from '@/lib/files';
 import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
 import { LEGISLATIVE_PHASES, LEGISLATIVE_STAGES, StatusBadge } from '@/components/ui/status-badge';
+import { AccountShortcut } from '@/components/dashboard/AccountShortcut';
+import { Card, LinkButton, SESSION_TYPE_TONE, StatTiles, formatShortDate, relativeDays, type Tile } from '@/components/dashboard/widgets';
+import { AdminPanel, CommitteeDashboard, EncoderDashboard, RecordsDashboard, ViewerDashboard, dashboardKindOf } from '@/components/dashboard/RoleDashboards';
+import { useAccess } from '@/lib/access-store';
 import { AreaSparkline, BarList, CountUp, DonutChart, PHASE_COLORS, PipelineChart, SegmentMeter, SERIES_COLORS, GroupedBarChart } from '@/components/dashboard/charts';
 
 interface OverviewProps {
@@ -37,48 +43,13 @@ const PHASES = LEGISLATIVE_PHASES;
 const PIPELINE = LEGISLATIVE_STAGES as { status: Bill['status']; phase: number }[];
 const FINAL_STATUSES: Bill['status'][] = ['Passed', 'Enacted', 'Vetoed'];
 
-const SESSION_TYPE_TONE: Record<string, string> = {
-  Regular: 'bg-primary/10 text-primary',
-  Special: 'bg-orange-50 text-orange-800',
-  'Committee Hearing': 'bg-violet-50 text-violet-800',
-};
-
-function Card({ title, subtitle, action, children, className }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
-  return (
-    <section className={cn('rounded-xl border border-border bg-white p-5 shadow-sm', className)}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-text-main">{title}</h2>
-          {subtitle ? <p className="text-xs text-text-muted">{subtitle}</p> : null}
-        </div>
-        {action}
-      </div>
-      <div className="mt-4">{children}</div>
-    </section>
-  );
-}
-
-const formatShortDate = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-
-const relativeDays = (iso: string) => {
-  const days = Math.round((new Date(`${todayInManila()}T00:00:00`).getTime() - new Date(`${iso}T00:00:00`).getTime()) / 86_400_000);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 30) return `${days} days ago`;
-  const months = Math.floor(days / 30);
-  return `${months} month${months === 1 ? '' : 's'} ago`;
-};
-
-function LinkButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick} className="shrink-0 text-xs font-semibold text-primary hover:underline">
-      {children}
-    </button>
-  );
-}
-
-export function Overview({ onNavigate }: OverviewProps) {
+/** System-wide legislative overview: the Administrator's dashboard, and the fallback for custom roles (filtered by their pages). */
+function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & { showAdmin?: boolean }) {
+  const { can } = useAccess();
+  // Charts and tiles only link to pages the signed-in role can open.
+  const go = (tab: string) => {
+    if (can(tab)) onNavigate(tab);
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
   const [agendaSessionId, setAgendaSessionId] = useState<string | null>(null);
@@ -119,28 +90,16 @@ export function Overview({ onNavigate }: OverviewProps) {
   const lastMonth = mockMonthlyActivity[mockMonthlyActivity.length - 1];
   const prevMonth = mockMonthlyActivity[mockMonthlyActivity.length - 2];
 
-  const manilaHour = Number(new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(new Date()));
-  const greeting = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
-  const todayLabel = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'full' }).format(new Date());
-
   const phaseCount = (phase: number) => pipelineStages.filter((stage) => stage.phase === phase).reduce((sum, stage) => sum + stage.count, 0);
 
-  const tiles: {
-    label: string;
-    period: string;
-    value: number;
-    icon: typeof FileText;
-    tab: string;
-    delta?: { value: number; upIsGood: boolean | null };
-    footer: React.ReactNode;
-  }[] = [
+  const tiles: Tile[] = [
     {
       label: 'Measures filed',
       period: 'September 2026',
       value: lastMonth.filed,
       icon: FileText,
       tab: 'manage-legislation',
-      delta: { value: lastMonth.filed - prevMonth.filed, upIsGood: null },
+      delta: { value: lastMonth.filed - prevMonth.filed, upIsGood: null, versus: prevMonth.month },
       footer: <AreaSparkline values={filed} labels={months} />,
     },
     {
@@ -149,7 +108,7 @@ export function Overview({ onNavigate }: OverviewProps) {
       value: lastMonth.approved,
       icon: CheckCircle2,
       tab: 'report-statistical-performance',
-      delta: { value: lastMonth.approved - prevMonth.approved, upIsGood: true },
+      delta: { value: lastMonth.approved - prevMonth.approved, upIsGood: true, versus: prevMonth.month },
       footer: <AreaSparkline values={approved} labels={months} />,
     },
     {
@@ -174,7 +133,7 @@ export function Overview({ onNavigate }: OverviewProps) {
         : 'None scheduled',
       value: mockSessions.length,
       icon: CalendarDays,
-      tab: 'manage-transactions',
+      tab: 'esig-calendar-sessions',
       footer: (
         <div className="flex flex-wrap gap-1.5">
           {mockSessions.map((session) => (
@@ -216,69 +175,7 @@ export function Overview({ onNavigate }: OverviewProps) {
 
   return (
     <div className="space-y-6">
-      {/* Page header */}
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-sm text-text-muted">{todayLabel}</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary">{greeting}, SB Secretariat Admin</h1>
-          <p className="mt-1 text-sm text-text-muted">Here is the current status of legislative work at the Sangguniang Bayan ng Capas.</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => onNavigate('report-statistical-performance')}>
-            View reports
-          </Button>
-          <Button onClick={() => onNavigate('manage-legislation')}>
-            <FilePlus2 className="mr-2 h-4 w-4" />
-            New record
-          </Button>
-        </div>
-      </div>
-
-      {/* Stat tiles */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {tiles.map((tile) => {
-          const delta = tile.delta;
-          const deltaTone =
-            !delta || delta.value === 0 || delta.upIsGood === null
-              ? 'bg-slate-100 text-slate-600'
-              : (delta.value > 0) === delta.upIsGood
-                ? 'bg-green-50 text-[#006300]'
-                : 'bg-red-50 text-red-700';
-          const DeltaIcon = !delta || delta.value === 0 ? Minus : delta.value > 0 ? ArrowUpRight : ArrowDownRight;
-          return (
-            <button
-              key={tile.label}
-              type="button"
-              onClick={() => onNavigate(tile.tab)}
-              className="group flex flex-col rounded-xl border border-border bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-text-main">{tile.label}</span>
-                  <span className="block truncate text-[11px] text-text-muted">{tile.period}</span>
-                </span>
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-white">
-                  <tile.icon className="h-[18px] w-[18px]" />
-                </span>
-              </div>
-
-              <div className="mt-4 flex items-center gap-2.5">
-                <span className="text-[32px] font-semibold leading-none text-text-main">
-                  <CountUp value={tile.value} />
-                </span>
-                {delta ? (
-                  <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[11px] font-semibold', deltaTone)}>
-                    <DeltaIcon className="h-3 w-3" />
-                    {delta.value > 0 ? `+${delta.value}` : delta.value} vs {prevMonth.month}
-                  </span>
-                ) : null}
-              </div>
-
-              <div className="mt-auto w-full pt-4">{tile.footer}</div>
-            </button>
-          );
-        })}
-      </div>
+      <StatTiles tiles={tiles.filter((tile) => showAdmin || can(tile.tab))} can={can} onNavigate={onNavigate} />
 
       {/* Trend + status mix */}
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
@@ -330,18 +227,26 @@ export function Overview({ onNavigate }: OverviewProps) {
           <DonutChart
             segments={statusSegments}
             totalLabel="measures on record"
-            onSelect={(label) => onNavigate(statusSegments.find((segment) => segment.label === label)?.tab ?? 'manage-legislation')}
+            onSelect={(label) => go(statusSegments.find((segment) => segment.label === label)?.tab ?? 'manage-legislation')}
           />
         </Card>
       </div>
 
       {/* Pipeline, sessions, committees */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
-        <Card title="Legislative Pipeline" subtitle="Measures at each stage" action={<LinkButton onClick={() => onNavigate('manage-legislation')}>Open tracking</LinkButton>}>
-          <PipelineChart stages={pipelineStages} phases={PHASES} onSelect={() => onNavigate('manage-legislation')} />
+        <Card
+          title="Legislative Pipeline"
+          subtitle="Measures at each stage"
+          action={can('manage-legislation') ? <LinkButton onClick={() => onNavigate('manage-legislation')}>Open tracking</LinkButton> : null}
+        >
+          <PipelineChart stages={pipelineStages} phases={PHASES} onSelect={() => go('manage-legislation')} />
         </Card>
 
-        <Card title="Upcoming Sessions" subtitle="Scheduled sessions and hearings" action={<LinkButton onClick={() => onNavigate('manage-transactions')}>View all</LinkButton>}>
+        <Card
+          title="Upcoming Sessions"
+          subtitle="Scheduled sessions and hearings"
+          action={can('esig-calendar-sessions') ? <LinkButton onClick={() => onNavigate('esig-calendar-sessions')}>View all</LinkButton> : null}
+        >
           <ul className="space-y-2.5">
             {mockSessions.map((session) => {
               const date = new Date(`${session.date}T00:00:00`);
@@ -399,12 +304,16 @@ export function Overview({ onNavigate }: OverviewProps) {
           </ul>
         </Card>
 
-        <Card title="Committee Workload" subtitle="Measures referred, top 5" action={<LinkButton onClick={() => onNavigate('manage-master-files')}>Committees</LinkButton>}>
+        <Card
+          title="Committee Workload"
+          subtitle="Measures referred, top 5"
+          action={can('manage-master-files') ? <LinkButton onClick={() => onNavigate('manage-master-files')}>Committees</LinkButton> : null}
+        >
           <BarList
             items={committeeLoad.top}
             total={mockBills.length}
             groupCount={committeeLoad.committeeCount}
-            onSelect={() => onNavigate('manage-master-files')}
+            onSelect={() => go('manage-master-files')}
           />
         </Card>
       </div>
@@ -416,14 +325,16 @@ export function Overview({ onNavigate }: OverviewProps) {
             <h2 className="text-base font-semibold text-text-main">Recent Legislative Actions</h2>
             <p className="text-xs text-text-muted">Select a record to see its details</p>
           </div>
-          <button
-            type="button"
-            onClick={() => onNavigate('manage-legislation')}
-            className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
-          >
-            View all actions
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
+          {can('manage-legislation') ? (
+            <button
+              type="button"
+              onClick={() => onNavigate('manage-legislation')}
+              className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
+            >
+              View all actions
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
         </div>
         <DataTable
           currentPage={currentPage}
@@ -479,6 +390,8 @@ export function Overview({ onNavigate }: OverviewProps) {
         </DataTable>
       </section>
 
+      {showAdmin ? <AdminPanel onNavigate={onNavigate} /> : null}
+
       {/* Record details */}
       <Dialog open={selectedBill !== null} onOpenChange={(open) => !open && setSelectedBill(null)}>
         <DialogContent className="max-w-2xl">
@@ -505,10 +418,12 @@ export function Overview({ onNavigate }: OverviewProps) {
                 ))}
               </dl>
               <div className="mt-6 flex flex-wrap gap-2">
-                <Button onClick={() => onNavigate('manage-legislation')}>
-                  Open in Legislative Tracking
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
+                {can('manage-legislation') ? (
+                  <Button onClick={() => onNavigate('manage-legislation')}>
+                    Open in Legislative Tracking
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Button>
+                ) : null}
                 <Button variant="outline" onClick={() => printBill(selectedBill)}>
                   <Printer className="mr-2 h-4 w-4" />
                   Print record
@@ -562,6 +477,94 @@ export function Overview({ onNavigate }: OverviewProps) {
           ) : null}
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+const ROLE_INTRO: Record<ReturnType<typeof dashboardKindOf>, string> = {
+  admin: 'System-wide status of legislative work, accounts, and activity.',
+  records: 'Records to process, session folders to complete, and sessions coming up.',
+  committee: 'Measures under committee study, hearings, and committee workload.',
+  encoder: 'Documents and recordings waiting to be uploaded.',
+  viewer: 'A read-only summary of legislative records and reports.',
+  general: 'Legislative work you have access to in LIMS.',
+};
+
+// Header buttons per role, most-used last (it becomes the primary button); pages the role cannot open are dropped.
+const ROLE_ACTIONS: Record<ReturnType<typeof dashboardKindOf>, { tab: string; label: string; icon: typeof FileText }[]> = {
+  admin: [
+    { tab: 'report-statistical-performance', label: 'View reports', icon: BarChart3 },
+    { tab: 'access-users', label: 'Manage users', icon: Users },
+    { tab: 'manage-legislation', label: 'New record', icon: FilePlus2 },
+  ],
+  records: [
+    { tab: 'esig-calendar-sessions', label: 'Calendar', icon: CalendarDays },
+    { tab: 'esig-session-files', label: 'Session files', icon: Upload },
+    { tab: 'manage-legislation', label: 'New record', icon: FilePlus2 },
+  ],
+  committee: [
+    { tab: 'report-statistical-performance', label: 'View reports', icon: BarChart3 },
+    { tab: 'manage-legislation', label: 'Open tracking', icon: FileText },
+  ],
+  encoder: [
+    { tab: 'archive', label: 'Archives', icon: FileText },
+    { tab: 'esig-session-files', label: 'Upload files', icon: Upload },
+  ],
+  viewer: [
+    { tab: 'report-search-listing', label: 'Search records', icon: FileText },
+    { tab: 'report-statistical-performance', label: 'View reports', icon: BarChart3 },
+  ],
+  general: [
+    { tab: 'report-statistical-performance', label: 'View reports', icon: BarChart3 },
+    { tab: 'esig-session-files', label: 'Upload files', icon: Upload },
+    { tab: 'manage-legislation', label: 'New record', icon: FilePlus2 },
+  ],
+};
+
+/** Dashboard shell: the same greeting for everyone, then the body that fits the signed-in role. */
+export function Overview({ onNavigate }: OverviewProps) {
+  const { user, role, can } = useAccess();
+  const kind = dashboardKindOf(role?.name);
+  const actions = ROLE_ACTIONS[kind].filter((action) => can(action.tab));
+
+  const manilaHour = Number(new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(new Date()));
+  const greeting = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
+  const todayLabel = new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', dateStyle: 'full' }).format(new Date());
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-sm text-text-muted">{todayLabel}</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary">
+            {greeting}, {user.name}
+          </h1>
+          <p className="mt-1 text-sm text-text-muted">{ROLE_INTRO[kind]}</p>
+        </div>
+        <div className="flex flex-col gap-3 lg:items-end">
+          <AccountShortcut />
+          {actions.length > 0 ? (
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              {actions.map((action, index) => {
+                const primary = index === actions.length - 1;
+                return (
+                  <Button key={action.tab} variant={primary ? 'default' : 'outline'} onClick={() => onNavigate(action.tab)}>
+                    {primary ? <action.icon className="mr-2 h-4 w-4" /> : null}
+                    {action.label}
+                  </Button>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      </div>
+
+      {kind === 'admin' ? <LegislativeOverview onNavigate={onNavigate} showAdmin /> : null}
+      {kind === 'records' ? <RecordsDashboard onNavigate={onNavigate} /> : null}
+      {kind === 'committee' ? <CommitteeDashboard onNavigate={onNavigate} /> : null}
+      {kind === 'encoder' ? <EncoderDashboard onNavigate={onNavigate} /> : null}
+      {kind === 'viewer' ? <ViewerDashboard onNavigate={onNavigate} /> : null}
+      {kind === 'general' ? <LegislativeOverview onNavigate={onNavigate} /> : null}
     </div>
   );
 }

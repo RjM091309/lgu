@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { ChevronDown, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NAV_GROUPS } from '@/lib/navigation';
+import { initials, useAccess } from '@/lib/access-store';
 
 interface SidebarProps {
   activeTab: string;
@@ -13,6 +14,9 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, className }: SidebarProps) {
+  const { user, can } = useAccess();
+  // Only the pages the signed-in role can open; groups left empty are hidden.
+  const groups = NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => can(item.id)) })).filter((group) => group.items.length > 0);
   // Accordion: one group open at a time, starting with the group that holds the current page.
   const groupOf = (tab: string) => NAV_GROUPS.find((group) => group.items.some((item) => item.id === tab))?.id ?? null;
   const [openGroup, setOpenGroup] = useState<string | null>(() => groupOf(activeTab));
@@ -47,7 +51,7 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
       <button
         type="button"
         onClick={() => setActiveTab('dashboard')}
-        onMouseEnter={showHint('Sangguniang Bayan ng Capas')}
+        onMouseEnter={showHint('LIMS · Legislative Information Management System')}
         onMouseLeave={hideHint}
         className={cn(
           'flex shrink-0 flex-col items-center border-b border-white/10 text-center',
@@ -56,8 +60,8 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
         aria-label="Go to dashboard"
       >
         <img
-          src="/capas-logo.jpg"
-          alt="Seal of the Municipality of Capas"
+          src="/lims-logo.svg"
+          alt="LIMS logo"
           className={cn(
             'shrink-0 rounded-full object-cover ring-2 ring-[#d4a72c]/40 transition-all duration-200',
             collapsed ? 'h-11 w-11' : 'h-36 w-36'
@@ -65,14 +69,14 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
         />
         {!collapsed ? (
           <div className="min-w-0">
-            <div className="font-serif text-xl font-bold leading-tight text-balance">Sangguniang Bayan ng Capas</div>
-            <div className="mt-1.5 text-sm text-white/60">Legislative Management System</div>
+            <div className="font-serif text-3xl font-bold leading-tight tracking-wide">LIMS</div>
+            <div className="mt-1.5 text-sm text-balance text-white/60">Legislative Information Management System</div>
           </div>
         ) : null}
       </button>
 
       <nav className={cn('sidebar-scroll flex-1 overflow-y-auto py-4', collapsed ? 'px-2' : 'space-y-4 px-3')} aria-label="Main" onScroll={hideHint}>
-        {NAV_GROUPS.map((group, groupIndex) => {
+        {groups.map((group, groupIndex) => {
           const showHeader = group.id !== 'overview';
           // The rail shows every item; group headers there become dividers.
           const isClosed = !collapsed && showHeader && openGroup !== group.id;
@@ -133,15 +137,15 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
         <div className={cn('flex items-center rounded-lg bg-white/5', collapsed ? 'flex-col gap-2 p-2' : 'gap-3 p-3')}>
           <span
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-primary"
-            onMouseEnter={showHint('SB Secretariat Admin · Administrator')}
+            onMouseEnter={showHint(`${user.name} · ${user.role}`)}
             onMouseLeave={hideHint}
           >
-            SB
+            {initials(user.name)}
           </span>
           {!collapsed ? (
             <div className="min-w-0 flex-1">
-              <div className="truncate text-[13px] font-semibold">SB Secretariat Admin</div>
-              <div className="truncate text-[11px] text-white/55">Administrator</div>
+              <div className="truncate text-[13px] font-semibold">{user.name}</div>
+              <div className="truncate text-[11px] text-white/55">{user.role}</div>
             </div>
           ) : null}
           <button

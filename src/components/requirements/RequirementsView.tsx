@@ -380,7 +380,7 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-primary">System Requirements</h1>
-        <p className="text-sm text-text-muted">Functional requirements of the Legislative Management System, aligned with the project proposal.</p>
+        <p className="text-sm text-text-muted">Functional requirements of the Legislative Information Management System, aligned with the project proposal.</p>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">

@@ -6,7 +6,7 @@ import { STORES, requestPersistentStorage, runTransaction, storageErrorMessage }
 
 export type FileKind = 'pdf' | 'audio' | 'video' | 'image' | 'other';
 
-export const FILE_CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Supporting Document'] as const;
+export const FILE_CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Supporting Document'] as const;
 export type FileCategory = (typeof FILE_CATEGORIES)[number];
 
 export interface SessionFile {
@@ -18,6 +18,8 @@ export interface SessionFile {
   size: number | null;
   uploadedAt: string;
   uploadedBy: string;
+  /** Role of the uploader when the file was added; older records fall back to the account's current role. */
+  uploadedByRole?: string;
   source: 'system' | 'upload';
   // Recordings listed by the system can exist before the actual media is attached.
   blob: Blob | null;
@@ -56,6 +58,9 @@ const EXTENSION_KINDS: Record<string, FileKind> = {
 
 export const ACCEPTED_EXTENSIONS = Object.keys(EXTENSION_KINDS).map((ext) => `.${ext}`).join(',');
 
+/** File extensions (without the dot) accepted for one kind of file. */
+export const extensionsFor = (kind: FileKind) => Object.keys(EXTENSION_KINDS).filter((ext) => EXTENSION_KINDS[ext] === kind);
+
 export const extensionOf = (name: string) => (name.includes('.') ? name.split('.').pop()!.toLowerCase() : '');
 
 // Returns null for file types the repository does not accept.
@@ -68,6 +73,8 @@ export const suggestCategory = (kind: FileKind, name: string): FileCategory => {
   if (lower.includes('order of business')) return 'Order of Business';
   if (lower.includes('agenda')) return 'Agenda';
   if (lower.includes('minutes')) return 'Minutes';
+  // Scanned copies of ordinances passed during the session.
+  if (/\bord(inance)?\b/.test(lower)) return 'Enacted Ordinance';
   return 'Supporting Document';
 };
 

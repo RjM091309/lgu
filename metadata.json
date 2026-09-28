@@ -1,6 +1,6 @@
 {
-  "name": "SB Capas LMIS",
-  "description": "Legislative Management Information System prototype for the Sangguniang Bayan ng Capas, Tarlac: tracking ordinances, resolutions, sessions, and committee work.",
+  "name": "Legislative Information Management System (LIMS)",
+  "description": "Legislative Information Management System (LIMS) prototype: tracking ordinances, resolutions, sessions, and committee work.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

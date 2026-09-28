@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity } from '@/lib/activity-log';
+import { ADMIN_ROLE, ALL_PAGES, canOpenPage, initials, useAccess } from '@/lib/access-store';
 
 interface NavbarProps {
   activeTab: string;
@@ -124,6 +125,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   const current = findNavItem(activeTab);
+  const { user, role } = useAccess();
   const unreadCount = notifications.filter((item) => item.unread).length;
   const today = new Intl.DateTimeFormat('en-PH', {
     timeZone: 'Asia/Manila',
@@ -161,7 +163,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
       ...mockSessions.map((session) => ({
         id: `session-${session.id}`,
         label: `${session.title} (${session.date})`,
-        tab: 'manage-transactions',
+        tab: 'esig-calendar-sessions',
         keywords: [session.title, session.type, session.location, session.date],
         group: 'Session',
       })),
@@ -185,8 +187,11 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
 
   const searchResults = useMemo(() => {
     if (!searchKeyword.trim()) return [];
-    return searchEntries.filter((entry) => matchesSearchQuery(searchKeyword, [entry.label, ...entry.keywords])).slice(0, 12);
-  }, [searchKeyword, searchEntries]);
+    // Only results that lead to a page the signed-in role can open.
+    return searchEntries
+      .filter((entry) => canOpenPage(role, entry.tab) && matchesSearchQuery(searchKeyword, [entry.label, ...entry.keywords]))
+      .slice(0, 12);
+  }, [searchKeyword, searchEntries, role]);
 
   React.useEffect(() => {
     try {
@@ -558,18 +563,18 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button type="button" className="flex items-center gap-2 rounded-md py-1 pl-1 pr-2 hover:bg-muted" aria-label="Account menu">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">SB</span>
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{initials(user.name)}</span>
               <span className="hidden text-left leading-tight md:block">
-                <span className="block text-[13px] font-semibold">SB Secretariat Admin</span>
-                <span className="block text-[11px] text-text-muted">Administrator</span>
+                <span className="block text-[13px] font-semibold">{user.name}</span>
+                <span className="block text-[11px] text-text-muted">{user.role}</span>
               </span>
               <ChevronDown className="hidden h-4 w-4 text-text-muted md:block" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-60" align="end">
             <DropdownMenuLabel className="font-normal">
-              <p className="text-sm font-semibold">SB Secretariat Admin</p>
-              <p className="text-xs text-text-muted">sb.admin@capas.gov.ph</p>
+              <p className="text-sm font-semibold">{user.name}</p>
+              <p className="text-xs text-text-muted">{user.email}</p>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setDialog('profile')}>
@@ -597,7 +602,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         <DialogContent className="relative max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl text-primary">Help & Support</DialogTitle>
-            <DialogDescription>Quick guide to the Legislative Management System.</DialogDescription>
+            <DialogDescription>Quick guide to the Legislative Information Management System.</DialogDescription>
           </DialogHeader>
           <div className="mt-4 space-y-2">
             {[
@@ -641,17 +646,17 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
       <Dialog open={dialog === 'profile'} onOpenChange={(open) => !open && closeDialog()}>
         <DialogContent className="relative max-w-md">
           <div className="flex items-center gap-4">
-            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-white">SB</span>
+            <span className="flex h-14 w-14 items-center justify-center rounded-full bg-primary text-lg font-bold text-white">{initials(user.name)}</span>
             <div>
-              <DialogTitle className="text-xl text-primary">SB Secretariat Admin</DialogTitle>
-              <DialogDescription>Administrator</DialogDescription>
+              <DialogTitle className="text-xl text-primary">{user.name}</DialogTitle>
+              <DialogDescription>{user.role}</DialogDescription>
             </div>
           </div>
           <dl className="mt-5 divide-y divide-border rounded-lg border border-border text-sm">
             {[
-              ['Email', 'sb.admin@capas.gov.ph'],
-              ['Office', 'Office of the Secretary to the Sanggunian'],
-              ['Access level', 'Full module access'],
+              ['Email', user.email],
+              ['Office', user.office],
+              ['Access level', user.role === ADMIN_ROLE ? 'Full access' : `${role?.pages.length ?? 0} of ${ALL_PAGES.length} pages`],
               ['Last sign-in', today],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-4 px-4 py-2.5">

@@ -1,19 +1,15 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { AlertTriangle, ArrowRight, Bell, CalendarPlus, CheckCircle2, Clock, FileText, Flag, Inbox, Mail, MapPin, Plus, Printer, Send, Trash2, Undo2, Video } from 'lucide-react';
+import { ArrowRight, Bell, CheckCircle2, Clock, FileText, Inbox, Mail, Plus, Send, Trash2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { mockSessions, type Session } from '@/lib/mock-data';
-import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
 import { logActivity } from '@/lib/activity-log';
-import { HOLIDAY_SOURCE_LABEL, holidayTitle, holidayTone, useHolidays } from '@/lib/holidays';
-import { SCOPE_LABEL } from '@/lib/local-holidays';
 
 const STATUS_FLOW = ['In Routing', 'For Committee', 'For Agenda Build', 'Ready to Transmit', 'Completed'] as const;
 type Stage = (typeof STATUS_FLOW)[number];
@@ -77,7 +73,6 @@ export function SessionList() {
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<{ item: string; type: TransactionType; origin: string; status: Stage; days: number }>({ item: '', type: 'Incoming letter', origin: '', status: 'In Routing', days: 7 });
   const [createError, setCreateError] = useState('');
-  const [agendaSession, setAgendaSession] = useState<Session | null>(null);
 
   const dueChip = (entry: Transaction) => {
     if (entry.status === 'Completed') return { label: `Done · ${shortDate(entry.due)}`, tone: 'bg-green-50 text-green-700' };
@@ -174,17 +169,6 @@ export function SessionList() {
     toast('Evaluation notice sent', `${target.applicant} was notified: ${target.evaluation}.`, 'info');
     logActivity({ module: 'Transactions', action: 'Updated', summary: `Sent the evaluation notice for ${refNo}`, detail: `${target.applicant} · ${target.evaluation}` });
   };
-
-  // Mini calendar for the month of the next session.
-  const calendarMonth = (mockSessions[0]?.date ?? today).slice(0, 7);
-  const [calYear, calMonth] = calendarMonth.split('-').map(Number);
-  const firstWeekday = new Date(Date.UTC(calYear, calMonth - 1, 1)).getUTCDay();
-  const daysInMonth = new Date(Date.UTC(calYear, calMonth, 0)).getUTCDate();
-  const sessionsByDay = new Map(mockSessions.filter((session) => session.date.startsWith(calendarMonth)).map((session) => [Number(session.date.slice(8, 10)), session]));
-  const monthLabel = new Date(Date.UTC(calYear, calMonth - 1, 1)).toLocaleDateString('en-PH', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  const { byDate: holidaysByDate, holidays, source: holidaySource } = useHolidays(calYear);
-  const monthHolidays = holidays.filter((holiday) => holiday.date.startsWith(calendarMonth));
-  const sessionTone = (type: Session['type']) => (type === 'Regular' ? 'bg-primary text-white' : type === 'Special' ? 'bg-orange-500 text-white' : 'bg-violet-600 text-white');
 
   return (
     <div className="space-y-6">
@@ -406,159 +390,14 @@ export function SessionList() {
         </section>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-5">
-        {/* Session calendar */}
-        <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm xl:col-span-3">
-          <header className="border-b border-border px-5 py-4">
-            <h2 className="text-base font-semibold text-text-main">Session Calendar</h2>
-            <p className="text-xs text-text-muted">Scheduled sessions and hearings</p>
-          </header>
-          <div className="grid grid-cols-1 gap-5 p-5 md:grid-cols-[250px_1fr]">
-            <div>
-              <div className="mb-2 text-center text-sm font-semibold text-text-main">{monthLabel}</div>
-              <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase text-text-muted">
-                {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-                  <span key={day}>{day}</span>
-                ))}
-              </div>
-              <div className="mt-1 grid grid-cols-7 gap-1">
-                {Array.from({ length: firstWeekday }, (_, i) => (
-                  <span key={`blank-${i}`} />
-                ))}
-                {Array.from({ length: daysInMonth }, (_, i) => {
-                  const day = i + 1;
-                  const session = sessionsByDay.get(day);
-                  const holiday = holidaysByDate.get(`${calendarMonth}-${String(day).padStart(2, '0')}`);
-                  if (!session) {
-                    return (
-                      <span
-                        key={day}
-                        title={holiday ? holidayTitle(holiday) : undefined}
-                        className={cn(
-                          'relative flex aspect-square items-center justify-center rounded-md text-[12px] tabular-nums',
-                          holiday ? holidayTone(holiday).cell : 'text-text-main'
-                        )}
-                      >
-                        {day}
-                        {holiday ? <span className={cn('absolute bottom-1 h-1 w-1 rounded-full', holidayTone(holiday).dot)} aria-hidden /> : null}
-                        {holiday ? <span className="sr-only">, holiday: {holiday.name}</span> : null}
-                      </span>
-                    );
-                  }
-                  return (
-                    <button
-                      key={day}
-                      type="button"
-                      onClick={() => setAgendaSession(session)}
-                      title={holiday ? `${session.title} (falls on ${holiday.name})` : session.title}
-                      className={cn(
-                        'flex aspect-square items-center justify-center rounded-md text-[12px] font-semibold tabular-nums shadow-sm hover:opacity-90',
-                        sessionTone(session.type),
-                        holiday && cn('ring-2 ring-offset-1', holidayTone(holiday).ring)
-                      )}
-                    >
-                      {day}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-3 flex flex-wrap justify-center gap-3 text-[10px] text-text-muted">
-                {(['Regular', 'Committee Hearing', 'Special'] as const).map((type) => (
-                  <span key={type} className="inline-flex items-center gap-1">
-                    <span className={cn('h-2.5 w-2.5 rounded-sm', sessionTone(type))} />
-                    {type}
-                  </span>
-                ))}
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-red-100 ring-1 ring-inset ring-red-300" />
-                  National holiday
-                </span>
-                <span className="inline-flex items-center gap-1">
-                  <span className="h-2.5 w-2.5 rounded-sm bg-amber-100 ring-1 ring-inset ring-amber-300" />
-                  Tarlac / Capas
-                </span>
-              </div>
-              <div className="mt-4 rounded-lg border border-border bg-muted/30 px-3 py-2.5">
-                <p className="flex items-center gap-1.5 text-[11px] font-semibold text-text-main">
-                  <Flag className="h-3.5 w-3.5 text-red-600" />
-                  Holidays this month
-                </p>
-                {monthHolidays.length ? (
-                  <ul className="mt-1.5 space-y-1">
-                    {monthHolidays.map((holiday) => (
-                      <li key={`${holiday.date}-${holiday.name}`} className="flex gap-2 text-[11px]" title={holiday.basis}>
-                        <span className={cn('w-11 shrink-0 font-semibold tabular-nums', holidayTone(holiday).text)}>
-                          {new Date(`${holiday.date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
-                        </span>
-                        <span className="min-w-0 flex-1 text-text-main">{holiday.name}</span>
-                        {holiday.scope !== 'national' ? (
-                          <span className="h-fit shrink-0 rounded bg-amber-50 px-1 text-[9px] font-semibold uppercase text-amber-800">{SCOPE_LABEL[holiday.scope]}</span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-1 text-[11px] text-text-muted">{holidaySource === 'loading' ? 'Loading…' : 'No public holidays.'}</p>
-                )}
-                <p className="mt-2 text-[10px] text-text-muted">{HOLIDAY_SOURCE_LABEL[holidaySource]}, with Tarlac and Capas local holidays</p>
-              </div>
-            </div>
-            <ol className="space-y-3">
-              {mockSessions.map((session) => (
-                <li key={session.id} className="rounded-lg border border-border p-3.5">
-                  <div className="flex items-center gap-2">
-                    <span className={cn('rounded px-1.5 py-px text-[10px] font-semibold', sessionTone(session.type))}>{session.type}</span>
-                    <span className="text-[11px] text-text-muted">{formatLongDate(session.date)}</span>
-                  </div>
-                  <div className="mt-1 text-[13px] font-semibold text-text-main">{session.title}</div>
-                  {holidaysByDate.get(session.date) ? (
-                    <p className="mt-1 flex items-center gap-1 rounded bg-red-50 px-2 py-1 text-[11px] font-medium text-red-700">
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                      Falls on a holiday: {holidaysByDate.get(session.date)!.name}. Consider rescheduling.
-                    </p>
-                  ) : null}
-                  <div className="mt-0.5 flex flex-wrap gap-x-3 text-[11px] text-text-muted">
-                    <span className="inline-flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {session.time}
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3 w-3" />
-                      {session.location}
-                    </span>
-                  </div>
-                  <div className="mt-2.5 flex flex-wrap gap-1.5">
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => setAgendaSession(session)}>
-                      <FileText className="mr-1 h-3.5 w-3.5" />
-                      Agenda
-                    </Button>
-                    <Button variant="outline" size="sm" className="h-7 px-2 text-xs" onClick={() => addSessionToCalendar(session)}>
-                      <CalendarPlus className="mr-1 h-3.5 w-3.5" />
-                      Calendar
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-7 px-2 text-xs"
-                      onClick={() => toast('Stream not live yet', `The live stream opens on ${formatLongDate(session.date)} at ${session.time}.`, 'info')}
-                    >
-                      <Video className="mr-1 h-3.5 w-3.5" />
-                      Stream
-                    </Button>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          </div>
-        </section>
-
+      <div>
         {/* Notification rules */}
-        <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm xl:col-span-2">
+        <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
           <header className="border-b border-border px-5 py-4">
             <h2 className="text-base font-semibold text-text-main">Notification Rules</h2>
             <p className="text-xs text-text-muted">Who is alerted when a document changes status</p>
           </header>
-          <ul className="divide-y divide-border">
+          <ul className="grid divide-y divide-border md:grid-cols-2 md:divide-x md:divide-y-0 xl:grid-cols-4">
             {notificationMatrix.map((rule) => (
               <li key={rule.event} className="px-5 py-3.5">
                 <div className="flex items-center justify-between gap-2">
@@ -635,37 +474,6 @@ export function SessionList() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={agendaSession !== null} onOpenChange={(open) => !open && setAgendaSession(null)}>
-        <DialogContent className="max-w-2xl">
-          {agendaSession ? (
-            <>
-              <DialogHeader>
-                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{agendaSession.type}</p>
-                <DialogTitle className="text-xl text-primary">{agendaSession.title}</DialogTitle>
-                <DialogDescription>
-                  {formatLongDate(agendaSession.date)} · {agendaSession.time} · {agendaSession.location}
-                </DialogDescription>
-              </DialogHeader>
-              <h3 className="mt-5 text-sm font-bold uppercase tracking-wider text-text-muted">Order of Business</h3>
-              <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm">
-                {buildAgenda(agendaSession).map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ol>
-              <div className="mt-6 flex flex-wrap gap-2">
-                <Button variant="outline" onClick={() => printAgenda(agendaSession)}>
-                  <Printer className="mr-2 h-4 w-4" />
-                  Print agenda
-                </Button>
-                <Button variant="outline" onClick={() => addSessionToCalendar(agendaSession)}>
-                  <CalendarPlus className="mr-2 h-4 w-4" />
-                  Add to calendar
-                </Button>
-              </div>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

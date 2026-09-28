@@ -1,6 +1,6 @@
-## SB Capas LMIS
+## Legislative Information Management System (LIMS)
 
-Legislative Management Information System prototype for the Sangguniang Bayan ng Capas, Tarlac.
+Legislative Information Management System (LIMS) prototype.
 React + Vite + TypeScript app (Tailwind CSS).
 
 All records in the app are **sample data** (see `src/lib/mock-data.ts`). Officials are shown by position only.

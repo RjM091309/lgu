@@ -239,7 +239,7 @@ function buildDemoAnswer(question: string, confirmation?: { token: string; appro
   if (confirmation?.token === DEMO_CONFIRM_TOKEN) {
     return {
       progress: ['Processing subscription'],
-      text: 'You are now subscribed to **session notices** of the Sangguniang Bayan. You will be notified before every regular session, special session, and public hearing.\n\n_(This is a demo only; no actual subscription was made.)_',
+      text: 'You are now subscribed to **LIMS session notices**. You will be notified before every regular session, special session, and public hearing.\n\n_(This is a demo only; no actual subscription was made.)_',
       sources: ['Notification service (demo)'],
     };
   }
@@ -251,7 +251,7 @@ function buildDemoAnswer(question: string, confirmation?: { token: string; appro
       sources: [],
       pendingConfirmation: {
         token: DEMO_CONFIRM_TOKEN,
-        message: 'Subscribe you to Sangguniang Bayan session notices?',
+        message: 'Subscribe you to LIMS session notices?',
       },
     };
   }
@@ -262,7 +262,7 @@ function buildDemoAnswer(question: string, confirmation?: { token: string; appro
     );
     return {
       progress: ['Checking the session calendar'],
-      text: `Here are the scheduled sessions and hearings of the Sangguniang Bayan:\n\n${lines.join('\n')}\n\nSessions are open to the public. To speak at a public hearing, please coordinate with the SB Secretariat first.`,
+      text: `Here are the scheduled sessions and hearings:\n\n${lines.join('\n')}\n\nSessions are open to the public. To speak at a public hearing, please coordinate with the SB Secretariat first.`,
       sources: ['Session Calendar'],
     };
   }

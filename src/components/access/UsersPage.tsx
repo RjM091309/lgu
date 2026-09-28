@@ -12,12 +12,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity, useActivityLog } from '@/lib/activity-log';
-import { MODULE_GROUPS, ROLE_TONE, initials, setUsers, useRoles, useUsers, type UserAccount } from '@/lib/access-store';
+import { ADMIN_ROLE, PERMISSION_GROUPS, ROLE_TONE, getCurrentUser, initials, setUsers, useRoles, useUsers, type UserAccount } from '@/lib/access-store';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
 
 // The signed-in account; it can't be deleted or deactivated from here.
-const CURRENT_USER_ID = 'USR-001';
 
 const lastActiveLabel = (timestamp: string, today: string) => {
   const days = Math.round((new Date(`${today}T00:00:00`).getTime() - new Date(`${timestamp.slice(0, 10)}T00:00:00`).getTime()) / 86_400_000);
@@ -75,7 +74,7 @@ export function UsersPage() {
   ];
 
   const toggleStatus = async (user: UserAccount) => {
-    if (user.id === CURRENT_USER_ID) {
+    if (user.id === getCurrentUser().id) {
       toast('Account not updated', 'You cannot deactivate the account you are signed in with.', 'error');
       return;
     }
@@ -104,7 +103,7 @@ export function UsersPage() {
   };
 
   const deleteUser = async (user: UserAccount) => {
-    if (user.id === CURRENT_USER_ID) {
+    if (user.id === getCurrentUser().id) {
       toast('Account not deleted', 'You cannot delete the account you are signed in with.', 'error');
       return;
     }
@@ -194,7 +193,7 @@ export function UsersPage() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">User Accounts</h1>
-          <p className="text-sm text-text-muted">Staff accounts of the Sangguniang Bayan Secretariat and who can sign in.</p>
+          <p className="text-sm text-text-muted">Staff accounts that can sign in to LIMS, and their roles.</p>
         </div>
         <Button
           onClick={() => {
@@ -379,15 +378,17 @@ export function UsersPage() {
                 <div>
                   <h3 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Access through the {profile.role} role</h3>
                   <ul className="mt-2 space-y-2">
-                    {MODULE_GROUPS.map((group) => {
-                      const allowed = roles.find((role) => role.name === profile.role)?.modules.includes(group.name) ?? false;
+                    {PERMISSION_GROUPS.map((group) => {
+                      const role = roles.find((entry) => entry.name === profile.role);
+                      const allowed = group.pages.filter((page) => profile.role === ADMIN_ROLE || (role?.pages.includes(page.id) ?? false));
+                      const status = allowed.length === group.pages.length ? 'Allowed' : allowed.length > 0 ? 'Some pages' : 'No access';
                       return (
-                        <li key={group.name} className={cn('rounded-lg border px-3 py-2', allowed ? 'border-border' : 'border-dashed border-border opacity-60')}>
+                        <li key={group.id} className={cn('rounded-lg border px-3 py-2', allowed.length > 0 ? 'border-border' : 'border-dashed border-border opacity-60')}>
                           <div className="flex items-center justify-between text-[13px]">
                             <span className="font-medium text-text-main">{group.name}</span>
-                            <span className={cn('text-[11px] font-semibold', allowed ? 'text-green-700' : 'text-text-muted')}>{allowed ? 'Allowed' : 'No access'}</span>
+                            <span className={cn('text-[11px] font-semibold', status === 'Allowed' ? 'text-green-700' : status === 'Some pages' ? 'text-amber-700' : 'text-text-muted')}>{status}</span>
                           </div>
-                          {allowed ? <div className="mt-0.5 text-[11px] text-text-muted">{group.pages.join(' · ')}</div> : null}
+                          {allowed.length > 0 ? <div className="mt-0.5 text-[11px] text-text-muted">{allowed.map((page) => page.label).join(' · ')}</div> : null}
                         </li>
                       );
                     })}

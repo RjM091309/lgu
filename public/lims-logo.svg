@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="LIMS">
+  <title>Legislative Information Management System</title>
+  <circle cx="32" cy="32" r="32" fill="#1a237e"/>
+  <circle cx="32" cy="32" r="28.5" fill="none" stroke="#d4a72c" stroke-opacity="0.55" stroke-width="1.5"/>
+  <!-- Legislative hall: pediment, columns, and steps -->
+  <path d="M32 12.5 51 23H13z" fill="#d4a72c"/>
+  <circle cx="32" cy="19.2" r="2" fill="#1a237e"/>
+  <rect x="15" y="24.5" width="34" height="3" rx="0.6" fill="#d4a72c"/>
+  <g fill="#ffffff">
+    <rect x="18.3" y="29" width="4" height="14" rx="0.8"/>
+    <rect x="25.4" y="29" width="4" height="14" rx="0.8"/>
+    <rect x="34.6" y="29" width="4" height="14" rx="0.8"/>
+    <rect x="41.7" y="29" width="4" height="14" rx="0.8"/>
+  </g>
+  <rect x="15" y="44.5" width="34" height="3" rx="0.6" fill="#d4a72c"/>
+  <rect x="12" y="48.8" width="40" height="3" rx="0.6" fill="#d4a72c"/>
+</svg>

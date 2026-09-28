@@ -3,6 +3,7 @@ import {
   Archive,
   BarChart3,
   Calendar,
+  CalendarDays,
   ClipboardCheck,
   ClipboardList,
   FileText,
@@ -55,6 +56,7 @@ export const NAV_GROUPS: NavGroup[] = [
     id: 'esession',
     label: 'E-Session',
     items: [
+      { id: 'esig-calendar-sessions', label: 'Calendar Sessions', icon: CalendarDays, keywords: ['calendar', 'sessions', 'schedule', 'attendance', 'rsvp', 'invite', 'hearing'] },
       { id: 'esig-platform', label: 'Session Platform', icon: MonitorSmartphone, keywords: ['platform', 'e-session', 'devices'] },
       { id: 'esig-electronic-signature', label: 'Electronic Signature', icon: PenLine, keywords: ['electronic signature', 'digital signature', 'esig', 'sign'] },
       { id: 'esig-session-files', label: 'Session Files', icon: FolderOpen, keywords: ['session files', 'attachments', 'minutes', 'recording'] },

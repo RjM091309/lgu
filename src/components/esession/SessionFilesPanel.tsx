@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Check,
   Clock,
+  MapPin,
   Download,
   Eye,
   FileAudio,
@@ -29,12 +30,12 @@ import { confirmAction } from '@/components/ui/confirm';
 import { mockSessions } from '@/lib/mock-data';
 import { downloadUrl, openPrintWindow, printPdfUrl } from '@/lib/files';
 import {
-  ACCEPTED_EXTENSIONS,
   FILE_CATEGORIES,
   MAX_UPLOAD_BYTES,
   addSessionFiles,
   detectKind,
   extensionOf,
+  extensionsFor,
   fileUrl,
   formatBytes,
   removeSessionFile,
@@ -49,8 +50,8 @@ import {
 import { cn } from '@/lib/utils';
 import { TranscriptPanel } from '@/components/esession/TranscriptPanel';
 import { logActivity } from '@/lib/activity-log';
+import { ROLE_TONE, getCurrentUser, initials, useAccess, useRoles, useUsers } from '@/lib/access-store';
 
-const CURRENT_USER = 'SB Secretariat Admin';
 
 const KIND_ICONS: Record<FileKind, typeof FileText> = {
   pdf: FileText,
@@ -71,25 +72,63 @@ const KIND_STYLE: Record<FileKind, string> = {
 // What a complete session folder holds, shown as the session checklist.
 const CHECKLIST_CATEGORIES: FileCategory[] = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording'];
 
-type CategoryFilter = 'all' | 'recordings' | FileCategory;
+type KindFilter = 'all' | FileKind;
 
-const CATEGORY_TABS: { value: CategoryFilter; label: string }[] = [
+// File-type tabs, also the order the "File type" sort uses.
+const KIND_TABS: { value: KindFilter; label: string }[] = [
   { value: 'all', label: 'All' },
-  { value: 'Agenda', label: 'Agenda' },
-  { value: 'Order of Business', label: 'Order of Business' },
-  { value: 'Minutes', label: 'Minutes' },
-  { value: 'recordings', label: 'Recordings' },
-  { value: 'Supporting Document', label: 'Supporting' },
+  { value: 'pdf', label: 'PDF' },
+  { value: 'audio', label: 'Audio' },
+  { value: 'video', label: 'Video' },
+  { value: 'image', label: 'Images' },
+  { value: 'other', label: 'Office docs' },
 ];
+const KIND_ORDER = KIND_TABS.map((tab) => tab.value);
 
-const matchesCategory = (file: SessionFile, filter: CategoryFilter) =>
-  filter === 'all' || (filter === 'recordings' ? file.category === 'Audio Recording' || file.category === 'Video Recording' : file.category === filter);
+const matchesKind = (file: SessionFile, filter: KindFilter) => filter === 'all' || file.kind === filter;
+
+// The upload dialog takes one file type at a time; each type lists only the categories that fit it.
+const DOCUMENT_CATEGORIES = FILE_CATEGORIES.filter((category) => category !== 'Audio Recording' && category !== 'Video Recording');
+const UPLOAD_KINDS: { value: FileKind; label: string; hint: string; one: string; many: string; categories: FileCategory[] }[] = [
+  { value: 'pdf', label: 'PDF', hint: 'Agendas, minutes, ordinances', one: 'a PDF', many: 'PDF files', categories: DOCUMENT_CATEGORIES },
+  { value: 'audio', label: 'Audio', hint: 'Session and hearing audio', one: 'an audio file', many: 'audio files', categories: ['Audio Recording'] },
+  { value: 'video', label: 'Video', hint: 'Session and hearing video', one: 'a video file', many: 'video files', categories: ['Video Recording'] },
+  { value: 'image', label: 'Images', hint: 'Scanned pages, photos', one: 'an image', many: 'images', categories: DOCUMENT_CATEGORIES },
+  { value: 'other', label: 'Office docs', hint: 'Word, Excel, PowerPoint', one: 'an Office document', many: 'Office documents', categories: DOCUMENT_CATEGORIES },
+];
+const uploadKindOf = (kind: FileKind) => UPLOAD_KINDS.find((entry) => entry.value === kind) ?? UPLOAD_KINDS[0];
 
 const sessionTitle = (id: string) => mockSessions.find((session) => session.id === id)?.title ?? 'Unassigned session';
 
 const RECORDING_ACCEPT = 'audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.webm,.mov,.m4v';
 
 const selectClass = 'h-9 rounded-md border border-border bg-white px-2 text-sm text-text-main';
+
+// Files whose session is no longer listed get their own tab instead of mixing into a session.
+const OTHER_TAB = 'other';
+
+type SortKey = 'type' | 'newest' | 'oldest' | 'name';
+const SORT_OPTIONS: { value: SortKey; label: string }[] = [
+  { value: 'type', label: 'File type' },
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'name', label: 'Name A–Z' },
+];
+
+const sortFiles = (list: SessionFile[], sort: SortKey) =>
+  [...list].sort((a, b) => {
+    if (sort === 'name') return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+    if (sort === 'newest') return b.uploadedAt.localeCompare(a.uploadedAt) || a.name.localeCompare(b.name);
+    if (sort === 'oldest') return a.uploadedAt.localeCompare(b.uploadedAt) || a.name.localeCompare(b.name);
+    // File type (PDF, audio, video, images, Office), then the order a session folder is put together.
+    return (
+      KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
+      FILE_CATEGORIES.indexOf(a.category) - FILE_CATEGORIES.indexOf(b.category) ||
+      a.name.localeCompare(b.name)
+    );
+  });
+
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 
 interface PendingUpload {
   key: string;
@@ -100,9 +139,20 @@ interface PendingUpload {
 
 export function SessionFilesPanel() {
   const files = useSessionFiles();
+  const { user: currentUser } = useAccess();
+  const users = useUsers();
+  const roles = useRoles();
+  // Who added a file, with the role they had at the time.
+  const authorOf = (file: SessionFile) => {
+    const role = file.uploadedByRole ?? users.find((entry) => entry.name === file.uploadedBy)?.role;
+    const tone = ROLE_TONE[roles.find((entry) => entry.name === role)?.tone ?? 'slate'];
+    return { name: file.uploadedBy, role, tone };
+  };
   const [keyword, setKeyword] = useState('');
-  const [sessionFilter, setSessionFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  // Each session is its own tab so files from different sessions never share one list.
+  const [activeSession, setActiveSession] = useState(mockSessions[0]?.id ?? OTHER_TAB);
+  const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  const [sort, setSort] = useState<SortKey>('type');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState(false);
   const [mediaTime, setMediaTime] = useState(0);
@@ -110,21 +160,29 @@ export function SessionFilesPanel() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [uploadSession, setUploadSession] = useState(mockSessions[0]?.id ?? '');
+  const [uploadKind, setUploadKind] = useState<FileKind>('pdf');
   const [isDragging, setIsDragging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [attachTarget, setAttachTarget] = useState<SessionFile | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
 
+  const inSession = (file: SessionFile, tab: string) =>
+    tab === OTHER_TAB ? !mockSessions.some((session) => session.id === file.sessionId) : file.sessionId === tab;
+  const sessionFiles = useMemo(() => files.filter((file) => inSession(file, activeSession)), [files, activeSession]);
+  const otherCount = files.filter((file) => inSession(file, OTHER_TAB)).length;
+  const sessionTabs = [
+    ...mockSessions.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}`, count: files.filter((file) => file.sessionId === session.id).length })),
+    ...(otherCount > 0 ? [{ id: OTHER_TAB, title: 'Other files', meta: 'No listed session', count: otherCount }] : []),
+  ];
+
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
-    return files.filter(
-      (file) =>
-        (sessionFilter === 'all' || file.sessionId === sessionFilter) &&
-        matchesCategory(file, categoryFilter) &&
-        (!q || file.name.toLowerCase().includes(q) || file.category.toLowerCase().includes(q) || sessionTitle(file.sessionId).toLowerCase().includes(q))
+    return sortFiles(
+      sessionFiles.filter((file) => matchesKind(file, kindFilter) && (!q || [file.name, file.category, file.uploadedBy].some((value) => value.toLowerCase().includes(q)))),
+      sort
     );
-  }, [files, keyword, sessionFilter, categoryFilter]);
+  }, [sessionFiles, keyword, kindFilter, sort]);
 
   const previewFile = files.find((file) => file.id === previewId) ?? null;
   const previewUrl = previewFile ? fileUrl(previewFile) : null;
@@ -166,12 +224,14 @@ export function SessionFilesPanel() {
   };
 
   // Splits dropped/selected files into accepted uploads and rejections with a reason.
-  const queueFiles = (list: FileList | File[]) => {
+  // `expected` is passed when the file type is picked in the same step, before state updates.
+  const queueFiles = (list: FileList | File[], expected: FileKind = uploadKind) => {
     const rejected: string[] = [];
     const accepted: PendingUpload[] = [];
     Array.from(list).forEach((file) => {
       const kind = detectKind(file);
       if (!kind) rejected.push(`${file.name} (unsupported file type)`);
+      else if (kind !== expected) rejected.push(`${file.name} (not ${uploadKindOf(expected).one})`);
       else if (file.size === 0) rejected.push(`${file.name} (empty file)`);
       else if (file.size > MAX_UPLOAD_BYTES) rejected.push(`${file.name} (over ${formatBytes(MAX_UPLOAD_BYTES)})`);
       else accepted.push({ key: `${file.name}-${file.size}-${file.lastModified}`, file, kind, category: suggestCategory(kind, file.name) });
@@ -181,9 +241,11 @@ export function SessionFilesPanel() {
     return accepted.length;
   };
 
-  const openUpload = (sessionId?: string) => {
+  const openUpload = (sessionId?: string, kind?: FileKind) => {
     setPending([]);
-    setUploadSession(sessionId ?? (sessionFilter !== 'all' ? sessionFilter : mockSessions[0]?.id ?? ''));
+    // Start on the file type the list is showing, so the Audio tab's upload expects audio.
+    setUploadKind(kind ?? (kindFilter !== 'all' ? kindFilter : 'pdf'));
+    setUploadSession(sessionId ?? (activeSession !== OTHER_TAB ? activeSession : mockSessions[0]?.id ?? ''));
     setUploadOpen(true);
   };
 
@@ -192,9 +254,20 @@ export function SessionFilesPanel() {
     setIsDragging(false);
     if (event.dataTransfer.files.length === 0) return;
     setPending([]);
-    setUploadSession(sessionFilter !== 'all' ? sessionFilter : mockSessions[0]?.id ?? '');
-    queueFiles(event.dataTransfer.files);
+    setUploadSession(activeSession !== OTHER_TAB ? activeSession : mockSessions[0]?.id ?? '');
+    // Files dropped on the list take the type of the first supported file.
+    const kind = Array.from(event.dataTransfer.files).map(detectKind).find((entry): entry is FileKind => entry !== null) ?? 'pdf';
+    setUploadKind(kind);
+    queueFiles(event.dataTransfer.files, kind);
     setUploadOpen(true);
+  };
+
+  const changeUploadKind = (kind: FileKind) => {
+    if (kind === uploadKind) return;
+    const removed = pending.filter((item) => item.kind !== kind).length;
+    setUploadKind(kind);
+    setPending((prev) => prev.filter((item) => item.kind === kind));
+    if (removed > 0) toast('Files taken off the list', `${removed} file(s) did not match ${uploadKindOf(kind).label} and were removed from this upload.`, 'info');
   };
 
   const submitUpload = async () => {
@@ -229,7 +302,8 @@ export function SessionFilesPanel() {
         kind: item.kind,
         size: item.file.size,
         uploadedAt: todayInManila(),
-        uploadedBy: CURRENT_USER,
+        uploadedBy: getCurrentUser().name,
+        uploadedByRole: getCurrentUser().role,
         source: 'upload' as const,
         blob: item.file,
       }))
@@ -241,7 +315,8 @@ export function SessionFilesPanel() {
     }
     toast('Files uploaded', `${pending.length} file(s) added to ${sessionTitle(uploadSession)}.`);
     logActivity({ module: 'E-Session', action: 'Uploaded', summary: `Uploaded ${pending.length} file(s) to ${sessionTitle(uploadSession)}`, detail: pending.map((item) => item.file.name).join(', ') });
-    setSessionFilter((current) => (current === 'all' || current === uploadSession ? current : 'all'));
+    // Show the session the files went into.
+    setActiveSession(uploadSession);
     setPending([]);
     setUploadOpen(false);
   };
@@ -284,7 +359,8 @@ export function SessionFilesPanel() {
       blob: selected,
       size: selected.size,
       uploadedAt: todayInManila(),
-      uploadedBy: CURRENT_USER,
+      uploadedBy: getCurrentUser().name,
+      uploadedByRole: getCurrentUser().role,
     });
     if (error) {
       toast('Recording not attached', error, 'error');
@@ -330,12 +406,9 @@ export function SessionFilesPanel() {
     { label: 'Sessions covered', value: `${sessionsCovered}/${mockSessions.length}`, icon: CalendarDays, hint: 'Sessions with at least one file' },
   ];
 
-  const groups = mockSessions
-    .map((session) => ({ session, items: filtered.filter((file) => file.sessionId === session.id) }))
-    .filter((group) => group.items.length > 0);
-  const ungrouped = filtered.filter((file) => !mockSessions.some((session) => session.id === file.sessionId));
+  const currentSession = mockSessions.find((session) => session.id === activeSession);
 
-  const checklistSessionId = sessionFilter !== 'all' ? sessionFilter : mockSessions[0]?.id ?? '';
+  const checklistSessionId = currentSession?.id ?? mockSessions[0]?.id ?? '';
   const checklistSession = mockSessions.find((session) => session.id === checklistSessionId);
   const checklist = CHECKLIST_CATEGORIES.map((category) => {
     const matches = files.filter((file) => file.sessionId === checklistSessionId && file.category === category);
@@ -346,6 +419,7 @@ export function SessionFilesPanel() {
 
   const renderFile = (file: SessionFile) => {
     const Icon = KIND_ICONS[file.kind];
+    const author = authorOf(file);
     const missing = !file.blob && !file.src;
     const canView = file.kind === 'pdf' || file.kind === 'image';
     const canPlay = file.kind === 'audio' || file.kind === 'video';
@@ -362,14 +436,21 @@ export function SessionFilesPanel() {
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
               <span className="rounded-full bg-muted px-2 py-px font-medium text-text-main">{file.category}</span>
               {missing ? <span className="font-semibold text-amber-700">Recording not yet attached</span> : <span>{formatBytes(file.size)}</span>}
-              <span aria-hidden>·</span>
-              <span>
-                {file.uploadedAt} by {file.uploadedBy}
-              </span>
             </p>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 pl-[52px] sm:pl-0">
+        <div className="flex min-w-0 items-center gap-2.5 pl-[52px] sm:w-60 sm:shrink-0 sm:pl-0" title={`Uploaded by ${author.name}${author.role ? ` (${author.role})` : ''} on ${file.uploadedAt}`}>
+          <span className={cn('flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[11px] font-bold', author.tone.avatar)}>{initials(author.name)}</span>
+          <div className="min-w-0 leading-tight">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">Uploaded by</p>
+            <p className="truncate text-[13px] font-semibold text-text-main">{author.name}</p>
+            <p className="truncate text-[11px] text-text-muted">
+              {author.role ?? 'System record'} · {file.uploadedAt}
+            </p>
+          </div>
+        </div>
+        {/* Fixed width so the "Uploaded by" column lines up whatever buttons a row has. */}
+        <div className="flex shrink-0 items-center gap-1 pl-[52px] sm:w-52 sm:justify-end sm:pl-0">
           {missing ? (
             <Button size="sm" className="h-8" onClick={() => startAttach(file)}>
               <Paperclip className="mr-1.5 h-4 w-4" />
@@ -416,7 +497,7 @@ export function SessionFilesPanel() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Session Files</h1>
-          <p className="text-sm text-text-muted">Agendas, minutes, recordings, and supporting documents for each session.</p>
+          <p className="text-sm text-text-muted">Agendas, minutes, audio and video recordings of sessions and hearings, and scanned copies of enacted ordinances.</p>
         </div>
         <Button onClick={() => openUpload()}>
           <Upload className="mr-2 h-4 w-4" />
@@ -451,52 +532,119 @@ export function SessionFilesPanel() {
           }}
           onDrop={handlePanelDrop}
         >
+          <div className="overflow-x-auto border-b border-border bg-muted/40 p-2.5">
+            <div className="flex min-w-max gap-2" role="tablist" aria-label="Sessions">
+              {sessionTabs.map((tab) => {
+                const active = tab.id === activeSession;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => {
+                      setActiveSession(tab.id);
+                      setKindFilter('all');
+                    }}
+                    title={tab.title}
+                    className={cn(
+                      'relative flex w-64 flex-col items-start gap-0.5 overflow-hidden rounded-lg border px-4 py-2.5 text-left transition-all',
+                      active
+                        ? 'border-primary bg-primary text-white shadow-md'
+                        : 'border-border bg-white text-text-main hover:border-primary/40 hover:bg-primary/[0.03]'
+                    )}
+                  >
+                    {/* Gold underline, the same accent the sidebar uses for the open page. */}
+                    {active ? <span className="absolute inset-x-0 bottom-0 h-1 bg-[#d4a72c]" aria-hidden /> : null}
+                    <span className="flex w-full items-center gap-2">
+                      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{tab.title}</span>
+                      <span
+                        className={cn(
+                          'shrink-0 rounded-full px-2 py-px text-[11px] font-bold tabular-nums',
+                          active ? 'bg-white text-primary' : 'bg-muted text-text-muted'
+                        )}
+                      >
+                        {tab.count}
+                      </span>
+                    </span>
+                    <span className={cn('text-[11px]', active ? 'text-white/75' : 'text-text-muted')}>{tab.meta}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <header className="space-y-3 border-b border-border px-5 py-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
               <div className="mr-auto">
-                <h2 className="text-base font-semibold text-text-main">
-                  Files <span className="text-sm font-normal text-text-muted">({filtered.length})</span>
+                <h2 className="truncate text-base font-semibold text-text-main" title={currentSession?.title ?? 'Other files'}>
+                  {currentSession?.title ?? 'Other files'} <span className="text-sm font-normal text-text-muted">({filtered.length})</span>
                 </h2>
-                <p className="hidden text-xs text-text-muted sm:block">Drag files here to upload</p>
+                {currentSession ? (
+                  <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-text-muted">
+                    <span className="inline-flex items-center gap-1">
+                      <CalendarDays className="h-3 w-3" />
+                      {new Date(`${currentSession.date}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })} · {currentSession.time}
+                    </span>
+                    <span className="inline-flex min-w-0 items-center gap-1">
+                      <MapPin className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{currentSession.location}</span>
+                    </span>
+                  </p>
+                ) : (
+                  <p className="mt-0.5 text-xs text-text-muted">Files whose session is no longer listed</p>
+                )}
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <div className="relative sm:w-56">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
-                  <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search files" aria-label="Search session files" className="h-9 pl-8 text-sm" />
-                </div>
-                <select value={sessionFilter} onChange={(e) => setSessionFilter(e.target.value)} className={selectClass} aria-label="Filter by session">
-                  <option value="all">All sessions</option>
-                  {mockSessions.map((session) => (
-                    <option key={session.id} value={session.id}>
-                      {session.title}
-                    </option>
-                  ))}
-                </select>
+              <div className="relative sm:w-56">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
+                <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search this session" aria-label="Search this session's files" className="h-9 pl-8 text-sm" />
               </div>
             </div>
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
             <div className="-mx-1 overflow-x-auto px-1">
-              <div className="inline-flex gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="File category">
-                {CATEGORY_TABS.map((tab) => {
-                  const active = categoryFilter === tab.value;
-                  const count = files.filter((file) => matchesCategory(file, tab.value)).length;
+              <div className="inline-flex gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="File type">
+                {KIND_TABS.map((tab) => {
+                  const active = kindFilter === tab.value;
+                  const count = sessionFiles.filter((file) => matchesKind(file, tab.value)).length;
+                  const TabIcon = tab.value === 'all' ? FolderOpen : KIND_ICONS[tab.value];
                   return (
                     <button
                       key={tab.value}
                       type="button"
                       role="tab"
                       aria-selected={active}
-                      onClick={() => setCategoryFilter(tab.value)}
+                      onClick={() => setKindFilter(tab.value)}
                       className={cn(
                         'inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-semibold transition-colors',
                         active ? 'bg-white text-text-main shadow-sm' : 'text-text-muted hover:text-text-main'
                       )}
                     >
+                      <TabIcon className={cn('h-3.5 w-3.5', active && tab.value !== 'all' ? KIND_STYLE[tab.value].split(' ')[1] : '')} />
                       {tab.label}
                       <span className={cn('rounded-full px-1.5 text-[10px] tabular-nums', active ? 'bg-primary/10 text-primary' : 'bg-white/70')}>{count}</span>
                     </button>
                   );
                 })}
               </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <span className="text-xs font-semibold text-text-muted">Sort</span>
+              <div className="inline-flex rounded-lg border border-border p-0.5" role="group" aria-label="Sort files">
+                {SORT_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setSort(option.value)}
+                    aria-pressed={sort === option.value}
+                    className={cn(
+                      'whitespace-nowrap rounded-md px-2.5 py-1 text-xs font-semibold transition-colors',
+                      sort === option.value ? 'bg-primary text-white' : 'text-text-muted hover:text-text-main'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             </div>
           </header>
 
@@ -505,33 +653,17 @@ export function SessionFilesPanel() {
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-text-muted">
                 <FolderOpen className="h-6 w-6" />
               </span>
-              <p className="text-sm font-semibold text-text-main">No files found</p>
-              <p className="text-xs text-text-muted">Try another search or category, or upload a new file.</p>
+              <p className="text-sm font-semibold text-text-main">{sessionFiles.length === 0 ? 'No files in this session yet' : 'No files found'}</p>
+              <p className="text-xs text-text-muted">{sessionFiles.length === 0 ? 'Upload the agenda, minutes or recordings for this session.' : 'Try another search or file type, or upload a new file.'}</p>
+              {sessionFiles.length === 0 && currentSession ? (
+                <Button size="sm" className="mt-2" onClick={() => openUpload(currentSession.id)}>
+                  <Upload className="mr-1.5 h-4 w-4" />
+                  Upload to this session
+                </Button>
+              ) : null}
             </div>
           ) : (
-            <div>
-              {groups.map(({ session, items }) => {
-                const date = new Date(`${session.date}T00:00:00`);
-                return (
-                  <div key={session.id}>
-                    <div className="flex items-center gap-3 border-b border-border bg-muted/40 px-5 py-2.5">
-                      <span className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-md bg-white text-primary ring-1 ring-border">
-                        <span className="text-[8px] font-bold uppercase leading-none">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
-                        <span className="text-sm font-bold leading-none">{date.getDate()}</span>
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-text-main">{session.title}</p>
-                        <p className="text-[11px] text-text-muted">
-                          {session.type} · {items.length} file{items.length === 1 ? '' : 's'}
-                        </p>
-                      </div>
-                    </div>
-                    <ul className="divide-y divide-border border-b border-border last:border-b-0">{items.map(renderFile)}</ul>
-                  </div>
-                );
-              })}
-              {ungrouped.length > 0 ? <ul className="divide-y divide-border">{ungrouped.map(renderFile)}</ul> : null}
-            </div>
+            <ul className="divide-y divide-border">{filtered.map(renderFile)}</ul>
           )}
 
           <p className="border-t border-border bg-muted/30 px-5 py-2.5 text-[11px] text-text-muted">
@@ -579,14 +711,16 @@ export function SessionFilesPanel() {
                   <p className="text-[11px] text-text-muted">{item.status === 'ready' ? 'On file' : item.status === 'awaiting' ? 'Listed, file not attached' : 'Not yet uploaded'}</p>
                 </div>
                 {item.status === 'missing' ? (
-                  <button type="button" onClick={() => openUpload(checklistSessionId)} className="text-xs font-semibold text-primary hover:underline">
+                  <button
+                    type="button"
+                    onClick={() => openUpload(checklistSessionId, item.category === 'Audio Recording' ? 'audio' : item.category === 'Video Recording' ? 'video' : 'pdf')} className="text-xs font-semibold text-primary hover:underline">
                     Upload
                   </button>
                 ) : null}
               </li>
             ))}
           </ul>
-          <p className="mt-4 text-[11px] text-text-muted">Pick a session in the filter to check its files.</p>
+          <p className="mt-4 text-[11px] text-text-muted">Follows the session tab you have open.</p>
         </aside>
       </div>
     </div>
@@ -606,7 +740,8 @@ export function SessionFilesPanel() {
               <DialogHeader className="space-y-1">
                 <DialogTitle className="truncate text-primary" title={previewFile.name}>{previewFile.name}</DialogTitle>
                 <DialogDescription>
-                  {sessionTitle(previewFile.sessionId)} · {previewFile.category} · {formatBytes(previewFile.size)}
+                  {sessionTitle(previewFile.sessionId)} · {previewFile.category} · {formatBytes(previewFile.size)} · Uploaded by {previewFile.uploadedBy}
+                  {authorOf(previewFile).role ? ` (${authorOf(previewFile).role})` : ''} on {previewFile.uploadedAt}
                 </DialogDescription>
               </DialogHeader>
             </div>
@@ -676,11 +811,11 @@ export function SessionFilesPanel() {
     </Dialog>
 
     <Dialog open={uploadOpen} onOpenChange={setUploadOpen}>
-      <DialogContent closeOnOverlayClick={false} className="flex flex-col gap-0 p-0 sm:max-w-2xl">
+      <DialogContent closeOnOverlayClick={false} className="flex flex-col gap-0 p-0 sm:max-w-3xl">
         <div className="border-b border-border px-6 py-4">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-primary">Upload Session Files</DialogTitle>
-            <DialogDescription>Add agendas, minutes, recordings and supporting documents to a session.</DialogDescription>
+            <DialogDescription>Choose the session and the file type, then add the files.</DialogDescription>
           </DialogHeader>
         </div>
         <div className="space-y-4 px-6 py-5">
@@ -694,6 +829,35 @@ export function SessionFilesPanel() {
               ))}
             </select>
           </label>
+
+          <div>
+            <p className="text-xs font-semibold text-text-muted">File type</p>
+            <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-5" role="radiogroup" aria-label="File type">
+              {UPLOAD_KINDS.map((entry) => {
+                const active = entry.value === uploadKind;
+                const KindIcon = KIND_ICONS[entry.value];
+                return (
+                  <button
+                    key={entry.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => changeUploadKind(entry.value)}
+                    className={cn(
+                      'flex flex-col items-start gap-1 rounded-lg border px-3 py-2.5 text-left transition-colors',
+                      active ? 'border-primary bg-primary text-white shadow-sm' : 'border-border bg-white text-text-main hover:border-primary/40 hover:bg-primary/[0.03]'
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5 text-sm font-semibold">
+                      <KindIcon className="h-4 w-4 shrink-0" />
+                      {entry.label}
+                    </span>
+                    <span className={cn('text-[11px] leading-tight', active ? 'text-white/75' : 'text-text-muted')}>{entry.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <div
             role="button"
@@ -714,14 +878,23 @@ export function SessionFilesPanel() {
             className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed border-border px-4 py-6 text-center hover:border-primary/50 hover:bg-primary/5"
           >
             <Upload className="h-6 w-6 text-primary" />
-            <p className="text-sm font-semibold">Drop files here or click to browse</p>
-            <p className="text-[11px] text-text-muted">PDF, audio, video, images and Office documents · up to {formatBytes(MAX_UPLOAD_BYTES)} each</p>
+            <p className="text-sm font-semibold">
+              Drop {uploadKindOf(uploadKind).many} here or click to browse
+            </p>
+            <p className="text-[11px] text-text-muted">
+              {extensionsFor(uploadKind)
+                .map((ext) => ext.toUpperCase())
+                .join(', ')}{' '}
+              · up to {formatBytes(MAX_UPLOAD_BYTES)} each
+            </p>
           </div>
           <input
             ref={uploadInputRef}
             type="file"
             multiple
-            accept={ACCEPTED_EXTENSIONS}
+            accept={extensionsFor(uploadKind)
+              .map((ext) => `.${ext}`)
+              .join(',')}
             className="hidden"
             onChange={(e) => {
               if (e.target.files) queueFiles(e.target.files);
@@ -740,18 +913,22 @@ export function SessionFilesPanel() {
                       <div className="truncate text-[13px] font-medium" title={item.file.name}>{item.file.name}</div>
                       <div className="text-[11px] text-text-muted">{formatBytes(item.file.size)}</div>
                     </div>
-                    <select
-                      value={item.category}
-                      onChange={(e) =>
-                        setPending((prev) => prev.map((entry) => (entry.key === item.key ? { ...entry, category: e.target.value as FileCategory } : entry)))
-                      }
-                      className={cn(selectClass, 'h-8 text-xs')}
-                      aria-label={`Category for ${item.file.name}`}
-                    >
-                      {FILE_CATEGORIES.map((category) => (
-                        <option key={category}>{category}</option>
-                      ))}
-                    </select>
+                    {uploadKindOf(item.kind).categories.length === 1 ? (
+                      <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-text-main">{item.category}</span>
+                    ) : (
+                      <select
+                        value={item.category}
+                        onChange={(e) =>
+                          setPending((prev) => prev.map((entry) => (entry.key === item.key ? { ...entry, category: e.target.value as FileCategory } : entry)))
+                        }
+                        className={cn(selectClass, 'h-8 text-xs')}
+                        aria-label={`Category for ${item.file.name}`}
+                      >
+                        {uploadKindOf(item.kind).categories.map((category) => (
+                          <option key={category}>{category}</option>
+                        ))}
+                      </select>
+                    )}
                     <button
                       type="button"
                       onClick={() => setPending((prev) => prev.filter((entry) => entry.key !== item.key))}
@@ -769,9 +946,14 @@ export function SessionFilesPanel() {
           )}
         </div>
         <div className="flex items-center justify-between gap-2 rounded-b-lg border-t border-border bg-[#fafafa] px-6 py-3">
-          <span className="text-xs text-text-muted">
-            {pending.length} file(s) · {formatBytes(pending.reduce((sum, item) => sum + item.file.size, 0))}
-          </span>
+          <div className="min-w-0 text-xs text-text-muted">
+            <p>
+              {pending.length} file(s) · {formatBytes(pending.reduce((sum, item) => sum + item.file.size, 0))}
+            </p>
+            <p className="truncate">
+              Uploading as <span className="font-semibold text-text-main">{currentUser.name}</span> · {currentUser.role}
+            </p>
+          </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => setUploadOpen(false)} disabled={isSaving}>
               Cancel

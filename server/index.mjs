@@ -20,5 +20,5 @@ app.use(express.static(distDir));
 app.get('*', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));
 
 app.listen(port, () => {
-  console.log(`SB Capas LMIS running on http://localhost:${port}`);
+  console.log(`LIMS running on http://localhost:${port}`);
 });

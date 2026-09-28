@@ -11,7 +11,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { type Bill, mockBills } from '@/lib/mock-data';
+import { type Bill, mockBills, mockMembers } from '@/lib/mock-data';
 import { Search, Plus, FileDown, FileText, MoreHorizontal, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DataTable } from '@/components/ui/DataTable';
@@ -27,7 +27,7 @@ import { CalendarDatePicker } from '@/components/ui/CalendarDatePicker';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
-import { StatusBadge } from '@/components/ui/status-badge';
+import { LEGISLATIVE_STAGES, StageProgress, StatusBadge, stageProgress } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
 
 type LifecycleStatus = Bill['status'] | 'Disapproved';
@@ -141,6 +141,8 @@ export function LegislativeTrackingList() {
     value: stage,
     label: stage,
   }));
+  // Authors are SB members, listed by position.
+  const authorOptions: SelectOption[] = mockMembers.map((member) => ({ value: member.name, label: `${member.name} · ${member.role}` }));
   const directionOptions: SelectOption[] = [
     { value: 'Incoming', label: 'Incoming' },
     { value: 'Outgoing', label: 'Outgoing' },
@@ -154,6 +156,8 @@ export function LegislativeTrackingList() {
         bill.title.toLowerCase().includes(keyword.toLowerCase()) ||
         bill.number.toLowerCase().includes(keyword.toLowerCase()) ||
         bill.author.toLowerCase().includes(keyword.toLowerCase()) ||
+        (bill.coAuthor ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
+        (bill.committee ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
         bill.route.toLowerCase().includes(keyword.toLowerCase());
       const matchesStatus = statusFilter === 'All' || bill.lifecycleStatus === statusFilter;
       return matchesKeyword && matchesStatus;
@@ -448,7 +452,7 @@ export function LegislativeTrackingList() {
       return;
     }
 
-    const headers = ['Record No', 'Title', 'Direction', 'Route', 'Author', 'Category', 'Stage', 'Tracking Date'];
+    const headers = ['Record No', 'Title', 'Direction', 'Route', 'Author', 'Category', 'Stage', 'Progress', 'Tracking Date'];
     const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
     const rows = filteredRecords.map((bill) =>
       [
@@ -459,6 +463,10 @@ export function LegislativeTrackingList() {
         bill.author,
         bill.category,
         bill.lifecycleStatus,
+        (() => {
+          const step = LEGISLATIVE_STAGES.findIndex((stage) => stage.status === bill.lifecycleStatus);
+          return step < 0 ? '' : `${stageProgress(step)}%`;
+        })(),
         bill.trackingDate,
       ].map((cell) => escapeCsv(String(cell))).join(',')
     );
@@ -548,9 +556,10 @@ export function LegislativeTrackingList() {
                 <TableHead>TITLE</TableHead>
                 <TableHead className="w-[110px]">DIRECTION</TableHead>
                 <TableHead className="w-[160px]">ROUTE</TableHead>
-                <TableHead className="w-[210px]">AUTHOR</TableHead>
+                <TableHead className="w-[240px]">AUTHOR</TableHead>
                 <TableHead className="w-[140px]">CATEGORY</TableHead>
-                <TableHead className="w-[150px]">STAGE</TableHead>
+                <TableHead className="w-[140px]">STAGE</TableHead>
+                <TableHead className="w-[130px]">PROGRESS</TableHead>
                 <TableHead className="w-[72px]">ACTION</TableHead>
               </TableRow>
             </TableHeader>
@@ -572,7 +581,24 @@ export function LegislativeTrackingList() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="line-clamp-2 whitespace-normal leading-snug" title={bill.author}>{bill.author}</div>
+                    <div className="mx-auto flex max-w-[240px] items-center gap-2.5 text-left">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary" aria-hidden>
+                        {mockMembers.find((member) => member.name === bill.author)?.abbr ?? bill.author.slice(0, 2).toUpperCase()}
+                      </span>
+                      <div className="min-w-0 leading-snug">
+                        <div className="font-medium text-text-main">{bill.author}</div>
+                        {bill.coAuthor ? (
+                          <div className="truncate text-[11px] text-text-muted" title={`Co-author: ${bill.coAuthor}`}>
+                            Co-author: {mockMembers.find((member) => member.name === bill.coAuthor)?.abbr ?? bill.coAuthor}
+                          </div>
+                        ) : null}
+                        {bill.committee ? (
+                          <div className="truncate text-[11px] text-text-muted" title={bill.committee}>
+                            {bill.committee.replace('Committee on ', 'Comm. on ')}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Badge
@@ -583,7 +609,10 @@ export function LegislativeTrackingList() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <StatusBadge status={bill.lifecycleStatus} />
+                    <StatusBadge status={bill.lifecycleStatus} showProgress={false} />
+                  </TableCell>
+                  <TableCell>
+                    <StageProgress status={bill.lifecycleStatus} />
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-center">
@@ -605,7 +634,7 @@ export function LegislativeTrackingList() {
               ))}
               {paginatedRecords.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-sm text-text-muted py-8">
+                  <TableCell colSpan={9} className="text-center text-sm text-text-muted py-8">
                     No matching legislative records.
                   </TableCell>
                 </TableRow>
@@ -757,10 +786,11 @@ export function LegislativeTrackingList() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-semibold text-text-muted">Author</label>
-            <Input
-              value={newRecord.author}
-              onChange={(e) => setNewRecord((prev) => ({ ...prev, author: e.target.value }))}
-              placeholder="Author name"
+            <Select
+              options={authorOptions}
+              value={authorOptions.find((opt) => opt.value === newRecord.author) ?? null}
+              onChange={(option) => setNewRecord((prev) => ({ ...prev, author: option?.value ?? '' }))}
+              placeholder="Select the sponsoring SB member"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">

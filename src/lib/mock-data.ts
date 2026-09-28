@@ -5,6 +5,7 @@ export interface Bill {
   title: string;
   number: string;
   status: 'Draft' | 'First Reading' | 'Committee' | 'Second Reading' | 'Third Reading' | 'Passed' | 'Vetoed' | 'Enacted';
+  /** Sponsoring SB member, by position (see mockMembers). */
   author: string;
   dateFiled: string;
   category: string;
@@ -13,6 +14,7 @@ export interface Bill {
   committee?: string;
   subject?: string;
   actionTaken?: string;
+  /** Co-sponsoring SB member, by position. */
   coAuthor?: string;
 }
 
@@ -33,6 +35,8 @@ export interface Session {
   time: string;
   location: string;
   type: 'Regular' | 'Special' | 'Committee Hearing';
+  /** For committee hearings: the committee conducting it (see mockCommittees). */
+  committeeId?: string;
 }
 
 export interface Committee {
@@ -42,10 +46,10 @@ export interface Committee {
 }
 
 export const LGU_PROFILE = {
-  legislature: 'Sangguniang Bayan ng Capas',
+  legislature: 'LIMS',
   municipality: 'Municipality of Capas',
   province: 'Tarlac',
-  systemName: 'SB Capas LMIS',
+  systemName: 'Legislative Information Management System',
   founded: 1712,
   barangayCount: 20,
   address: 'Capas Municipal Hall, Capas, Tarlac 2315',
@@ -95,7 +99,7 @@ export const mockBills: Bill[] = [
     title: 'An Ordinance Regulating the Operation of Tricycles-for-Hire and Prescribing Fare Rates in the Municipality of Capas',
     number: 'Prop. Ord. No. 2026-P-012',
     status: 'Committee',
-    author: 'Committee on Transportation',
+    author: 'Municipal Councilor (3rd)',
     dateFiled: '2026-08-04',
     category: 'Transportation',
     description: 'Sets franchising requirements, route zoning, and a fare matrix for tricycles-for-hire operating within the 20 barangays of Capas.',
@@ -103,14 +107,14 @@ export const mockBills: Bill[] = [
     committee: 'Committee on Transportation',
     subject: 'Tricycle Franchising',
     actionTaken: 'Referred to committee; public hearing scheduled',
-    coAuthor: 'Committee on Peace and Order and Public Safety',
+    coAuthor: 'Municipal Councilor (6th)',
   },
   {
     id: '2',
     title: 'An Ordinance Establishing Safety Standards and Environmental Fees for Mt. Pinatubo Trekking and 4x4 Tour Operations',
     number: 'Prop. Ord. No. 2026-P-015',
     status: 'Second Reading',
-    author: 'Committee on Tourism, Culture and Heritage',
+    author: 'Municipal Councilor (2nd)',
     dateFiled: '2026-07-14',
     category: 'Tourism',
     description: 'Requires accreditation of tour operators and guides, mandatory safety briefings, and an environmental fee for visitors to the Mt. Pinatubo crater trail.',
@@ -118,14 +122,14 @@ export const mockBills: Bill[] = [
     committee: 'Committee on Tourism, Culture and Heritage',
     subject: 'Mt. Pinatubo Tourism',
     actionTaken: 'Approved on second reading',
-    coAuthor: 'Committee on Environment and Natural Resources',
+    coAuthor: 'IPMR Representative',
   },
   {
     id: '3',
     title: 'An Ordinance Declaring the Capas National Shrine Environs as a Heritage Protection Zone',
     number: 'Mun. Ord. No. 2026-005',
     status: 'Enacted',
-    author: 'Committee on Tourism, Culture and Heritage',
+    author: 'Municipal Councilor (2nd)',
     dateFiled: '2026-02-09',
     category: 'Tourism',
     description: 'Regulates signage, vending, and new construction within the buffer zone of the Capas National Shrine to preserve the site of the Bataan Death March memorial.',
@@ -139,7 +143,7 @@ export const mockBills: Bill[] = [
     title: 'An Ordinance Appropriating Supplemental Funds for Barangay Disaster Preparedness Equipment',
     number: 'Mun. Ord. No. 2026-007',
     status: 'Passed',
-    author: 'Committee on Finance, Budget and Appropriations',
+    author: 'Municipal Councilor (1st)',
     dateFiled: '2026-05-18',
     category: 'Finance',
     description: 'Appropriates supplemental funds for rescue equipment and early-warning devices for flood-prone barangays along the O\'Donnell and Bulsa rivers.',
@@ -147,14 +151,14 @@ export const mockBills: Bill[] = [
     committee: 'Committee on Finance, Budget and Appropriations',
     subject: 'Disaster Risk Reduction',
     actionTaken: 'Approved on third reading; transmitted to the Municipal Mayor',
-    coAuthor: 'Committee on Peace and Order and Public Safety',
+    coAuthor: 'ABC President',
   },
   {
     id: '5',
     title: 'An Ordinance Institutionalizing the Capas Municipal Scholarship Program',
     number: 'Mun. Ord. No. 2025-018',
     status: 'Enacted',
-    author: 'Committee on Education',
+    author: 'Municipal Councilor (5th)',
     dateFiled: '2025-09-22',
     category: 'Education',
     description: 'Establishes qualifications, benefits, and a selection board for college scholarships for deserving Capaseño students.',
@@ -162,13 +166,14 @@ export const mockBills: Bill[] = [
     committee: 'Committee on Education',
     subject: 'Scholarship',
     actionTaken: 'Enacted; published and posted',
+    coAuthor: 'SK Federation President',
   },
   {
     id: '6',
     title: 'An Ordinance Revising the Rental Rates of Stalls at the Capas Public Market',
     number: 'Prop. Ord. No. 2026-P-018',
     status: 'First Reading',
-    author: 'Committee on Finance, Budget and Appropriations',
+    author: 'Municipal Councilor (1st)',
     dateFiled: '2026-09-01',
     category: 'Finance',
     description: 'Updates monthly stall rental rates and payment terms for the Capas Public Market following the market redevelopment.',
@@ -182,7 +187,7 @@ export const mockBills: Bill[] = [
     title: 'An Ordinance Strengthening the Anti-Littering and Solid Waste Segregation Program',
     number: 'Prop. Ord. No. 2026-P-020',
     status: 'Draft',
-    author: 'Committee on Environment and Natural Resources',
+    author: 'Municipal Councilor (4th)',
     dateFiled: '2026-09-15',
     category: 'Environment',
     description: 'Amends penalties for littering and requires segregation at source for households and establishments, in line with RA 9003.',
@@ -196,7 +201,7 @@ export const mockBills: Bill[] = [
     title: 'Resolution Endorsing the Proposed Access Road Linking Barangay Sta. Lucia to New Clark City',
     number: 'SB Res. No. 2026-041',
     status: 'Passed',
-    author: 'Committee on Public Works and Infrastructure',
+    author: 'Municipal Councilor (7th)',
     dateFiled: '2026-06-02',
     category: 'Public Works',
     description: 'Endorses to the national government the construction of an access road to improve mobility between Capas barangays and New Clark City.',
@@ -204,13 +209,14 @@ export const mockBills: Bill[] = [
     committee: 'Committee on Public Works and Infrastructure',
     subject: 'Road Infrastructure',
     actionTaken: 'Adopted; copies furnished to concerned agencies',
+    coAuthor: 'ABC President',
   },
   {
     id: '9',
     title: 'Resolution Requesting the Provincial Agriculture Office to Extend Seed and Fertilizer Assistance to Capas Farmers',
     number: 'SB Res. No. 2026-038',
     status: 'Passed',
-    author: 'Committee on Agriculture',
+    author: 'Municipal Councilor (8th)',
     dateFiled: '2026-05-25',
     category: 'Agriculture',
     description: 'Requests additional seed and fertilizer support for rice and vegetable farmers affected by the dry season.',
@@ -224,7 +230,7 @@ export const mockBills: Bill[] = [
     title: 'Resolution Authorizing the Municipal Mayor to Enter into a Memorandum of Agreement for Rural Health Unit Laboratory Services',
     number: 'SB Res. No. 2026-044',
     status: 'Third Reading',
-    author: 'Committee on Health and Social Welfare',
+    author: 'Municipal Councilor (6th)',
     dateFiled: '2026-08-11',
     category: 'Health',
     description: 'Grants authority to enter into an agreement with an accredited laboratory to expand diagnostic services at the Rural Health Unit.',
@@ -300,6 +306,7 @@ export const mockSessions: Session[] = [
     time: '02:00 PM',
     location: LGU_PROFILE.sessionHall,
     type: 'Committee Hearing',
+    committeeId: 'c9',
   },
   {
     id: 's3',
@@ -392,6 +399,6 @@ export const mockCommitteeAssignments: Record<string, { chair: string; viceChair
 /* Special legislative files kept by the Secretariat. */
 export const mockSpecialFiles = [
   { id: 'sf1', title: 'Executive Legislative Agenda', detail: 'Priority legislation per session cycle, 2025–2028', count: 14, unit: 'documents', updated: '2026-09-18', custodian: 'SB Secretariat' },
-  { id: 'sf2', title: 'Programs and Projects File', detail: 'Programs and projects of the Sangguniang Bayan', count: 32, unit: 'documents', updated: '2026-09-10', custodian: 'Office of the SB Secretary' },
+  { id: 'sf2', title: 'Programs and Projects File', detail: 'Programs and projects recorded in LIMS', count: 32, unit: 'documents', updated: '2026-09-10', custodian: 'Office of the SB Secretary' },
   { id: 'sf3', title: 'Subject Matter Index', detail: 'Subject listing and codification references', count: 486, unit: 'entries', updated: '2026-08-29', custodian: 'Records Section' },
 ];

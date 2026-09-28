@@ -57,7 +57,7 @@ export const addSessionToCalendar = (session: Session) => {
   const ics = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
-    'PRODID:-//Sangguniang Bayan ng Capas//LMIS//EN',
+    'PRODID:-//LIMS//Session Calendar//EN',
     'BEGIN:VEVENT',
     `UID:${session.id}@capas.gov.ph`,
     `DTSTART;TZID=Asia/Manila:${start}`,

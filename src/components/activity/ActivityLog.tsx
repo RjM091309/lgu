@@ -23,6 +23,7 @@ import { Select, type SelectOption } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 import { ACTIVITY_ACTIONS, ACTIVITY_MODULES, logActivity, useActivityLog, type ActivityAction } from '@/lib/activity-log';
+import { ADMIN_ROLE, useAccess } from '@/lib/access-store';
 import { saveCsv } from '@/lib/files';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
@@ -71,7 +72,11 @@ const dayLabel = (timestamp: string, today: string) => {
 const allOption = (label: string): SelectOption => ({ value: 'All', label });
 
 export function ActivityLog() {
-  const entries = useActivityLog();
+  const { user } = useAccess();
+  const allEntries = useActivityLog();
+  // Administrators see everyone's actions; other roles see only their own.
+  const isAdmin = user.role === ADMIN_ROLE;
+  const entries = useMemo(() => (isAdmin ? allEntries : allEntries.filter((entry) => entry.user === user.username)), [allEntries, isAdmin, user.username]);
   const today = todayInManila();
   const [keyword, setKeyword] = useState('');
   const [userFilter, setUserFilter] = useState('All');
@@ -157,7 +162,7 @@ export function ActivityLog() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Activity Log</h1>
-          <p className="text-sm text-text-muted">Every action taken by users across the system, newest first.</p>
+          <p className="text-sm text-text-muted">{isAdmin ? 'Every action taken by users across the system, newest first.' : 'Your actions in the system, newest first.'}</p>
         </div>
         <Button variant="outline" onClick={exportLog}>
           <Download className="mr-2 h-4 w-4" />

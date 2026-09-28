@@ -27,7 +27,7 @@ export const mockSystemRequirements: RequirementGroup[] = [
         heading: "Special Files and Master Listings",
         details: [
           "Executive Legislative Agenda file per session cycle.",
-          "Programs and project file of the Sangguniang Bayan.",
+          "Programs and project file.",
           "Master list of committees, committee members, and Sanggunian members.",
           "Subject matter listing and codification references.",
         ],

@@ -70,7 +70,62 @@ function AnswerText({ text }: { text: string }) {
   );
 }
 
-export function EgovAiChat() {
+// Fixed labels of the chat window in the portal's language; the assistant's answers are not translated here.
+const LABELS = {
+  EN: {
+    open: 'Open the Ask LIMS chat assistant',
+    title: 'Ask LIMS',
+    online: 'AI Assistant · Online',
+    dialog: 'Ask LIMS chat assistant',
+    assistant: 'AI Assistant',
+    newChatAria: 'Start a new conversation',
+    newChat: 'New conversation',
+    close: 'Close chat',
+    greetingStart: "Good day! I'm the",
+    greetingEnd: ' assistant. Ask me about ordinances, resolutions, and session schedules.',
+    thinking: 'Thinking…',
+    retry: 'Try again',
+    basedOn: 'Based on:',
+    approved: 'Approved',
+    cancelled: 'Cancelled',
+    yes: 'Yes, continue',
+    no: 'No',
+    question: 'Your question',
+    answerFirst: 'Please answer the question above first…',
+    ask: 'Ask about ordinances, sessions…',
+    stop: 'Stop response',
+    send: 'Send',
+    disclaimer: 'Answers are AI-generated and may contain errors. Please verify with the SB Secretariat.',
+  },
+  FIL: {
+    open: 'Buksan ang chat assistant na Magtanong sa LIMS',
+    title: 'Magtanong sa LIMS',
+    online: 'AI na Katulong · Online',
+    dialog: 'Chat assistant na Magtanong sa LIMS',
+    assistant: 'AI na Katulong',
+    newChatAria: 'Magsimula ng bagong usapan',
+    newChat: 'Bagong usapan',
+    close: 'Isara ang chat',
+    greetingStart: 'Magandang araw! Ako ang katulong ng',
+    greetingEnd: '. Magtanong tungkol sa mga ordinansa, resolusyon, at iskedyul ng mga sesyon.',
+    thinking: 'Nag-iisip…',
+    retry: 'Subukang muli',
+    basedOn: 'Batay sa:',
+    approved: 'Inaprubahan',
+    cancelled: 'Kinansela',
+    yes: 'Oo, magpatuloy',
+    no: 'Hindi',
+    question: 'Ang iyong tanong',
+    answerFirst: 'Pakisagot muna ang tanong sa itaas…',
+    ask: 'Magtanong tungkol sa ordinansa, sesyon…',
+    stop: 'Ihinto ang sagot',
+    send: 'Ipadala',
+    disclaimer: 'Gawa ng AI ang mga sagot at maaaring may mali. Pakikumpirma sa SB Secretariat.',
+  },
+} as const;
+
+export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
+  const L = LABELS[lang];
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<EgovAiMode | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -198,14 +253,14 @@ export function EgovAiChat() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
             className="group fixed bottom-5 right-4 z-40 flex items-center gap-3 rounded-full focus-visible:outline-none sm:right-6"
-            aria-label="Open the Ask the Sanggunian chat assistant"
+            aria-label={L.open}
           >
             <span className="relative hidden overflow-hidden rounded-2xl border border-[#18237f]/10 bg-white py-2 pl-4 pr-4 text-left shadow-[0_10px_30px_-10px_rgba(10,15,61,0.45)] transition-transform duration-200 group-hover:-translate-x-1 group-focus-visible:ring-2 group-focus-visible:ring-primary/40 sm:block">
               <span className="absolute inset-y-2 left-0 w-1 rounded-r bg-gradient-to-b from-[#e8c766] to-[#d4a72c]" aria-hidden />
-              <span className="block text-sm font-bold leading-tight text-[#18237f]">Ask the Sanggunian</span>
+              <span className="block text-sm font-bold leading-tight text-[#18237f]">{L.title}</span>
               <span className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-text-muted">
                 <span className="h-1.5 w-1.5 rounded-full bg-[#22c55e]" aria-hidden />
-                AI Assistant · Online
+                {L.online}
               </span>
             </span>
             <span className="relative rounded-full shadow-[0_10px_28px_-6px_rgba(24,35,127,0.6)] ring-2 ring-white transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:scale-105 group-focus-visible:ring-4 group-focus-visible:ring-primary/30">
@@ -219,7 +274,7 @@ export function EgovAiChat() {
         {open && (
           <motion.section
             role="dialog"
-            aria-label="Ask the Sanggunian chat assistant"
+            aria-label={L.dialog}
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
@@ -232,13 +287,10 @@ export function EgovAiChat() {
               <BotAvatar size="md" online />
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-base font-semibold leading-tight">Ask the Sanggunian</h2>
-                  {mode === 'demo' && (
-                    <span className="rounded-full bg-[#f9a825] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#3e2c00]">Demo</span>
-                  )}
+                  <h2 className="text-base font-semibold leading-tight">{L.title}</h2>
                 </div>
                 <p className="mt-0.5 text-xs text-white/75">
-                  AI Assistant · <span className="text-[#e8c766]">Powered by DICT eGovAI</span>
+                  {L.assistant}
                 </p>
               </div>
               <button
@@ -246,8 +298,8 @@ export function EgovAiChat() {
                 onClick={reset}
                 disabled={!messages.length}
                 className="rounded-md p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white disabled:opacity-40"
-                aria-label="Start a new conversation"
-                title="New conversation"
+                aria-label={L.newChatAria}
+                title={L.newChat}
               >
                 <RotateCcw className="h-4 w-4" />
               </button>
@@ -255,7 +307,7 @@ export function EgovAiChat() {
                 type="button"
                 onClick={close}
                 className="rounded-md p-1.5 text-white/80 transition hover:bg-white/15 hover:text-white"
-                aria-label="Close chat"
+                aria-label={L.close}
               >
                 <X className="h-5 w-5" />
               </button>
@@ -264,14 +316,9 @@ export function EgovAiChat() {
             <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto bg-background px-4 py-4" aria-live="polite">
               <div className="rounded-xl border border-border bg-surface p-3.5 text-sm leading-6 text-text-main">
                 <p>
-                  Good day! I'm the assistant of the <strong>Sangguniang Bayan ng Capas</strong>. Ask me about ordinances,
-                  resolutions, and session schedules.
+                  {L.greetingStart} <strong>LIMS</strong>
+                  {L.greetingEnd}
                 </p>
-                {mode === 'demo' && (
-                  <p className="mt-2 text-xs text-text-muted">
-                    Demo mode: answers are based on sample records while the LGU's eGovAI access is pending.
-                  </p>
-                )}
               </div>
 
               {!messages.length && (
@@ -303,7 +350,7 @@ export function EgovAiChat() {
                       {message.status === 'streaming' && !message.content && (
                         <p className="flex items-center gap-2 text-xs text-text-muted">
                           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          {message.progress ?? 'Thinking…'}
+                          {message.progress ?? L.thinking}
                         </p>
                       )}
 
@@ -327,13 +374,13 @@ export function EgovAiChat() {
                           className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline disabled:opacity-50"
                         >
                           <RotateCcw className="h-3.5 w-3.5" />
-                          Try again
+                          {L.retry}
                         </button>
                       )}
 
                       {message.sources && message.sources.length > 0 && (
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="text-[11px] text-text-muted">Based on:</span>
+                          <span className="text-[11px] text-text-muted">{L.basedOn}</span>
                           {message.sources.map((source) => (
                             <span
                               key={source}
@@ -355,7 +402,7 @@ export function EgovAiChat() {
                           {message.pending.resolution ? (
                             <p className="mt-2 flex items-center gap-1.5 text-xs text-text-muted">
                               {message.pending.resolution === 'approved' ? <Check className="h-3.5 w-3.5 text-success" /> : <X className="h-3.5 w-3.5" />}
-                              {message.pending.resolution === 'approved' ? 'Approved' : 'Cancelled'}
+                              {message.pending.resolution === 'approved' ? L.approved : L.cancelled}
                             </p>
                           ) : (
                             <div className="mt-2.5 flex gap-2">
@@ -364,14 +411,14 @@ export function EgovAiChat() {
                                 onClick={() => resolveConfirmation(message, true)}
                                 className="rounded-md bg-primary px-3.5 py-1.5 text-xs font-semibold text-white hover:opacity-90"
                               >
-                                Yes, continue
+                                {L.yes}
                               </button>
                               <button
                                 type="button"
                                 onClick={() => resolveConfirmation(message, false)}
                                 className="rounded-md border border-border bg-surface px-3.5 py-1.5 text-xs font-semibold text-text-main hover:bg-muted"
                               >
-                                No
+                                {L.no}
                               </button>
                             </div>
                           )}
@@ -386,7 +433,7 @@ export function EgovAiChat() {
             <form onSubmit={onSubmit} className="border-t border-border bg-surface px-3 pb-2 pt-3">
               <div className="flex items-end gap-2">
                 <label htmlFor="egovai-question" className="sr-only">
-                  Your question
+                  {L.question}
                 </label>
                 <textarea
                   id="egovai-question"
@@ -396,7 +443,7 @@ export function EgovAiChat() {
                   onKeyDown={onInputKeyDown}
                   rows={1}
                   maxLength={MAX_QUESTION_LENGTH}
-                  placeholder={awaitingConfirmation ? 'Please answer the question above first…' : 'Ask about ordinances, sessions…'}
+                  placeholder={awaitingConfirmation ? L.answerFirst : L.ask}
                   disabled={awaitingConfirmation}
                   className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-input bg-background px-3 py-2 text-sm leading-6 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15 disabled:opacity-60"
                 />
@@ -405,7 +452,7 @@ export function EgovAiChat() {
                     type="button"
                     onClick={() => abortRef.current?.abort()}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border text-text-main transition hover:bg-muted"
-                    aria-label="Stop response"
+                    aria-label={L.stop}
                   >
                     <Square className="h-4 w-4 fill-current" />
                   </button>
@@ -414,14 +461,14 @@ export function EgovAiChat() {
                     type="submit"
                     disabled={!input.trim() || awaitingConfirmation}
                     className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition hover:opacity-90 disabled:opacity-40"
-                    aria-label="Send"
+                    aria-label={L.send}
                   >
                     <Send className="h-4 w-4" />
                   </button>
                 )}
               </div>
               <p className="mt-1.5 text-center text-[10.5px] leading-4 text-text-muted">
-                Answers are AI-generated and may contain errors. Please verify with the SB Secretariat.
+                {L.disclaimer}
               </p>
             </form>
           </motion.section>

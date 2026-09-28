@@ -89,7 +89,7 @@ export const openPrintWindow = (title: string, bodyHtml: string): boolean => {
       </head>
       <body>
         <div class="head">
-          <img src="${window.location.origin}/capas-logo.jpg" alt="" />
+          <img src="${window.location.origin}/lims-logo.svg" alt="" />
           <div class="rp">Republic of the Philippines · Province of Tarlac</div>
           <div class="sb">${LGU_PROFILE.legislature.toUpperCase()}</div>
         </div>

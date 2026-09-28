@@ -6,7 +6,8 @@ import { Select, type SelectOption } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/DataTable';
 import { LGU_PROFILE, mockBills, mockCommittees, mockMembers, mockSessions } from '@/lib/mock-data';
 import { openPrintWindow, saveFile } from '@/lib/files';
-import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
+import { addSessionToCalendar, buildAgenda, printAgenda } from '@/lib/sessions';
+import { type Lang, localeOf, makeTranslator, translateAgendaItem } from '@/components/public/landing-i18n';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -53,6 +54,7 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
+import { findLoginAccount } from '@/lib/access-store';
 import { EgovAiChat } from '@/components/public/EgovAiChat';
 
 // Demo sign-in.
@@ -61,10 +63,8 @@ const DEMO_PASSWORD = 'admin123';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface LandingPageProps {
-  onLogin: (remember: boolean) => void;
+  onLogin: (remember: boolean, userId: string) => void;
 }
-
-type Lang = 'EN' | 'FIL';
 
 const COPY = {
   EN: {
@@ -82,13 +82,13 @@ const COPY = {
     heroKicker: 'Official Legislative Portal',
     heroTitle: 'Transparent and Accessible Local Legislation',
     heroText:
-      'Search ordinances and resolutions, follow session schedules, and request legislative documents from the Sangguniang Bayan ng Capas.',
+      'Search ordinances and resolutions, follow session schedules, and request legislative documents through LIMS.',
     searchPlaceholder: 'Search ordinances, resolutions, or record numbers',
     search: 'Search',
     services: 'Public Services',
     overview: 'Legislative Records at a Glance',
     legislation: 'Legislation',
-    sb: 'The Sangguniang Bayan',
+    sb: 'Members and Committees',
     sessions: 'Sessions and Hearings',
     resources: 'Resources and Forms',
     news: 'News and Announcements',
@@ -108,13 +108,13 @@ const COPY = {
     heroKicker: 'Opisyal na Portal ng Lehislasyon',
     heroTitle: 'Bukas at Abot-kayang Lokal na Lehislasyon',
     heroText:
-      'Maghanap ng mga ordinansa at resolusyon, subaybayan ang iskedyul ng mga sesyon, at humiling ng mga dokumento mula sa Sangguniang Bayan ng Capas.',
+      'Maghanap ng mga ordinansa at resolusyon, subaybayan ang iskedyul ng mga sesyon, at humiling ng mga dokumento sa pamamagitan ng LIMS.',
     searchPlaceholder: 'Maghanap ng ordinansa, resolusyon, o numero ng rekord',
     search: 'Hanapin',
     services: 'Mga Serbisyong Pampubliko',
     overview: 'Buod ng mga Rekord',
     legislation: 'Lehislasyon',
-    sb: 'Ang Sangguniang Bayan',
+    sb: 'Mga Kasapi at Komite',
     sessions: 'Mga Sesyon at Pagdinig',
     resources: 'Mga Dokumento at Porma',
     news: 'Balita at Anunsyo',
@@ -166,11 +166,11 @@ const NEWS: NewsItem[] = [
   {
     id: 'news-lla',
     category: 'Recognition',
-    title: 'SB Capas Named Regional Winner, Local Legislative Award',
+    title: 'Regional Winner, Local Legislative Award',
     date: '2022–2025 Term',
-    summary: 'The Sangguniang Bayan ng Capas was recognized as Regional Winner of the Local Legislative Award for the 2022–2025 term.',
+    summary: 'The municipal legislative council was recognized as Regional Winner of the Local Legislative Award for the 2022–2025 term.',
     body: [
-      'The Sangguniang Bayan ng Capas was recognized as Regional Winner of the Local Legislative Award for the 2022–2025 term.',
+      'The municipal legislative council was recognized as Regional Winner of the Local Legislative Award for the 2022–2025 term.',
       'The award recognizes local legislative bodies for the quality of their legislation, the efficiency of their procedures, and their engagement with constituents.',
     ],
     icon: Award,
@@ -206,11 +206,17 @@ const NEWS: NewsItem[] = [
 export function LandingPage({ onLogin }: LandingPageProps) {
   const [lang, setLang] = useState<Lang>('EN');
   const t = COPY[lang];
+  const tr = useMemo(() => makeTranslator(lang), [lang]);
+  const locale = localeOf(lang);
+  const longDate = (iso: string) =>
+    new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
   const [now, setNow] = useState(() => new Date());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
   const [activeSection, setActiveSection] = useState<string>('home');
   const [heroKeyword, setHeroKeyword] = useState('');
+  const [heroOpen, setHeroOpen] = useState(false);
+  const [heroActive, setHeroActive] = useState(-1);
 
   const [loginOpen, setLoginOpen] = useState(false);
   const [username, setUsername] = useState('');
@@ -277,7 +283,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     return () => observer.disconnect();
   }, []);
 
-  const philippineTime = new Intl.DateTimeFormat('en-PH', {
+  const philippineTime = new Intl.DateTimeFormat(locale, {
     timeZone: 'Asia/Manila',
     weekday: 'long',
     year: 'numeric',
@@ -311,39 +317,48 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     setLoginError('');
     if (!username.trim() || !password) {
       setLoginError('Please enter your username and password.');
-      toast('Sign-in failed', 'Please enter your username and password.', 'error');
+      toast(tr('Sign-in failed'), tr('Please enter your username and password.'), 'error');
       return;
     }
-    if (username.trim() === 'admin' && password === DEMO_PASSWORD) {
-      toast('Signed in', 'Welcome to the SB Capas Legislative Management System.');
-      onLogin(rememberMe);
+    // Every sample account shares the demo password; each signs in with its own role.
+    const account = password === DEMO_PASSWORD ? findLoginAccount(username) : null;
+    if (account && account.status === 'Inactive') {
+      setLoginError('This account is deactivated. Contact the SB Secretariat administrator.');
+      toast(tr('Sign-in failed'), tr('This account is deactivated.'), 'error');
+      return;
+    }
+    if (account) {
+      toast(tr('Signed in'), tr('Welcome, {name}. You are signed in as {role}.', { name: account.name, role: account.role }));
+      onLogin(rememberMe, account.id);
       return;
     }
     setLoginError('Invalid username or password. Please try again.');
-    toast('Sign-in failed', 'Invalid username or password. Please try again.', 'error');
+    toast(tr('Sign-in failed'), tr('Invalid username or password. Please try again.'), 'error');
   };
 
   const handlePublicRegistration = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!publicName.trim() || !publicEmail.trim()) {
       setRegistrationNotice('Please provide your full name and email address.');
-      toast('Registration not saved', 'Please provide your full name and email address.', 'error');
+      toast(tr('Registration not saved'), tr('Please provide your full name and email address.'), 'error');
       return;
     }
     if (!EMAIL_PATTERN.test(publicEmail.trim())) {
       setRegistrationNotice('Please enter a valid email address.');
-      toast('Registration not saved', `${publicEmail.trim()} is not a valid email address.`, 'error');
+      toast(tr('Registration not saved'), tr('{email} is not a valid email address.', { email: publicEmail.trim() }), 'error');
       return;
     }
     const confirmed = await confirmAction({
-      title: 'Submit your registration?',
-      description: notifyUpdates
-        ? `${publicName.trim()} will be registered with ${publicEmail.trim()} and subscribed to legislative updates.`
-        : `${publicName.trim()} will be registered with ${publicEmail.trim()}.`,
-      confirmLabel: 'Register',
+      title: tr('Submit your registration?'),
+      description: tr(
+        notifyUpdates ? '{name} will be registered with {email} and subscribed to legislative updates.' : '{name} will be registered with {email}.',
+        { name: publicName.trim(), email: publicEmail.trim() }
+      ),
+      confirmLabel: tr('Register'),
+      cancelLabel: tr('Cancel'),
     });
     if (!confirmed) return;
-    toast('Registration saved', notifyUpdates ? 'You are now subscribed to legislative updates.' : 'You may enable updates anytime.');
+    toast(tr('Registration saved'), tr(notifyUpdates ? 'You are now subscribed to legislative updates.' : 'You may enable updates anytime.'));
     logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Registered on the public portal', detail: notifyUpdates ? 'Subscribed to legislative updates.' : undefined });
     setRegistrationNotice(
       notifyUpdates
@@ -359,16 +374,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     e.preventDefault();
     const key = accreditationQuery.trim().toUpperCase();
     if (!key) {
-      setAccreditationResult('Please enter a reference number.');
-      toast('Lookup failed', 'Please enter a reference number.', 'error');
+      setAccreditationResult(tr('Please enter a reference number.'));
+      toast(tr('Lookup failed'), tr('Please enter a reference number.'), 'error');
       return;
     }
     if (ACCREDITATION_STATUS[key]) {
-      setAccreditationResult(`${key}: ${ACCREDITATION_STATUS[key]}`);
-      toast('Accreditation found', `${key}: ${ACCREDITATION_STATUS[key]}`);
+      setAccreditationResult(`${key}: ${tr(ACCREDITATION_STATUS[key])}`);
+      toast(tr('Accreditation found'), `${key}: ${tr(ACCREDITATION_STATUS[key])}`);
     } else {
-      setAccreditationResult(`No accreditation request found for ${key}.`);
-      toast('Accreditation not found', `No accreditation request found for ${key}.`, 'error');
+      setAccreditationResult(tr('No accreditation request found for {key}.', { key }));
+      toast(tr('Accreditation not found'), tr('No accreditation request found for {key}.', { key }), 'error');
     }
   };
 
@@ -376,24 +391,25 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     e.preventDefault();
     if (!requestName.trim() || !requestEmail.trim() || !requestRecord.trim()) {
       setRequestError('Please complete your name, email address, and the document requested.');
-      toast('Request not submitted', 'Please complete your name, email address, and the document requested.', 'error');
+      toast(tr('Request not submitted'), tr('Please complete your name, email address, and the document requested.'), 'error');
       return;
     }
     if (!EMAIL_PATTERN.test(requestEmail.trim())) {
       setRequestError('Please enter a valid email address.');
-      toast('Request not submitted', `${requestEmail.trim()} is not a valid email address.`, 'error');
+      toast(tr('Request not submitted'), tr('{email} is not a valid email address.', { email: requestEmail.trim() }), 'error');
       return;
     }
     const confirmed = await confirmAction({
-      title: 'Submit this document request?',
-      description: `A request for "${requestRecord.trim()}" will be sent to the SB Secretariat. Updates will go to ${requestEmail.trim()}.`,
-      confirmLabel: 'Submit request',
+      title: tr('Submit this document request?'),
+      description: tr('A request for "{record}" will be sent to the SB Secretariat. Updates will go to {email}.', { record: requestRecord.trim(), email: requestEmail.trim() }),
+      confirmLabel: tr('Submit request'),
+      cancelLabel: tr('Cancel'),
     });
     if (!confirmed) return;
     const reference = `REQ-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
     setRequestError('');
     setRequestReference(reference);
-    toast('Request submitted', `Your reference number is ${reference}.`);
+    toast(tr('Request submitted'), tr('Your reference number is {reference}.', { reference }));
     logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Submitted a certified copy request', detail: `Reference number ${reference}.` });
   };
 
@@ -616,6 +632,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const coAuthorOptions = useMemo(() => asOptions(uniqueValues((r) => r.coAuthor)), []);
 
   const pickOption = (options: SelectOption[], value: string) => options.find((o) => o.value === value) ?? null;
+  // Filter values stay in English; only the labels follow the page language.
+  const loc = (options: SelectOption[]) => options.map((option) => ({ value: option.value, label: tr(option.label) }));
 
   const resetFilters = () => {
     setInquiryKeyword('');
@@ -641,7 +659,68 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
   const handleHeroSearch = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setHeroOpen(false);
     applyQuickFilter({ keyword: heroKeyword.trim() });
+  };
+
+  // Live results under the hero search box, updated on every keystroke.
+  const heroTokens = heroKeyword.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const heroMatches = useMemo(() => {
+    if (heroTokens.length === 0) return [];
+    const scored = allRecords
+      .map((record) => {
+        const haystack = [record.number, record.title, record.author, record.subject, record.category, record.classification, tr(record.classification)]
+          .join(' ')
+          .toLowerCase();
+        if (!heroTokens.every((token) => haystack.includes(token))) return null;
+        // Record numbers and title beginnings first, then the rest in their usual order.
+        const first = heroTokens[0];
+        const score = record.number.toLowerCase().includes(first) ? 0 : record.title.toLowerCase().startsWith(first) ? 1 : 2;
+        return { record, score };
+      })
+      .filter((entry): entry is { record: PublicInquiryRecord; score: number } => entry !== null);
+    return scored.sort((a, b) => a.score - b.score).map((entry) => entry.record);
+    // allRecords is rebuilt each render from static data; the keyword and language are the real inputs.
+  }, [heroKeyword, lang]);
+  const heroShown = heroMatches.slice(0, 6);
+
+  const openHeroResult = (record: PublicInquiryRecord) => {
+    setHeroOpen(false);
+    setHeroActive(-1);
+    openDoc(record.id);
+  };
+
+  const onHeroKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setHeroOpen(false);
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHeroOpen(true);
+      if (heroShown.length === 0) return;
+      setHeroActive((index) => (e.key === 'ArrowDown' ? (index + 1) % heroShown.length : index <= 0 ? heroShown.length - 1 : index - 1));
+      return;
+    }
+    if (e.key === 'Enter' && heroOpen && heroActive >= 0 && heroShown[heroActive]) {
+      e.preventDefault();
+      openHeroResult(heroShown[heroActive]);
+    }
+  };
+
+  // Marks the typed words inside a result so it is clear why it matched.
+  const highlight = (text: string) => {
+    if (heroTokens.length === 0) return text;
+    const pattern = new RegExp(`(${heroTokens.map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+    return text.split(pattern).map((part, index) =>
+      index % 2 === 1 ? (
+        <mark key={index} className="rounded-sm bg-[#fdf1c7] text-inherit">
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
   };
 
   const unifiedInquiryResults = useMemo(() => {
@@ -799,9 +878,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
   const sectionHeading = (kicker: string, title: string, description: string) => (
     <div className="mb-10 max-w-3xl">
-      <p className="text-sm font-semibold text-primary">{kicker}</p>
-      <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">{title}</h2>
-      <p className="mt-3 text-base leading-relaxed text-slate-600">{description}</p>
+      <p className="text-sm font-semibold text-primary">{tr(kicker)}</p>
+      <h2 className="mt-2 text-3xl font-bold tracking-tight text-slate-900">{tr(title)}</h2>
+      <p className="mt-3 text-base leading-relaxed text-slate-600">{tr(description)}</p>
     </div>
   );
 
@@ -816,25 +895,18 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         href="#legislation"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-primary focus:shadow"
       >
-        Skip to main content
+        {tr('Skip to main content')}
       </a>
 
-      {/* GOVPH top bar */}
+      {/* Top bar: Philippine time, language, and staff login */}
       <div className="bg-[#0a0f3d] text-xs text-white/70">
-        <div className={cn(container, 'flex h-9 items-center justify-between gap-4')}>
-          <div className="flex items-center gap-3">
-            <a href="https://www.gov.ph" target="_blank" rel="noopener noreferrer" className="font-bold tracking-wider text-white hover:text-white/80">
-              GOVPH
-            </a>
-            <span className="hidden h-3 w-px bg-white/25 sm:block" aria-hidden />
-            <span className="hidden sm:inline">Republic of the Philippines</span>
-          </div>
+        <div className={cn(container, 'flex h-9 items-center justify-end gap-4')}>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1.5 lg:flex">
               <Clock className="h-3.5 w-3.5" />
               {t.pst}: {philippineTime}
             </span>
-            <div className="flex rounded-md bg-white/10 p-0.5" role="group" aria-label="Language">
+            <div className="flex rounded-md bg-white/10 p-0.5" role="group" aria-label={tr('Language')}>
               {(['EN', 'FIL'] as Lang[]).map((code) => (
                 <button
                   key={code}
@@ -863,10 +935,10 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <header ref={headerRef} className="sticky top-0 z-40 border-b border-slate-200 bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/80">
         <div className={cn(container, 'flex h-16 items-center gap-6')}>
           <button type="button" onClick={() => scrollToSection('home')} className="flex min-w-0 items-center gap-3 text-left">
-            <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+            <img src="/lims-logo.svg" alt={tr('LIMS logo')} className="h-10 w-10 shrink-0 rounded-full object-cover" />
             <span className="min-w-0">
-              <span className="block truncate text-[15px] font-bold leading-tight text-slate-900">Sangguniang Bayan ng Capas</span>
-              <span className="block truncate text-xs text-slate-500">Legislative Information System</span>
+              <span className="block truncate text-[15px] font-bold leading-tight text-slate-900">LIMS</span>
+              <span className="block truncate text-xs text-slate-500">{tr('Legislative Information Management System')}</span>
             </span>
           </button>
 
@@ -893,14 +965,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
             <Button onClick={() => openRequestDialog()} className="hidden h-9 rounded-lg px-4 font-semibold sm:inline-flex">
               <FileSearch className="mr-2 h-4 w-4" />
-              Request a Document
+              {tr('Request a Document')}
             </Button>
             <button
               type="button"
               onClick={() => setMobileNavOpen((open) => !open)}
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 lg:hidden"
               aria-expanded={mobileNavOpen}
-              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+              aria-label={tr(mobileNavOpen ? 'Close menu' : 'Open menu')}
             >
               {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -926,7 +998,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <li className="pt-2 sm:hidden">
                 <Button onClick={() => openRequestDialog()} className="w-full rounded-lg font-semibold">
                   <FileSearch className="mr-2 h-4 w-4" />
-                  Request a Document
+                  {tr('Request a Document')}
                 </Button>
               </li>
             </ul>
@@ -936,7 +1008,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
       <main>
         {/* Hero */}
-        <section id="home" className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-b from-[#f4f6fd] to-white">
+        {/* Not clipped and layered above the next section, so the live search results can hang over it. */}
+        <section id="home" className="relative z-10 border-b border-slate-200 bg-gradient-to-b from-[#f4f6fd] to-white">
           <div
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(#1a237e1a_1px,transparent_1px)] [background-size:24px_24px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
             aria-hidden
@@ -950,25 +1023,115 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 md:text-5xl">{t.heroTitle}</h1>
               <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">{t.heroText}</p>
 
-              <form onSubmit={handleHeroSearch} className="mt-8 flex max-w-xl items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/10" role="search">
-                <label htmlFor="hero-search" className="sr-only">
-                  {t.searchPlaceholder}
-                </label>
-                <Search className="ml-2.5 h-5 w-5 shrink-0 text-slate-400" />
-                <input
-                  id="hero-search"
-                  value={heroKeyword}
-                  onChange={(e) => setHeroKeyword(e.target.value)}
-                  placeholder={t.searchPlaceholder}
-                  className="h-10 min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
-                />
-                <Button type="submit" className="h-10 shrink-0 rounded-lg px-5 font-semibold">
-                  {t.search}
-                </Button>
-              </form>
+              <div className="relative mt-8 max-w-xl">
+                <form onSubmit={handleHeroSearch} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/10" role="search">
+                  <label htmlFor="hero-search" className="sr-only">
+                    {t.searchPlaceholder}
+                  </label>
+                  <Search className="ml-2.5 h-5 w-5 shrink-0 text-slate-400" />
+                  <input
+                    id="hero-search"
+                    value={heroKeyword}
+                    onChange={(e) => {
+                      setHeroKeyword(e.target.value);
+                      setHeroOpen(true);
+                      setHeroActive(-1);
+                    }}
+                    onFocus={() => setHeroOpen(true)}
+                    onBlur={() => setHeroOpen(false)}
+                    onKeyDown={onHeroKeyDown}
+                    placeholder={t.searchPlaceholder}
+                    autoComplete="off"
+                    role="combobox"
+                    aria-expanded={heroOpen && heroTokens.length > 0}
+                    aria-controls="hero-search-results"
+                    aria-autocomplete="list"
+                    aria-activedescendant={heroActive >= 0 ? `hero-result-${heroActive}` : undefined}
+                    className="h-10 min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  />
+                  {heroKeyword ? (
+                    <button
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setHeroKeyword('');
+                        setHeroActive(-1);
+                      }}
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                      aria-label={tr('Clear search')}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  ) : null}
+                  <Button type="submit" className="h-10 shrink-0 rounded-lg px-5 font-semibold">
+                    {t.search}
+                  </Button>
+                </form>
+
+                {heroOpen && heroTokens.length > 0 ? (
+                  // Mouse-down is cancelled so the input keeps focus and the click lands on the result.
+                  <div
+                    className="absolute inset-x-0 top-full z-30 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white text-left shadow-[0_20px_50px_-20px_rgba(15,23,42,0.35)]"
+                    onMouseDown={(e) => e.preventDefault()}
+                  >
+                    {heroShown.length > 0 ? (
+                      <ul id="hero-search-results" role="listbox" aria-label={tr('Search suggestions')} className="max-h-[360px] overflow-y-auto py-1.5">
+                        {heroShown.map((record, index) => (
+                          <li
+                            key={record.id}
+                            id={`hero-result-${index}`}
+                            role="option"
+                            aria-selected={index === heroActive}
+                            onClick={() => openHeroResult(record)}
+                            onMouseEnter={() => setHeroActive(index)}
+                            className={cn('flex cursor-pointer items-start gap-3 px-4 py-2.5', index === heroActive ? 'bg-primary/[0.06]' : 'hover:bg-slate-50')}
+                          >
+                            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
+                              {record.classification === 'Ordinance' ? (
+                                <ScrollText className="h-4 w-4" />
+                              ) : record.recordType === 'Resource' ? (
+                                <BookOpen className="h-4 w-4" />
+                              ) : (
+                                <FileText className="h-4 w-4" />
+                              )}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2 text-xs text-slate-500">
+                                <span className="font-semibold text-primary">{highlight(record.number)}</span>
+                                <span aria-hidden>·</span>
+                                <span>{tr(record.classification)}</span>
+                              </span>
+                              <span className="mt-0.5 line-clamp-2 block text-sm font-medium leading-snug text-slate-900">{highlight(record.title)}</span>
+                            </span>
+                            <span className="mt-0.5 shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{tr(record.status)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div id="hero-search-results" className="px-4 py-5 text-center">
+                        <p className="text-sm font-medium text-slate-900">{tr('No records match "{query}".', { query: heroKeyword.trim() })}</p>
+                        <p className="mt-1 text-xs text-slate-500">{tr('Try a record number, title, or subject.')}</p>
+                      </div>
+                    )}
+                    {heroMatches.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHeroOpen(false);
+                          applyQuickFilter({ keyword: heroKeyword.trim() });
+                        }}
+                        className="flex w-full items-center justify-between border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-primary hover:bg-slate-100"
+                      >
+                        {tr(heroMatches.length === 1 ? 'See the result in Legislation' : 'See all {count} results in Legislation', { count: heroMatches.length })}
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-slate-500">Quick links:</span>
+                <span className="text-slate-500">{tr('Quick links:')}</span>
                 {[
                   { label: 'Ordinances', action: () => applyQuickFilter({ classification: 'Ordinance' }) },
                   { label: 'Resolutions', action: () => applyQuickFilter({ classification: 'Resolution' }) },
@@ -980,7 +1143,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     onClick={link.action}
                     className="rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
                   >
-                    {link.label}
+                    {tr(link.label)}
                   </button>
                 ))}
               </div>
@@ -992,7 +1155,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.1 }}
                 className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.25)]"
-                aria-label="Next session"
+                aria-label={tr('Next session')}
               >
                 <div className="flex items-center justify-between">
                   <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -1000,45 +1163,45 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                    Next session
+                    {tr('Next session')}
                   </p>
-                  <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(nextSession.type))}>{nextSession.type}</span>
+                  <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(nextSession.type))}>{tr(nextSession.type)}</span>
                 </div>
 
                 <div className="mt-5 flex items-start gap-4">
                   <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-primary text-white">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-white/75">
-                      {nextSessionDate.toLocaleDateString('en-PH', { month: 'short' })}
+                      {nextSessionDate.toLocaleDateString(locale, { month: 'short' })}
                     </span>
                     <span className="text-2xl font-bold leading-none">{nextSessionDate.getDate()}</span>
                   </div>
                   <div className="min-w-0">
-                    <h2 className="text-lg font-semibold leading-snug text-slate-900">{nextSession.title}</h2>
-                    <p className="mt-1 text-sm text-slate-500">{formatLongDate(nextSession.date)}</p>
+                    <h2 className="text-lg font-semibold leading-snug text-slate-900">{tr(nextSession.title)}</h2>
+                    <p className="mt-1 text-sm text-slate-500">{longDate(nextSession.date)}</p>
                   </div>
                 </div>
 
                 <dl className="mt-5 space-y-2.5 border-t border-slate-100 pt-5 text-sm">
                   <div className="flex items-center gap-2.5 text-slate-600">
                     <Clock className="h-4 w-4 shrink-0 text-slate-400" />
-                    <dt className="sr-only">Time</dt>
+                    <dt className="sr-only">{tr('Time')}</dt>
                     <dd>{nextSession.time}</dd>
                   </div>
                   <div className="flex items-center gap-2.5 text-slate-600">
                     <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-                    <dt className="sr-only">Venue</dt>
-                    <dd>{nextSession.location}</dd>
+                    <dt className="sr-only">{tr('Venue')}</dt>
+                    <dd>{tr(nextSession.location)}</dd>
                   </div>
                 </dl>
 
                 <div className="mt-6 grid grid-cols-2 gap-2">
                   <Button onClick={() => setAgendaSessionId(nextSession.id)} className="rounded-lg font-semibold">
                     <Eye className="mr-2 h-4 w-4" />
-                    View Agenda
+                    {tr('View Agenda')}
                   </Button>
                   <Button variant="outline" onClick={() => addSessionToCalendar(nextSession)} className="rounded-lg font-semibold">
                     <CalendarPlus className="mr-2 h-4 w-4" />
-                    Add to Calendar
+                    {tr('Add to Calendar')}
                   </Button>
                 </div>
               </motion.aside>
@@ -1052,7 +1215,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="mb-10 max-w-3xl">
               <p className="text-sm font-semibold text-primary">{t.services}</p>
               <h2 id="services-heading" className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-                How can we help you?
+                {tr('How can we help you?')}
               </h2>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1067,8 +1230,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     <tile.icon className="h-5 w-5" />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block font-semibold text-slate-900">{tile.title}</span>
-                    <span className="mt-1 block text-sm text-slate-600">{tile.description}</span>
+                    <span className="block font-semibold text-slate-900">{tr(tile.title)}</span>
+                    <span className="mt-1 block text-sm text-slate-600">{tr(tile.description)}</span>
                   </span>
                   <ArrowRight className="mt-0.5 h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
                 </button>
@@ -1095,12 +1258,12 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 >
                   <p className="flex items-center gap-2 text-sm font-medium text-slate-500">
                     <stat.icon className="h-4 w-4 text-primary" />
-                    {stat.label}
+                    {tr(stat.label)}
                   </p>
                   <p className="mt-3 text-4xl font-bold tracking-tight text-slate-900">{stat.value}</p>
-                  <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{stat.description}</p>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{tr(stat.description)}</p>
                   <button type="button" onClick={stat.action} className="mt-4 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
-                    {stat.actionLabel}
+                    {tr(stat.actionLabel)}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </article>
@@ -1121,7 +1284,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="space-y-4 border-b border-slate-200 p-4 sm:p-5">
                 <div className="-mx-1 overflow-x-auto px-1">
-                  <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Record type">
+                  <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label={tr('Record type')}>
                     {recordTabs.map((tab) => (
                       <button
                         key={tab.label}
@@ -1134,7 +1297,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                           tab.active ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-600 hover:text-slate-900'
                         )}
                       >
-                        {tab.label}
+                        {tr(tab.label)}
                       </button>
                     ))}
                   </div>
@@ -1146,65 +1309,65 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     <Input
                       value={inquiryKeyword}
                       onChange={(e) => setInquiryKeyword(e.target.value)}
-                      placeholder="Keyword, record no., author, subject..."
+                      placeholder={tr('Keyword, record no., author, subject...')}
                       className="pl-9"
-                      aria-label="Search records"
+                      aria-label={tr('Search records')}
                     />
                   </div>
                   <Select
-                    options={statusOptions}
-                    value={pickOption(statusOptions, selectedStatus)}
+                    options={loc(statusOptions)}
+                    value={pickOption(loc(statusOptions), selectedStatus)}
                     onChange={(opt) => setSelectedStatus(opt?.value ?? 'All')}
-                    placeholder="Status"
+                    placeholder={tr('Status')}
                   />
                   <Select
-                    options={categoryOptions}
-                    value={pickOption(categoryOptions, selectedCategory)}
+                    options={loc(categoryOptions)}
+                    value={pickOption(loc(categoryOptions), selectedCategory)}
                     onChange={(opt) => setSelectedCategory(opt?.value ?? 'All')}
-                    placeholder="Category"
+                    placeholder={tr('Category')}
                   />
                   <Button variant="outline" onClick={() => setShowAdvancedFilters((open) => !open)} aria-expanded={showAdvancedFilters}>
                     <SlidersHorizontal className="mr-2 h-4 w-4" />
-                    {showAdvancedFilters ? 'Fewer filters' : 'More filters'}
+                    {tr(showAdvancedFilters ? 'Fewer filters' : 'More filters')}
                   </Button>
                   <Button variant="outline" onClick={resetFilters} disabled={activeFilterCount === 0}>
                     <RotateCcw className="mr-2 h-4 w-4" />
-                    Reset
+                    {tr('Reset')}
                   </Button>
                 </div>
 
                 {showAdvancedFilters ? (
                   <div className="grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-4">
-                    <Select options={typeOptions} value={pickOption(typeOptions, selectedType)} onChange={(opt) => setSelectedType(opt?.value ?? 'All')} placeholder="Type" isSearchable={false} />
-                    <Select options={subjectOptions} value={pickOption(subjectOptions, selectedSubject)} onChange={(opt) => setSelectedSubject(opt?.value ?? 'All')} placeholder="Subject" />
-                    <Select options={referralOptions} value={pickOption(referralOptions, selectedReferral)} onChange={(opt) => setSelectedReferral(opt?.value ?? 'All')} placeholder="Referral" />
+                    <Select options={loc(typeOptions)} value={pickOption(loc(typeOptions), selectedType)} onChange={(opt) => setSelectedType(opt?.value ?? 'All')} placeholder={tr('Type')} isSearchable={false} />
+                    <Select options={loc(subjectOptions)} value={pickOption(loc(subjectOptions), selectedSubject)} onChange={(opt) => setSelectedSubject(opt?.value ?? 'All')} placeholder={tr('Subject')} />
+                    <Select options={loc(referralOptions)} value={pickOption(loc(referralOptions), selectedReferral)} onChange={(opt) => setSelectedReferral(opt?.value ?? 'All')} placeholder={tr('Referral')} />
                     <Select
-                      options={classificationOptions}
-                      value={pickOption(classificationOptions, selectedClassification)}
+                      options={loc(classificationOptions)}
+                      value={pickOption(loc(classificationOptions), selectedClassification)}
                       onChange={(opt) => setSelectedClassification(opt?.value ?? 'All')}
-                      placeholder="Classification"
+                      placeholder={tr('Classification')}
                     />
                     <Select
-                      options={actionTakenOptions}
-                      value={pickOption(actionTakenOptions, selectedActionTaken)}
+                      options={loc(actionTakenOptions)}
+                      value={pickOption(loc(actionTakenOptions), selectedActionTaken)}
                       onChange={(opt) => setSelectedActionTaken(opt?.value ?? 'All')}
-                      placeholder="Action taken"
+                      placeholder={tr('Action taken')}
                     />
                     <Select
-                      options={authorshipOptions}
-                      value={pickOption(authorshipOptions, selectedAuthorship)}
+                      options={loc(authorshipOptions)}
+                      value={pickOption(loc(authorshipOptions), selectedAuthorship)}
                       onChange={(opt) => setSelectedAuthorship(opt?.value ?? 'All')}
-                      placeholder="Authorship"
+                      placeholder={tr('Authorship')}
                       isSearchable={false}
                     />
-                    <Select options={sponsorOptions} value={pickOption(sponsorOptions, selectedSponsor)} onChange={(opt) => setSelectedSponsor(opt?.value ?? 'All')} placeholder="Sponsor" />
-                    <Select options={coAuthorOptions} value={pickOption(coAuthorOptions, selectedCoAuthor)} onChange={(opt) => setSelectedCoAuthor(opt?.value ?? 'All')} placeholder="Co-author" />
+                    <Select options={loc(sponsorOptions)} value={pickOption(loc(sponsorOptions), selectedSponsor)} onChange={(opt) => setSelectedSponsor(opt?.value ?? 'All')} placeholder={tr('Sponsor')} />
+                    <Select options={loc(coAuthorOptions)} value={pickOption(loc(coAuthorOptions), selectedCoAuthor)} onChange={(opt) => setSelectedCoAuthor(opt?.value ?? 'All')} placeholder={tr('Co-author')} />
                   </div>
                 ) : null}
 
                 <p className="text-xs text-slate-500">
-                  {unifiedInquiryResults.length} record{unifiedInquiryResults.length === 1 ? '' : 's'} found
-                  {activeFilterCount > 0 ? ` · ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} applied` : ''}
+                  {tr(unifiedInquiryResults.length === 1 ? '{count} record found' : '{count} records found', { count: unifiedInquiryResults.length })}
+                  {activeFilterCount > 0 ? tr(activeFilterCount === 1 ? ' · {count} filter applied' : ' · {count} filters applied', { count: activeFilterCount }) : ''}
                 </p>
               </div>
 
@@ -1217,17 +1380,18 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 onPreviousPage={() => setInquiryPage((prev) => Math.max(1, prev - 1))}
                 onNextPage={() => setInquiryPage((prev) => Math.min(inquiryTotalPages, prev + 1))}
                 tableWrapperClassName="overflow-x-auto overflow-y-visible"
+                translate={tr}
               >
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-left">Record No.</TableHead>
-                      <TableHead className="text-left">Title</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-left">{tr('Record No.')}</TableHead>
+                      <TableHead className="text-left">{tr('Title')}</TableHead>
+                      <TableHead>{tr('Type')}</TableHead>
+                      <TableHead>{tr('Date')}</TableHead>
+                      <TableHead>{tr('Status')}</TableHead>
                       <TableHead>
-                        <span className="sr-only">Actions</span>
+                        <span className="sr-only">{tr('Actions')}</span>
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1239,25 +1403,25 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                           <button type="button" onClick={() => openDoc(record.id)} className="text-left font-semibold text-slate-900 hover:text-primary hover:underline">
                             {record.title}
                           </button>
-                          <div className="mt-0.5 text-xs text-slate-500">{record.referral}</div>
+                          <div className="mt-0.5 text-xs text-slate-500">{tr(record.referral)}</div>
                         </TableCell>
-                        <TableCell className="whitespace-nowrap text-slate-600">{record.classification}</TableCell>
+                        <TableCell className="whitespace-nowrap text-slate-600">{tr(record.classification)}</TableCell>
                         <TableCell className="whitespace-nowrap text-slate-600">{record.date}</TableCell>
                         <TableCell>
-                          <StatusBadge status={record.status} />
+                          <StatusBadge status={record.status} tr={tr} />
                         </TableCell>
                         <TableCell className="relative">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`Actions for ${record.number}`}>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={tr('Actions for {number}', { number: record.number })}>
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-52">
-                              <DropdownMenuItem onClick={() => openDoc(record.id)}>View</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => downloadRecord(record)}>Download public copy</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => printRecord(record)}>Print public copy</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openRequestDialog(record.number)}>Request certified copy</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openDoc(record.id)}>{tr('View')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => downloadRecord(record)}>{tr('Download public copy')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => printRecord(record)}>{tr('Print public copy')}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openRequestDialog(record.number)}>{tr('Request certified copy')}</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -1266,9 +1430,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     {paginatedInquiryResults.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
-                          No matching public records found.{' '}
+                          {tr('No matching public records found.')}{' '}
                           <button type="button" onClick={resetFilters} className="font-semibold text-primary hover:underline">
-                            Clear filters
+                            {tr('Clear filters')}
                           </button>
                         </TableCell>
                       </TableRow>
@@ -1280,7 +1444,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
         </section>
 
-        {/* Sangguniang Bayan */}
+        {/* Members and committees */}
         <section id="sangguniang-bayan" className="scroll-mt-[65px] border-y border-slate-200 bg-slate-50 py-16 md:py-20">
           <div className={container}>
             {sectionHeading(
@@ -1301,7 +1465,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   </span>
                   <div>
                     <p className="text-2xl font-bold tracking-tight text-slate-900">{item.value}</p>
-                    <p className="text-sm text-slate-500">{item.label}</p>
+                    <p className="text-sm text-slate-500">{tr(item.label)}</p>
                   </div>
                 </div>
               ))}
@@ -1310,22 +1474,22 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="font-semibold text-slate-900">Composition of the Sangguniang Bayan</h3>
-                  <p className="text-sm text-slate-500">{mockMembers.length} members · select a member to see their committee assignments</p>
+                  <h3 className="font-semibold text-slate-900">{tr('Member Composition')}</h3>
+                  <p className="text-sm text-slate-500">{tr('{count} members · select a member to see their committee assignments', { count: mockMembers.length })}</p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#fdf6e3] px-2 py-0.5 font-semibold text-[#8a6a12]">
-                    <Gavel className="h-3 w-3" /> Chair
+                    <Gavel className="h-3 w-3" /> {tr('Chair')}
                   </span>
-                  chairs at least one committee
+                  {tr('chairs at least one committee')}
                 </span>
               </div>
-              <CompositionChart onSelect={setPublicMemberId} />
+              <CompositionChart onSelect={setPublicMemberId} tr={tr} />
             </div>
 
             <div className="mt-10">
-              <h3 className="text-lg font-semibold text-slate-900">Standing Committees</h3>
-              <p className="mt-1 text-sm text-slate-500">Select a committee to see the measures referred to it.</p>
+              <h3 className="text-lg font-semibold text-slate-900">{tr('Standing Committees')}</h3>
+              <p className="mt-1 text-sm text-slate-500">{tr('Select a committee to see the measures referred to it.')}</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mockCommittees.map((committee) => (
                   <button
@@ -1338,7 +1502,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     }}
                     className="group flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3.5 text-left text-sm font-medium text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
                   >
-                    {committee.name}
+                    {tr(committee.name)}
                     <ArrowRight className="h-4 w-4 shrink-0 text-slate-300 transition-all group-hover:translate-x-0.5 group-hover:text-primary" />
                   </button>
                 ))}
@@ -1353,7 +1517,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             {sectionHeading(
               'Schedule',
               t.sessions,
-              `Sessions are open to the public and held at the ${LGU_PROFILE.sessionHall}. View the order of business, add a session to your calendar, or print the agenda.`
+              tr('Sessions are open to the public and held at the {hall}. View the order of business, add a session to your calendar, or print the agenda.', { hall: tr(LGU_PROFILE.sessionHall) })
             )}
 
             <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
@@ -1367,12 +1531,12 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     >
                       <div className="flex min-w-0 flex-1 items-start gap-4 sm:items-center">
                         <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{date.toLocaleDateString(locale, { month: 'short' })}</span>
                           <span className="text-2xl font-bold leading-none text-slate-900">{date.getDate()}</span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(session.type))}>{session.type}</span>
-                          <h3 className="mt-1.5 font-semibold text-slate-900">{session.title}</h3>
+                          <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(session.type))}>{tr(session.type)}</span>
+                          <h3 className="mt-1.5 font-semibold text-slate-900">{tr(session.title)}</h3>
                           <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
                             <span className="inline-flex items-center gap-1.5">
                               <Clock className="h-3.5 w-3.5" />
@@ -1380,7 +1544,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                             </span>
                             <span className="inline-flex items-center gap-1.5">
                               <MapPin className="h-3.5 w-3.5" />
-                              {session.location}
+                              {tr(session.location)}
                             </span>
                           </p>
                         </div>
@@ -1388,9 +1552,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       <div className="flex gap-2 sm:shrink-0">
                         <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setAgendaSessionId(session.id)}>
                           <Eye className="mr-1.5 h-4 w-4" />
-                          Agenda
+                          {tr('Agenda')}
                         </Button>
-                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => addSessionToCalendar(session)} aria-label={`Add ${session.title} to calendar`}>
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => addSessionToCalendar(session)} aria-label={tr('Add {title} to calendar', { title: tr(session.title) })}>
                           <CalendarPlus className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1400,8 +1564,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </div>
 
               <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                <h3 className="font-semibold text-slate-900">Recently Approved Measures</h3>
-                <p className="mt-1 text-sm text-slate-500">Ordinances and resolutions approved by the SB.</p>
+                <h3 className="font-semibold text-slate-900">{tr('Recently Approved Measures')}</h3>
+                <p className="mt-1 text-sm text-slate-500">{tr('Ordinances and resolutions approved by the SB.')}</p>
                 <ul className="mt-4 divide-y divide-slate-200">
                   {publicLegislationRecords
                     .filter((r) => ['Passed', 'Enacted'].includes(r.status))
@@ -1416,7 +1580,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     ))}
                 </ul>
                 <Button variant="outline" className="mt-4 w-full rounded-lg bg-white" onClick={() => applyQuickFilter({ type: 'Legislation' })}>
-                  View all legislation
+                  {tr('View all legislation')}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </aside>
@@ -1437,17 +1601,17 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                       <card.icon className="h-5 w-5" />
                     </span>
-                    <h3 className="mt-4 font-semibold text-slate-900">{card.title}</h3>
-                    <p className="mt-1 flex-1 text-sm text-slate-600">{card.description}</p>
+                    <h3 className="mt-4 font-semibold text-slate-900">{tr(card.title)}</h3>
+                    <p className="mt-1 flex-1 text-sm text-slate-600">{tr(card.description)}</p>
                     <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4">
                       <Button size="sm" variant="outline" className="h-8 flex-1 rounded-lg" onClick={() => openDoc(card.id)}>
                         <Eye className="mr-1.5 h-4 w-4" />
-                        View
+                        {tr('View')}
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => downloadRecord(record)} aria-label={`Download ${card.title}`} title="Download">
+                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => downloadRecord(record)} aria-label={tr('Download {title}', { title: tr(card.title) })} title={tr('Download')}>
                         <Download className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => printRecord(record)} aria-label={`Print ${card.title}`} title="Print">
+                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => printRecord(record)} aria-label={tr('Print {title}', { title: tr(card.title) })} title={tr('Print')}>
                         <Printer className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1461,26 +1625,26 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                   <UserPlus className="h-5 w-5" />
                 </span>
-                <h3 className="mt-4 text-lg font-semibold text-slate-900">Register for Legislative Updates</h3>
-                <p className="mt-1 text-sm text-slate-600">Receive notices of new ordinances, resolutions, and public hearings.</p>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">{tr('Register for Legislative Updates')}</h3>
+                <p className="mt-1 text-sm text-slate-600">{tr('Receive notices of new ordinances, resolutions, and public hearings.')}</p>
                 <form onSubmit={handlePublicRegistration} className="mt-5 space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Input value={publicName} onChange={(e) => setPublicName(e.target.value)} placeholder="Full name" aria-label="Full name" />
-                    <Input value={publicEmail} onChange={(e) => setPublicEmail(e.target.value)} type="email" placeholder="Email address" aria-label="Email address" />
+                    <Input value={publicName} onChange={(e) => setPublicName(e.target.value)} placeholder={tr('Full name')} aria-label={tr('Full name')} />
+                    <Input value={publicEmail} onChange={(e) => setPublicEmail(e.target.value)} type="email" placeholder={tr('Email address')} aria-label={tr('Email address')} />
                   </div>
                   <label className="flex items-center gap-2 text-sm text-slate-600">
                     <input type="checkbox" checked={notifyUpdates} onChange={(e) => setNotifyUpdates(e.target.checked)} className="h-4 w-4 accent-primary" />
-                    Subscribe to ordinance and resolution updates
+                    {tr('Subscribe to ordinance and resolution updates')}
                   </label>
                   <div className="flex flex-wrap items-center gap-3 pt-1">
                     <Button type="submit" className="rounded-lg font-semibold">
-                      Register
+                      {tr('Register')}
                     </Button>
                     <button type="button" onClick={() => setPolicyDialog('privacy')} className="text-xs text-slate-500 underline hover:text-primary">
-                      How we use your data
+                      {tr('How we use your data')}
                     </button>
                   </div>
-                  {registrationNotice ? <p className="text-sm font-medium text-primary">{registrationNotice}</p> : null}
+                  {registrationNotice ? <p className="text-sm font-medium text-primary">{tr(registrationNotice)}</p> : null}
                 </form>
               </article>
 
@@ -1488,8 +1652,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                   <ShieldCheck className="h-5 w-5" />
                 </span>
-                <h3 className="mt-4 text-lg font-semibold text-slate-900">Check Accreditation Status</h3>
-                <p className="mt-1 text-sm text-slate-600">Enter the reference number of your organization&apos;s accreditation request.</p>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">{tr('Check Accreditation Status')}</h3>
+                <p className="mt-1 text-sm text-slate-600">{tr("Enter the reference number of your organization's accreditation request.")}</p>
                 <form onSubmit={handleAccreditationLookup} className="mt-5 flex gap-2">
                   <Input
                     value={accreditationQuery}
@@ -1497,11 +1661,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       setAccreditationQuery(e.target.value);
                       setAccreditationResult(null);
                     }}
-                    placeholder="e.g. ACC-2026-005"
-                    aria-label="Accreditation reference number"
+                    placeholder={tr('e.g. ACC-2026-005')}
+                    aria-label={tr('Accreditation reference number')}
                   />
                   <Button type="submit" className="rounded-lg font-semibold">
-                    Check
+                    {tr('Check')}
                   </Button>
                 </form>
                 {accreditationResult ? (
@@ -1510,11 +1674,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" className="rounded-lg" onClick={() => downloadRecord(recordById('res-2'))}>
                     <Download className="mr-1.5 h-4 w-4" />
-                    Download accreditation form
+                    {tr('Download accreditation form')}
                   </Button>
                   <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openRequestDialog()}>
                     <FileSearch className="mr-1.5 h-4 w-4" />
-                    Request a document
+                    {tr('Request a document')}
                   </Button>
                 </div>
               </article>
@@ -1525,7 +1689,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* News */}
         <section id="news" className="scroll-mt-[65px] py-16 md:py-20">
           <div className={container}>
-            {sectionHeading('Updates', t.news, 'Recent actions, notices, and announcements from the Sangguniang Bayan ng Capas.')}
+            {sectionHeading('Updates', t.news, 'Recent actions, notices, and announcements posted on LIMS.')}
             <div className="grid gap-4 lg:grid-cols-3">
               {NEWS.map((item) => (
                 <article
@@ -1536,13 +1700,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                       <item.icon className="h-5 w-5" />
                     </span>
-                    <span className="text-xs font-medium text-slate-500">{item.date}</span>
+                    <span className="text-xs font-medium text-slate-500">{tr(item.date)}</span>
                   </div>
-                  <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-primary">{item.category}</p>
-                  <h3 className="mt-1.5 text-lg font-semibold leading-snug text-slate-900">{item.title}</h3>
-                  <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{item.summary}</p>
+                  <p className="mt-5 text-xs font-semibold uppercase tracking-wide text-primary">{tr(item.category)}</p>
+                  <h3 className="mt-1.5 text-lg font-semibold leading-snug text-slate-900">{tr(item.title)}</h3>
+                  <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{tr(item.summary)}</p>
                   <button type="button" onClick={() => setActiveNewsId(item.id)} className="mt-5 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
-                    Read more
+                    {tr('Read more')}
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </button>
                 </article>
@@ -1555,7 +1719,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         <section aria-labelledby="transparency-heading" className="border-t border-slate-200 bg-slate-50 py-12">
           <div className={container}>
             <h2 id="transparency-heading" className="text-sm font-semibold text-slate-900">
-              Transparency and Accountability
+              {tr('Transparency and Accountability')}
             </h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {TRANSPARENCY_LINKS.map((link) => (
@@ -1572,7 +1736,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       {link.label}
                       <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
                     </span>
-                    <span className="mt-0.5 block text-xs text-slate-500">{link.description}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{tr(link.description)}</span>
                   </span>
                 </a>
               ))}
@@ -1586,24 +1750,24 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         <div className={cn(container, 'grid gap-10 py-14 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]')}>
           <div>
             <div className="flex items-center gap-3">
-              <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-12 w-12 rounded-full object-cover ring-2 ring-white/15" />
+              <img src="/lims-logo.svg" alt={tr('LIMS logo')} className="h-12 w-12 rounded-full object-cover ring-2 ring-white/15" />
               <div>
                 <p className="font-semibold text-white">{LGU_PROFILE.legislature}</p>
                 <p className="text-xs text-white/55">
-                  {LGU_PROFILE.municipality}, {LGU_PROFILE.province}
+                  {tr(LGU_PROFILE.municipality)}, {LGU_PROFILE.province}
                 </p>
               </div>
             </div>
-            <p className="mt-5 max-w-sm leading-relaxed">All content is in the public domain unless otherwise stated.</p>
+            <p className="mt-5 max-w-sm leading-relaxed">{tr('All content is in the public domain unless otherwise stated.')}</p>
           </div>
 
           <div>
-            <h2 className="font-semibold text-white">Contact the SB Office</h2>
+            <h2 className="font-semibold text-white">{tr('Contact the SB Office')}</h2>
             <ul className="mt-4 space-y-3">
               <li className="flex gap-2.5">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/45" />
                 <span>
-                  Office of the Sangguniang Bayan
+                  {tr('Legislative Office')}
                   <br />
                   {LGU_PROFILE.address}
                 </span>
@@ -1623,20 +1787,20 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <li className="flex items-center gap-2.5">
                 <ExternalLink className="h-4 w-4 shrink-0 text-white/45" />
                 <a href="https://www.capas.gov.ph" target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                  Municipality of Capas website
+                  {tr('Municipality of Capas website')}
                 </a>
               </li>
             </ul>
           </div>
 
           <div>
-            <h2 className="font-semibold text-white">About GOVPH</h2>
-            <p className="mt-4 leading-relaxed">Learn more about the Philippine government, its structure, how government works, and the people behind it.</p>
+            <h2 className="font-semibold text-white">{tr('About GOVPH')}</h2>
+            <p className="mt-4 leading-relaxed">{tr('Learn more about the Philippine government, its structure, how government works, and the people behind it.')}</p>
             <ul className="mt-3 space-y-2">
               {ABOUT_GOVPH_LINKS.map((link) => (
                 <li key={link.label}>
                   <a href={link.href} target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                    {link.label}
+                    {tr(link.label)}
                   </a>
                 </li>
               ))}
@@ -1644,12 +1808,12 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
 
           <div>
-            <h2 className="font-semibold text-white">Government Links</h2>
+            <h2 className="font-semibold text-white">{tr('Government Links')}</h2>
             <ul className="mt-4 space-y-2">
               {GOVERNMENT_LINKS.map((link) => (
                 <li key={link.label}>
                   <a href={link.href} target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                    {link.label}
+                    {tr(link.label)}
                   </a>
                 </li>
               ))}
@@ -1659,16 +1823,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
         <div className="border-t border-white/10">
           <div className={cn(container, 'flex flex-col items-center justify-between gap-4 py-5 text-xs md:flex-row')}>
-            <p>© 2026 {LGU_PROFILE.legislature}. All rights reserved.</p>
+            <p>{tr('© 2026 {name}. All rights reserved.', { name: LGU_PROFILE.legislature })}</p>
             <div className="flex flex-wrap items-center justify-center gap-5">
               <button type="button" onClick={() => setPolicyDialog('privacy')} className="hover:text-white">
-                Privacy Notice
+                {tr('Privacy Notice')}
               </button>
               <button type="button" onClick={() => setPolicyDialog('terms')} className="hover:text-white">
-                Terms of Use
+                {tr('Terms of Use')}
               </button>
               <button type="button" onClick={() => setPolicyDialog('accessibility')} className="hover:text-white">
-                Accessibility
+                {tr('Accessibility')}
               </button>
               <button
                 type="button"
@@ -1676,7 +1840,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 className="inline-flex items-center gap-1 rounded-md border border-white/15 px-2.5 py-1 hover:bg-white/10 hover:text-white"
               >
                 <ArrowUp className="h-3.5 w-3.5" />
-                Back to top
+                {tr('Back to top')}
               </button>
             </div>
           </div>
@@ -1690,13 +1854,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Lock className="h-6 w-6" />
             </div>
-            <DialogTitle className="text-xl text-primary">Staff Login</DialogTitle>
-            <DialogDescription>For authorized personnel of the Sangguniang Bayan ng Capas.</DialogDescription>
+            <DialogTitle className="text-xl text-primary">{t.staffLogin}</DialogTitle>
+            <DialogDescription>{tr('For authorized LIMS personnel.')}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handlePortalLogin} className="mt-5 space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="portal-username" className="text-xs font-semibold text-text-muted">
-                Username
+                {tr('Username')}
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -1705,14 +1869,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
+                  placeholder={tr('Enter username')}
                   className="h-11 pl-9"
                 />
               </div>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="portal-password" className="text-xs font-semibold text-text-muted">
-                Password
+                {tr('Password')}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -1722,27 +1886,30 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password"
+                  placeholder={tr('Enter password')}
                   className="h-11 pl-9"
                 />
               </div>
             </div>
             <label htmlFor="portal-remember" className="flex items-center gap-2 text-xs text-text-muted">
               <input id="portal-remember" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 accent-primary" />
-              Remember me
+              {tr('Remember me')}
             </label>
             {loginError ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
-                {loginError}
+                {tr(loginError)}
               </p>
             ) : null}
             <Button type="submit" className="h-11 w-full text-base font-bold">
               <LogIn className="mr-2 h-4 w-4" />
-              Sign in
+              {tr('Sign in')}
             </Button>
             <p className="text-center text-[11px] text-text-muted">
-              Demo access: <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
+              {tr('Demo access:')} <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
               <span className="font-mono font-semibold text-text-main">{DEMO_PASSWORD}</span>
+              <br />
+              {tr('Other roles:')} <span className="font-mono">records</span>, <span className="font-mono">committee</span>, <span className="font-mono">encoder</span>,{' '}
+              <span className="font-mono">infodesk</span> {tr('(same password)')}
             </p>
           </form>
         </DialogContent>
@@ -1752,27 +1919,27 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={activePublicDoc !== null} onOpenChange={(open) => !open && setActivePublicDocId(null)}>
         <DialogContent className="relative max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Public Document Viewer</DialogTitle>
-            <DialogDescription>View, download, or print a watermarked public copy.</DialogDescription>
+            <DialogTitle>{tr('Public Document Viewer')}</DialogTitle>
+            <DialogDescription>{tr('View, download, or print a watermarked public copy.')}</DialogDescription>
           </DialogHeader>
           {activePublicDoc ? (
             <div className="mt-4 space-y-4">
               <div className="flex flex-col gap-3 border border-border bg-muted/20 p-4 md:flex-row md:items-start md:justify-between">
                 <div className="space-y-1">
                   <div className="text-sm font-semibold text-text-main">
-                    {activePublicDoc.recordType} • {activePublicDoc.number}
+                    {tr(activePublicDoc.recordType)} • {activePublicDoc.number}
                   </div>
                   <div className="text-lg font-bold text-primary">{activePublicDoc.title}</div>
-                  <StatusBadge status={activePublicDoc.status} align="start" />
+                  <StatusBadge status={activePublicDoc.status} align="start" tr={tr} />
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => downloadRecord(activePublicDoc)}>
                     <Download className="mr-1.5 h-4 w-4" />
-                    Download
+                    {tr('Download')}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => printRecord(activePublicDoc)}>
                     <Printer className="mr-1.5 h-4 w-4" />
-                    Print
+                    {tr('Print')}
                   </Button>
                   <Button
                     size="sm"
@@ -1782,7 +1949,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       openRequestDialog(number);
                     }}
                   >
-                    Request certified copy
+                    {tr('Request certified copy')}
                   </Button>
                 </div>
               </div>
@@ -1804,7 +1971,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       ['Co-author', activePublicDoc.coAuthor || '—'],
                     ].map(([label, value]) => (
                       <div key={label}>
-                        {label}: <span className="font-semibold text-text-main">{value}</span>
+                        {tr(label)}: <span className="font-semibold text-text-main">{tr(value)}</span>
                       </div>
                     ))}
                   </div>
@@ -1822,26 +1989,26 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           {agendaSession ? (
             <>
               <DialogHeader>
-                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{agendaSession.type}</p>
-                <DialogTitle className="text-xl text-primary">{agendaSession.title}</DialogTitle>
+                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{tr(agendaSession.type)}</p>
+                <DialogTitle className="text-xl text-primary">{tr(agendaSession.title)}</DialogTitle>
                 <DialogDescription>
-                  {formatLongDate(agendaSession.date)} · {agendaSession.time} · {agendaSession.location}
+                  {longDate(agendaSession.date)} · {agendaSession.time} · {tr(agendaSession.location)}
                 </DialogDescription>
               </DialogHeader>
-              <h3 className="mt-5 text-sm font-bold uppercase tracking-wider text-text-muted">Order of Business</h3>
+              <h3 className="mt-5 text-sm font-bold uppercase tracking-wider text-text-muted">{tr('Order of Business')}</h3>
               <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-text-main">
                 {buildAgenda(agendaSession).map((item) => (
-                  <li key={item}>{item}</li>
+                  <li key={item}>{translateAgendaItem(tr, item)}</li>
                 ))}
               </ol>
               <div className="mt-6 flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => printAgenda(agendaSession)}>
                   <Printer className="mr-1.5 h-4 w-4" />
-                  Print agenda
+                  {tr('Print agenda')}
                 </Button>
                 <Button variant="outline" onClick={() => addSessionToCalendar(agendaSession)}>
                   <CalendarPlus className="mr-1.5 h-4 w-4" />
-                  Add to calendar
+                  {tr('Add to calendar')}
                 </Button>
               </div>
             </>
@@ -1855,13 +2022,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           {activeNews ? (
             <>
               <DialogHeader>
-                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{activeNews.category}</p>
-                <DialogTitle className="text-xl leading-snug text-primary">{activeNews.title}</DialogTitle>
-                <DialogDescription>{activeNews.date}</DialogDescription>
+                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{tr(activeNews.category)}</p>
+                <DialogTitle className="text-xl leading-snug text-primary">{tr(activeNews.title)}</DialogTitle>
+                <DialogDescription>{tr(activeNews.date)}</DialogDescription>
               </DialogHeader>
               <div className="mt-4 space-y-3 text-sm leading-relaxed text-text-main">
                 {activeNews.body.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
+                  <p key={paragraph}>{tr(paragraph)}</p>
                 ))}
               </div>
               {activeNews.relatedDocId ? (
@@ -1874,7 +2041,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   }}
                 >
                   <FileText className="mr-1.5 h-4 w-4" />
-                  View related document
+                  {tr('View related document')}
                 </Button>
               ) : null}
             </>
@@ -1886,16 +2053,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent className="relative max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl text-primary">Request a Document</DialogTitle>
-            <DialogDescription>Request a certified copy of a legislative record from the Office of the Secretary to the Sanggunian.</DialogDescription>
+            <DialogTitle className="text-xl text-primary">{tr('Request a Document')}</DialogTitle>
+            <DialogDescription>{tr('Request a certified copy of a legislative record from the Office of the Secretary to the Sanggunian.')}</DialogDescription>
           </DialogHeader>
           {requestReference ? (
             <div className="mt-5 space-y-4">
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-                <p className="font-bold">Request received</p>
+                <p className="font-bold">{tr('Request received')}</p>
                 <p className="mt-1">
-                  Your reference number is <span className="font-mono font-bold">{requestReference}</span>. A confirmation will be sent to {requestEmail}. Please present
-                  this reference number when claiming your document at the SB Office.
+                  {tr('Your reference number is')} <span className="font-mono font-bold">{requestReference}</span>
+                  {tr('. A confirmation will be sent to {email}. Please present this reference number when claiming your document at the SB Office.', { email: requestEmail })}
                 </p>
               </div>
               <Button
@@ -1907,45 +2074,47 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   setRequestPurpose('Personal reference');
                 }}
               >
-                Done
+                {tr('Done')}
               </Button>
             </div>
           ) : (
             <form onSubmit={handleDocumentRequest} className="mt-5 space-y-3">
-              <Input value={requestName} onChange={(e) => setRequestName(e.target.value)} placeholder="Full name" aria-label="Full name" />
-              <Input value={requestEmail} onChange={(e) => setRequestEmail(e.target.value)} type="email" placeholder="Email address" aria-label="Email address" />
+              <Input value={requestName} onChange={(e) => setRequestName(e.target.value)} placeholder={tr('Full name')} aria-label={tr('Full name')} />
+              <Input value={requestEmail} onChange={(e) => setRequestEmail(e.target.value)} type="email" placeholder={tr('Email address')} aria-label={tr('Email address')} />
               <Input
                 value={requestRecord}
                 onChange={(e) => setRequestRecord(e.target.value)}
-                placeholder="Record number or title (e.g. Mun. Ord. No. 2026-005)"
-                aria-label="Document requested"
+                placeholder={tr('Record number or title (e.g. Mun. Ord. No. 2026-005)')}
+                aria-label={tr('Document requested')}
               />
               <label className="block text-xs font-semibold text-text-muted">
-                Purpose
+                {tr('Purpose')}
                 <select
                   value={requestPurpose}
                   onChange={(e) => setRequestPurpose(e.target.value)}
                   className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm font-normal text-text-main"
                 >
                   {['Personal reference', 'Research / Academic', 'Legal proceedings', 'Business compliance', 'Other'].map((purpose) => (
-                    <option key={purpose}>{purpose}</option>
+                    <option key={purpose} value={purpose}>
+                      {tr(purpose)}
+                    </option>
                   ))}
                 </select>
               </label>
               {requestError ? (
                 <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
-                  {requestError}
+                  {tr(requestError)}
                 </p>
               ) : null}
               <p className="text-[11px] text-text-muted">
-                By submitting, you agree to the processing of your personal data under the{' '}
+                {tr('By submitting, you agree to the processing of your personal data under the')}{' '}
                 <button type="button" onClick={() => setPolicyDialog('privacy')} className="underline hover:text-primary">
-                  Privacy Notice
+                  {tr('Privacy Notice')}
                 </button>
                 .
               </p>
               <Button type="submit" className="w-full">
-                Submit request
+                {tr('Submit request')}
               </Button>
             </form>
           )}
@@ -1956,41 +2125,47 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={policyDialog !== null} onOpenChange={(open) => !open && setPolicyDialog(null)}>
         <DialogContent className="relative max-w-lg">
           <DialogHeader>
-            <DialogTitle>{policyDialog === 'privacy' ? 'Privacy Notice' : policyDialog === 'terms' ? 'Terms of Use' : 'Accessibility'}</DialogTitle>
+            <DialogTitle>{tr(policyDialog === 'privacy' ? 'Privacy Notice' : policyDialog === 'terms' ? 'Terms of Use' : 'Accessibility')}</DialogTitle>
             <DialogDescription>{LGU_PROFILE.legislature}</DialogDescription>
           </DialogHeader>
           {policyDialog === 'privacy' && (
             <div className="mt-3 space-y-3 text-sm text-text-muted">
               <p>
-                The Sangguniang Bayan ng Capas collects only the personal information needed to process public registrations, inquiries, and requests for legislative
-                documents, in accordance with the Data Privacy Act of 2012 (RA 10173).
+                {tr(
+                  'LIMS collects only the personal information needed to process public registrations, inquiries, and requests for legislative documents, in accordance with the Data Privacy Act of 2012 (RA 10173).'
+                )}
               </p>
               <p>
-                Information is used solely for the stated purpose, kept only as long as necessary, and protected against unauthorized access. You may request access to,
-                correction of, or deletion of your data through the Office of the Secretary to the Sanggunian at {LGU_PROFILE.email}.
+                {tr(
+                  'Information is used solely for the stated purpose, kept only as long as necessary, and protected against unauthorized access. You may request access to, correction of, or deletion of your data through the Office of the Secretary to the Sanggunian at {email}.',
+                  { email: LGU_PROFILE.email }
+                )}
               </p>
             </div>
           )}
           {policyDialog === 'terms' && (
             <div className="mt-3 space-y-3 text-sm text-text-muted">
               <p>
-                Documents on this portal are provided for public information. Downloaded and printed copies are marked &ldquo;Public Copy&rdquo; and are not certified true
-                copies. Certified copies may be requested from the Office of the Secretary to the Sanggunian.
+                {tr(
+                  'Documents on this portal are provided for public information. Downloaded and printed copies are marked “Public Copy” and are not certified true copies. Certified copies may be requested from the Office of the Secretary to the Sanggunian.'
+                )}
               </p>
             </div>
           )}
           {policyDialog === 'accessibility' && (
             <div className="mt-3 space-y-3 text-sm text-text-muted">
               <p>
-                This portal is designed to work on phones, tablets, and desktop computers, supports keyboard navigation, and uses readable text and color contrast. Report
-                accessibility issues to {LGU_PROFILE.email}.
+                {tr(
+                  'This portal is designed to work on phones, tablets, and desktop computers, supports keyboard navigation, and uses readable text and color contrast. Report accessibility issues to {email}.',
+                  { email: LGU_PROFILE.email }
+                )}
               </p>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Member of the Sangguniang Bayan: committee assignments, each linking to its referred measures. */}
+      {/* Member details: committee assignments, each linking to its referred measures. */}
       <Dialog open={publicMember !== null} onOpenChange={(open) => !open && setPublicMemberId(null)}>
         <DialogContent>
           {publicMember ? (
@@ -2000,13 +2175,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   {publicMember.abbr}
                 </span>
                 <DialogHeader className="text-left">
-                  <DialogTitle className="text-xl text-primary">{publicMember.name}</DialogTitle>
+                  <DialogTitle className="text-xl text-primary">{tr(publicMember.name)}</DialogTitle>
                   <DialogDescription>
-                    {publicMember.position} · {publicMember.seat}
+                    {tr(publicMember.position)} · {tr(publicMember.seat)}
                   </DialogDescription>
                 </DialogHeader>
               </div>
-              <h4 className="mt-5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Committee assignments</h4>
+              <h4 className="mt-5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">{tr('Committee assignments')}</h4>
               {committeeRolesOf(publicMember.id).length > 0 ? (
                 <ul className="mt-2 space-y-2">
                   {committeeRolesOf(publicMember.id)
@@ -2023,7 +2198,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                           }}
                           className="flex w-full items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5 text-left transition-colors hover:border-primary/40 hover:bg-primary/[0.03]"
                         >
-                          <span className="min-w-0 truncate text-sm text-text-main">{shortCommitteeName(entry.committee.name)}</span>
+                          <span className="min-w-0 truncate text-sm text-text-main">{tr(entry.committee.name).replace(/^(Committee on|Komite sa) /, '')}</span>
                           <span className="flex shrink-0 items-center gap-2">
                             <span
                               className={cn(
@@ -2031,7 +2206,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                                 entry.role === 'Chair' ? 'bg-[#fdf6e3] text-[#8a6a12]' : entry.role === 'Vice Chair' ? 'bg-primary/10 text-primary' : 'bg-muted text-text-muted'
                               )}
                             >
-                              {entry.role}
+                              {tr(entry.role)}
                             </span>
                             <ArrowRight className="h-4 w-4 text-text-muted" />
                           </span>
@@ -2041,16 +2216,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </ul>
               ) : (
                 <p className="mt-2 text-sm text-text-muted">
-                  {publicMember.seat === 'Presiding Officer' ? 'The Municipal Vice Mayor presides over sessions and does not sit in standing committees.' : 'No committee assignments.'}
+                  {tr(publicMember.seat === 'Presiding Officer' ? 'The Municipal Vice Mayor presides over sessions and does not sit in standing committees.' : 'No committee assignments.')}
                 </p>
               )}
-              <p className="mt-4 text-xs text-text-muted">Select a committee to see the measures referred to it.</p>
+              <p className="mt-4 text-xs text-text-muted">{tr('Select a committee to see the measures referred to it.')}</p>
             </>
           ) : null}
         </DialogContent>
       </Dialog>
 
-      <EgovAiChat />
+      <EgovAiChat lang={lang} />
     </div>
   );
 }

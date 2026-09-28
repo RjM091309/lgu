@@ -110,7 +110,7 @@ export function MasterListingsView() {
          <div><b>Position</b>: ${member.position}</div>
          <div><b>Seat</b>: ${member.seat}</div>
          <div><b>Master list tag</b>: ${masterTag(member)}</div>
-         <div><b>Office</b>: ${LGU_PROFILE.legislature}, ${LGU_PROFILE.address}</div>
+         <div><b>Office</b>: ${LGU_PROFILE.address}</div>
        </div>
        <table><thead><tr><th>Committee</th><th>Role</th></tr></thead><tbody>${
          assigned.map((entry) => `<tr><td>${entry.committee.name}</td><td>${entry.role}</td></tr>`).join('') || '<tr><td colspan="2">No committee assignments</td></tr>'
@@ -124,7 +124,7 @@ export function MasterListingsView() {
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Files &amp; Master Listings</h1>
-          <p className="text-sm text-text-muted">The composition of the Sangguniang Bayan, its committees, and the special legislative files.</p>
+          <p className="text-sm text-text-muted">Members, committees, and special legislative files recorded in LIMS.</p>
         </div>
         <Button variant="outline" onClick={exportMasterList}>
           <Download className="mr-2 h-4 w-4" />
@@ -136,7 +136,7 @@ export function MasterListingsView() {
       <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <header className="flex flex-col gap-2 border-b border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-text-main">Composition of the Sangguniang Bayan</h2>
+            <h2 className="text-base font-semibold text-text-main">Member Composition</h2>
             <p className="text-xs text-text-muted">{mockMembers.length} members · select a member to see their committee assignments</p>
           </div>
           <span className="inline-flex items-center gap-1.5 text-[11px] text-text-muted">
