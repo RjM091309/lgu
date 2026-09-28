@@ -261,9 +261,9 @@ export default function App() {
           onMenuClick={() => setIsSidebarOpen(true)}
         />
 
-        {/* Mobile Sidebar */}
+        {/* Mobile Sidebar: the same floating panel as on desktop, inset from the screen edges. */}
         <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-          <SheetContent side="left" className="w-[85vw] max-w-[300px] p-0">
+          <SheetContent side="left" className="w-[85vw] max-w-[300px] bg-transparent p-2 shadow-none sm:p-3">
             <Sidebar
               activeTab={activeTab}
               setActiveTab={(tab) => {
@@ -272,6 +272,7 @@ export default function App() {
               }}
               onLogout={handleLogout}
               compactHeader
+              className="rounded-2xl ring-1 ring-inset ring-white/10 shadow-[0_1px_2px_rgba(10,15,61,0.30),0_6px_12px_-2px_rgba(10,15,61,0.22),0_18px_36px_-8px_rgba(10,15,61,0.35),0_40px_80px_-24px_rgba(26,35,126,0.45)]"
             />
           </SheetContent>
         </Sheet>
