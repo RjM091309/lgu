@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/DataTable';
-import { LGU_PROFILE, mockBills, mockCommittees, mockMembers, mockSessions } from '@/lib/mock-data';
-import { openPrintWindow, saveFile } from '@/lib/files';
+import { LGU_PROFILE, mockBills, mockCommitteeHearings, mockCommittees, mockMembers, mockSessions, mockYearlyActivity } from '@/lib/mock-data';
+import { openPrintWindow, saveCsv, saveFile } from '@/lib/files';
 import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -54,6 +54,9 @@ import { confirmAction } from '@/components/ui/confirm';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
 import { EgovAiChat } from '@/components/public/EgovAiChat';
+import { LANDING_COPY, type Lang } from '@/components/public/landing-copy';
+import { HeroSlider, type HeroSlide } from '@/components/public/HeroSlider';
+import { ProcessSimulation } from '@/components/public/ProcessSimulation';
 
 // Demo sign-in.
 const DEMO_PASSWORD = 'admin123';
@@ -63,63 +66,6 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 interface LandingPageProps {
   onLogin: (remember: boolean) => void;
 }
-
-type Lang = 'EN' | 'FIL';
-
-const COPY = {
-  EN: {
-    nav: {
-      home: 'Home',
-      legislation: 'Legislation',
-      'sangguniang-bayan': 'The Sanggunian',
-      'public-sessions': 'Sessions',
-      resources: 'Resources',
-      news: 'News',
-      contact: 'Contact',
-    },
-    pst: 'Philippine Standard Time',
-    staffLogin: 'Staff Login',
-    heroKicker: 'Official Legislative Portal',
-    heroTitle: 'Transparent and Accessible Local Legislation',
-    heroText:
-      'Search ordinances and resolutions, follow session schedules, and request legislative documents from the Sangguniang Bayan ng Capas.',
-    searchPlaceholder: 'Search ordinances, resolutions, or record numbers',
-    search: 'Search',
-    services: 'Public Services',
-    overview: 'Legislative Records at a Glance',
-    legislation: 'Legislation',
-    sb: 'The Sangguniang Bayan',
-    sessions: 'Sessions and Hearings',
-    resources: 'Resources and Forms',
-    news: 'News and Announcements',
-  },
-  FIL: {
-    nav: {
-      home: 'Tahanan',
-      legislation: 'Lehislasyon',
-      'sangguniang-bayan': 'Ang Sanggunian',
-      'public-sessions': 'Mga Sesyon',
-      resources: 'Mga Dokumento',
-      news: 'Balita',
-      contact: 'Makipag-ugnayan',
-    },
-    pst: 'Oras sa Pilipinas',
-    staffLogin: 'Pag-login ng Kawani',
-    heroKicker: 'Opisyal na Portal ng Lehislasyon',
-    heroTitle: 'Bukas at Abot-kayang Lokal na Lehislasyon',
-    heroText:
-      'Maghanap ng mga ordinansa at resolusyon, subaybayan ang iskedyul ng mga sesyon, at humiling ng mga dokumento mula sa Sangguniang Bayan ng Capas.',
-    searchPlaceholder: 'Maghanap ng ordinansa, resolusyon, o numero ng rekord',
-    search: 'Hanapin',
-    services: 'Mga Serbisyong Pampubliko',
-    overview: 'Buod ng mga Rekord',
-    legislation: 'Lehislasyon',
-    sb: 'Ang Sangguniang Bayan',
-    sessions: 'Mga Sesyon at Pagdinig',
-    resources: 'Mga Dokumento at Porma',
-    news: 'Balita at Anunsyo',
-  },
-} as const;
 
 const NAV_IDS = ['home', 'legislation', 'sangguniang-bayan', 'public-sessions', 'resources', 'news', 'contact'] as const;
 
@@ -192,7 +138,7 @@ const NEWS: NewsItem[] = [
     id: 'news-heritage',
     category: 'Enacted Ordinance',
     title: 'Capas National Shrine Environs Declared a Heritage Protection Zone',
-    date: 'February 2026',
+    date: 'September 2026',
     summary: 'Mun. Ord. No. 2026-005 regulates signage, vending, and new construction within the buffer zone of the Capas National Shrine.',
     body: [
       'Municipal Ordinance No. 2026-005 declares the environs of the Capas National Shrine a Heritage Protection Zone.',
@@ -205,7 +151,7 @@ const NEWS: NewsItem[] = [
 
 export function LandingPage({ onLogin }: LandingPageProps) {
   const [lang, setLang] = useState<Lang>('EN');
-  const t = COPY[lang];
+  const t = LANDING_COPY[lang];
   const [now, setNow] = useState(() => new Date());
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const headerRef = useRef<HTMLElement | null>(null);
@@ -231,6 +177,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const [selectedActionTaken, setSelectedActionTaken] = useState('All');
   const [selectedSponsor, setSelectedSponsor] = useState('All');
   const [selectedCoAuthor, setSelectedCoAuthor] = useState('All');
+  const [selectedYear, setSelectedYear] = useState('All');
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [inquiryPage, setInquiryPage] = useState(1);
   const inquiryPageSize = 8;
@@ -256,10 +203,22 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const [activeNewsId, setActiveNewsId] = useState<string | null>(null);
   const [policyDialog, setPolicyDialog] = useState<'privacy' | 'terms' | 'accessibility' | null>(null);
 
+  const [contactName, setContactName] = useState('');
+  const [contactEmail, setContactEmail] = useState('');
+  const [contactSubject, setContactSubject] = useState('');
+  const [contactMessage, setContactMessage] = useState('');
+  const [contactError, setContactError] = useState('');
+  const [contactNotice, setContactNotice] = useState('');
+
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Screen readers pick the right pronunciation from the page language.
+  useEffect(() => {
+    document.documentElement.lang = lang === 'FIL' ? 'fil' : 'en';
+  }, [lang]);
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -277,7 +236,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     return () => observer.disconnect();
   }, []);
 
-  const philippineTime = new Intl.DateTimeFormat('en-PH', {
+  const philippineTime = new Intl.DateTimeFormat(lang === 'FIL' ? 'fil-PH' : 'en-PH', {
     timeZone: 'Asia/Manila',
     weekday: 'long',
     year: 'numeric',
@@ -310,8 +269,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     e.preventDefault();
     setLoginError('');
     if (!username.trim() || !password) {
-      setLoginError('Please enter your username and password.');
-      toast('Sign-in failed', 'Please enter your username and password.', 'error');
+      setLoginError(t.loginMissing);
+      toast(t.signInFailed, t.loginMissing, 'error');
       return;
     }
     if (username.trim() === 'admin' && password === DEMO_PASSWORD) {
@@ -319,37 +278,35 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       onLogin(rememberMe);
       return;
     }
-    setLoginError('Invalid username or password. Please try again.');
-    toast('Sign-in failed', 'Invalid username or password. Please try again.', 'error');
+    setLoginError(t.loginInvalid);
+    toast(t.signInFailed, t.loginInvalid, 'error');
   };
 
   const handlePublicRegistration = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!publicName.trim() || !publicEmail.trim()) {
-      setRegistrationNotice('Please provide your full name and email address.');
-      toast('Registration not saved', 'Please provide your full name and email address.', 'error');
+      setRegistrationNotice(t.needNameEmail);
+      toast(t.registrationNotSaved, t.needNameEmail, 'error');
       return;
     }
     if (!EMAIL_PATTERN.test(publicEmail.trim())) {
-      setRegistrationNotice('Please enter a valid email address.');
-      toast('Registration not saved', `${publicEmail.trim()} is not a valid email address.`, 'error');
+      setRegistrationNotice(t.invalidEmail);
+      toast(t.registrationNotSaved, t.notValidEmail(publicEmail.trim()), 'error');
       return;
     }
     const confirmed = await confirmAction({
-      title: 'Submit your registration?',
+      title: t.confirmRegistrationTitle,
       description: notifyUpdates
-        ? `${publicName.trim()} will be registered with ${publicEmail.trim()} and subscribed to legislative updates.`
-        : `${publicName.trim()} will be registered with ${publicEmail.trim()}.`,
-      confirmLabel: 'Register',
+        ? t.confirmRegistrationSubscribed(publicName.trim(), publicEmail.trim())
+        : t.confirmRegistration(publicName.trim(), publicEmail.trim()),
+      confirmLabel: t.register,
+      cancelLabel: t.cancel,
     });
     if (!confirmed) return;
-    toast('Registration saved', notifyUpdates ? 'You are now subscribed to legislative updates.' : 'You may enable updates anytime.');
+    const notice = notifyUpdates ? t.registrationSubscribed : t.registrationNoUpdates;
+    toast(t.registrationSaved, notice);
     logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Registered on the public portal', detail: notifyUpdates ? 'Subscribed to legislative updates.' : undefined });
-    setRegistrationNotice(
-      notifyUpdates
-        ? 'Registration saved. You are now subscribed to legislative updates.'
-        : 'Registration saved. You may enable updates anytime.'
-    );
+    setRegistrationNotice(notice);
     setPublicName('');
     setPublicEmail('');
     setNotifyUpdates(true);
@@ -359,42 +316,74 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     e.preventDefault();
     const key = accreditationQuery.trim().toUpperCase();
     if (!key) {
-      setAccreditationResult('Please enter a reference number.');
-      toast('Lookup failed', 'Please enter a reference number.', 'error');
+      setAccreditationResult(t.enterReference);
+      toast(t.lookupFailed, t.enterReference, 'error');
       return;
     }
     if (ACCREDITATION_STATUS[key]) {
       setAccreditationResult(`${key}: ${ACCREDITATION_STATUS[key]}`);
-      toast('Accreditation found', `${key}: ${ACCREDITATION_STATUS[key]}`);
+      toast(t.accFound, `${key}: ${ACCREDITATION_STATUS[key]}`);
     } else {
-      setAccreditationResult(`No accreditation request found for ${key}.`);
-      toast('Accreditation not found', `No accreditation request found for ${key}.`, 'error');
+      setAccreditationResult(t.accNotFound(key));
+      toast(t.accNotFoundTitle, t.accNotFound(key), 'error');
     }
   };
 
   const handleDocumentRequest = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!requestName.trim() || !requestEmail.trim() || !requestRecord.trim()) {
-      setRequestError('Please complete your name, email address, and the document requested.');
-      toast('Request not submitted', 'Please complete your name, email address, and the document requested.', 'error');
+      setRequestError(t.requestIncomplete);
+      toast(t.requestNotSubmitted, t.requestIncomplete, 'error');
       return;
     }
     if (!EMAIL_PATTERN.test(requestEmail.trim())) {
-      setRequestError('Please enter a valid email address.');
-      toast('Request not submitted', `${requestEmail.trim()} is not a valid email address.`, 'error');
+      setRequestError(t.invalidEmail);
+      toast(t.requestNotSubmitted, t.notValidEmail(requestEmail.trim()), 'error');
       return;
     }
     const confirmed = await confirmAction({
-      title: 'Submit this document request?',
-      description: `A request for "${requestRecord.trim()}" will be sent to the SB Secretariat. Updates will go to ${requestEmail.trim()}.`,
-      confirmLabel: 'Submit request',
+      title: t.confirmRequestTitle,
+      description: t.confirmRequest(requestRecord.trim(), requestEmail.trim()),
+      confirmLabel: t.submitRequest,
+      cancelLabel: t.cancel,
     });
     if (!confirmed) return;
     const reference = `REQ-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
     setRequestError('');
     setRequestReference(reference);
-    toast('Request submitted', `Your reference number is ${reference}.`);
+    toast(t.requestSubmitted, t.yourReference(reference));
     logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Submitted a certified copy request', detail: `Reference number ${reference}.` });
+  };
+
+  const handleContactInquiry = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setContactNotice('');
+    if (!contactName.trim() || !contactEmail.trim() || !contactMessage.trim()) {
+      setContactError(t.inquiryIncomplete);
+      toast(t.inquiryNotSent, t.inquiryIncomplete, 'error');
+      return;
+    }
+    if (!EMAIL_PATTERN.test(contactEmail.trim())) {
+      setContactError(t.invalidEmail);
+      toast(t.inquiryNotSent, t.notValidEmail(contactEmail.trim()), 'error');
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: t.confirmInquiryTitle,
+      description: t.confirmInquiry(contactEmail.trim()),
+      confirmLabel: t.sendInquiry,
+      cancelLabel: t.cancel,
+    });
+    if (!confirmed) return;
+    const reference = `INQ-2026-${String(Math.floor(1000 + Math.random() * 9000))}`;
+    setContactError('');
+    setContactNotice(t.inquiryReceived(reference, contactEmail.trim()));
+    toast(t.inquirySent, t.yourReference(reference));
+    logActivity({ user: 'public', module: 'Public Portal', action: 'Created', summary: 'Sent an inquiry to the SB Secretariat', detail: `Reference number ${reference}.` });
+    setContactName('');
+    setContactEmail('');
+    setContactSubject('');
+    setContactMessage('');
   };
 
   const openRequestDialog = (recordNumber = '') => {
@@ -404,38 +393,35 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     setRequestOpen(true);
   };
 
+  // Counted from the same data the portal lists, so a total always matches what "Browse" shows.
+  const currentYear = mockYearlyActivity[mockYearlyActivity.length - 1];
+  const hearingsThisYear = mockCommitteeHearings.reduce((sum, row) => sum + row.monthly.reduce((a, b) => a + b, 0), 0);
+  const countByClassification = (classification: string) => mockBills.filter((bill) => (bill.classification ?? 'Ordinance') === classification).length;
+
   const publicStats = [
     {
-      label: 'Ordinances',
-      value: '39',
-      description: 'Local laws enacted on public safety, revenue, environment, and local governance.',
+      ...t.stats.ordinances,
+      value: String(countByClassification('Ordinance')),
       icon: ScrollText,
-      action: () => applyQuickFilter({ classification: 'Ordinance' }),
-      actionLabel: 'Browse ordinances',
+      onClick: () => applyQuickFilter({ classification: 'Ordinance' }),
     },
     {
-      label: 'Resolutions',
-      value: '356',
-      description: 'Formal expressions of the SB on policy direction, endorsements, and authorizations.',
+      ...t.stats.resolutions,
+      value: String(countByClassification('Resolution')),
       icon: FileText,
-      action: () => applyQuickFilter({ classification: 'Resolution' }),
-      actionLabel: 'Browse resolutions',
+      onClick: () => applyQuickFilter({ classification: 'Resolution' }),
     },
     {
-      label: 'Sessions Held',
-      value: '35',
-      description: 'Regular and special sessions where the SB deliberates on proposed measures.',
+      ...t.stats.sessions,
+      value: String(currentYear.sessionsHeld),
       icon: CalendarDays,
-      action: () => scrollToSection('public-sessions'),
-      actionLabel: 'View session calendar',
+      onClick: () => scrollToSection('public-sessions'),
     },
     {
-      label: 'Committee Hearings',
-      value: '98',
-      description: 'Hearings and consultations conducted before committee recommendations.',
+      ...t.stats.hearings,
+      value: String(hearingsThisYear),
       icon: Gavel,
-      action: () => scrollToSection('public-sessions'),
-      actionLabel: 'View hearings',
+      onClick: () => scrollToSection('public-sessions'),
     },
   ];
 
@@ -602,20 +588,27 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     ...Array.from(new Set(allRecords.map(pick).filter(Boolean) as string[])),
   ];
 
-  const asOptions = (values: string[]): SelectOption[] => values.map((value) => ({ value, label: value }));
+  // Filter values stay in English (they are record data); only the "All" choice and record types are translated.
+  const asOptions = (values: string[], labels: Record<string, string> = {}): SelectOption[] =>
+    values.map((value) => ({ value, label: value === 'All' ? t.all : labels[value] ?? value }));
 
-  const statusOptions = useMemo(() => asOptions(uniqueValues((r) => r.status)), []);
-  const categoryOptions = useMemo(() => asOptions(uniqueValues((r) => r.category)), []);
-  const typeOptions = useMemo(() => asOptions(['All', 'Legislation', 'Incoming Document', 'Resource']), []);
-  const subjectOptions = useMemo(() => asOptions(uniqueValues((r) => r.subject)), []);
-  const referralOptions = useMemo(() => asOptions(uniqueValues((r) => r.referral)), []);
-  const classificationOptions = useMemo(() => asOptions(uniqueValues((r) => r.classification)), []);
-  const actionTakenOptions = useMemo(() => asOptions(uniqueValues((r) => r.actionTaken)), []);
-  const authorshipOptions = useMemo(() => asOptions(uniqueValues((r) => r.authorshipType)), []);
-  const sponsorOptions = useMemo(() => asOptions(uniqueValues((r) => r.sponsor)), []);
-  const coAuthorOptions = useMemo(() => asOptions(uniqueValues((r) => r.coAuthor)), []);
+  const statusOptions = useMemo(() => asOptions(uniqueValues((r) => r.status)), [lang]);
+  const categoryOptions = useMemo(() => asOptions(uniqueValues((r) => r.category)), [lang]);
+  const yearOptions = useMemo(
+    () => asOptions(['All', ...Array.from(new Set(allRecords.map((r) => r.date.slice(0, 4)))).sort((a, b) => b.localeCompare(a))]),
+    [lang]
+  );
+  const typeOptions = useMemo(() => asOptions(['All', 'Legislation', 'Incoming Document', 'Resource'], t.recordTypes), [lang]);
+  const subjectOptions = useMemo(() => asOptions(uniqueValues((r) => r.subject)), [lang]);
+  const referralOptions = useMemo(() => asOptions(uniqueValues((r) => r.referral)), [lang]);
+  const classificationOptions = useMemo(() => asOptions(uniqueValues((r) => r.classification)), [lang]);
+  const actionTakenOptions = useMemo(() => asOptions(uniqueValues((r) => r.actionTaken)), [lang]);
+  const authorshipOptions = useMemo(() => asOptions(uniqueValues((r) => r.authorshipType)), [lang]);
+  const sponsorOptions = useMemo(() => asOptions(uniqueValues((r) => r.sponsor)), [lang]);
+  const coAuthorOptions = useMemo(() => asOptions(uniqueValues((r) => r.coAuthor)), [lang]);
 
-  const pickOption = (options: SelectOption[], value: string) => options.find((o) => o.value === value) ?? null;
+  // An untouched filter shows its placeholder (the filter's name) instead of "All", so each dropdown says what it filters.
+  const pickOption = (options: SelectOption[], value: string) => (value === 'All' ? null : options.find((o) => o.value === value) ?? null);
 
   const resetFilters = () => {
     setInquiryKeyword('');
@@ -629,6 +622,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     setSelectedActionTaken('All');
     setSelectedSponsor('All');
     setSelectedCoAuthor('All');
+    setSelectedYear('All');
   };
 
   function applyQuickFilter({ classification = 'All', type = 'All', keyword = '' }: { classification?: string; type?: string; keyword?: string }) {
@@ -664,11 +658,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         (selectedAuthorship === 'All' || record.authorshipType === selectedAuthorship) &&
         (selectedActionTaken === 'All' || record.actionTaken === selectedActionTaken) &&
         (selectedSponsor === 'All' || record.sponsor === selectedSponsor) &&
-        (selectedCoAuthor === 'All' || record.coAuthor === selectedCoAuthor)
+        (selectedCoAuthor === 'All' || record.coAuthor === selectedCoAuthor) &&
+        (selectedYear === 'All' || record.date.startsWith(selectedYear))
       );
     });
     // allRecords is rebuilt each render from static data; the filters are the real inputs.
   }, [
+    selectedYear,
     inquiryKeyword,
     selectedStatus,
     selectedCategory,
@@ -704,14 +700,84 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     selectedActionTaken,
     selectedSponsor,
     selectedCoAuthor,
+    selectedYear,
   ].filter((value) => value !== 'All').length + (inquiryKeyword.trim() ? 1 : 0);
 
+  // Human-readable summary of the active filters, printed on the listing so a copy shows what it covers.
+  const activeFilterSummary = [
+    inquiryKeyword.trim() ? `"${inquiryKeyword.trim()}"` : '',
+    ...(
+      [
+        [t.filters.type, selectedType === 'All' ? 'All' : t.recordTypes[selectedType] ?? selectedType],
+        [t.filters.status, selectedStatus],
+        [t.filters.category, selectedCategory],
+        [t.filters.year, selectedYear],
+        [t.filters.subject, selectedSubject],
+        [t.filters.referral, selectedReferral],
+        [t.filters.classification, selectedClassification],
+        [t.filters.actionTaken, selectedActionTaken],
+        [t.filters.authorship, selectedAuthorship],
+        [t.filters.sponsor, selectedSponsor],
+        [t.filters.coAuthor, selectedCoAuthor],
+      ] as const
+    )
+      .filter(([, value]) => value !== 'All')
+      .map(([label, value]) => `${label}: ${value}`),
+  ].filter(Boolean);
+
+  const escapeHtml = (value: string) =>
+    value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  const exportResults = () => {
+    if (unifiedInquiryResults.length === 0) {
+      toast(t.exportCsv, t.nothingToExport, 'error');
+      return;
+    }
+    const saved = saveCsv(
+      `sb-capas-public-records-${new Date().toISOString().slice(0, 10)}.csv`,
+      [t.table.number, t.table.title, t.table.type, t.table.date, t.table.status, t.table.author, t.table.referral],
+      unifiedInquiryResults.map((r) => [r.number, r.title, r.classification, r.date, r.status, r.author, r.referral])
+    );
+    if (!saved) toast(t.exportCsv, t.downloadFailed, 'error');
+  };
+
+  const printResults = () => {
+    if (unifiedInquiryResults.length === 0) {
+      toast(t.printList, t.nothingToExport, 'error');
+      return;
+    }
+    const rows = unifiedInquiryResults
+      .map(
+        (r) =>
+          `<tr><td>${escapeHtml(r.number)}</td><td>${escapeHtml(r.title)}</td><td>${escapeHtml(r.classification)}</td><td>${r.date}</td><td>${escapeHtml(r.status)}</td></tr>`
+      )
+      .join('');
+    const opened = openPrintWindow(
+      t.listTitle,
+      `
+      <div class="card">
+        <div class="watermark">${watermarkText}</div>
+        <div class="title">${t.listTitle}</div>
+        <div class="rows">
+          <div><b>${t.listFilters}</b>: ${escapeHtml(activeFilterSummary.join(' · ') || t.listNone)}</div>
+          <div><b>${t.listGenerated}</b>: ${philippineTime}</div>
+          <div>${t.recordsFound(unifiedInquiryResults.length)}</div>
+        </div>
+        <table>
+          <thead><tr><th>${t.table.number}</th><th>${t.table.title}</th><th>${t.table.type}</th><th>${t.table.date}</th><th>${t.table.status}</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`
+    );
+    if (!opened) toast(t.printList, t.popupBlocked, 'error');
+  };
+
   const recordTabs = [
-    { label: 'All Records', active: selectedType === 'All' && selectedClassification === 'All', apply: () => applyTab('All', 'All') },
-    { label: 'Ordinances', active: selectedClassification === 'Ordinance', apply: () => applyTab('Legislation', 'Ordinance') },
-    { label: 'Resolutions', active: selectedClassification === 'Resolution', apply: () => applyTab('Legislation', 'Resolution') },
-    { label: 'Incoming Documents', active: selectedType === 'Incoming Document', apply: () => applyTab('Incoming Document', 'All') },
-    { label: 'Resources', active: selectedType === 'Resource', apply: () => applyTab('Resource', 'All') },
+    { label: t.tabs.all, active: selectedType === 'All' && selectedClassification === 'All', apply: () => applyTab('All', 'All') },
+    { label: t.tabs.ordinances, active: selectedClassification === 'Ordinance', apply: () => applyTab('Legislation', 'Ordinance') },
+    { label: t.tabs.resolutions, active: selectedClassification === 'Resolution', apply: () => applyTab('Legislation', 'Resolution') },
+    { label: t.tabs.incoming, active: selectedType === 'Incoming Document', apply: () => applyTab('Incoming Document', 'All') },
+    { label: t.tabs.resources, active: selectedType === 'Resource', apply: () => applyTab('Resource', 'All') },
   ];
 
   function applyTab(type: string, classification: string) {
@@ -780,20 +846,80 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const openDoc = (id: string) => setActivePublicDocId(id);
 
   const resourceCards = [
-    { id: 'res-1', title: 'Citizen Guidebook', description: 'How to participate in public hearings and legislative consultations.', icon: BookOpen },
-    { id: 'res-3', title: 'Ordinance Archive', description: 'Index of enacted municipal ordinances by number, title, and year.', icon: Archive },
-    { id: 'res-4', title: 'Session Minutes', description: 'Approved minutes of regular and special sessions of the SB.', icon: ClipboardList },
-    { id: 'res-2', title: 'Accreditation Form', description: 'Request form for accreditation of civil society organizations.', icon: FileText },
+    { id: 'res-1', ...t.resourceCards['res-1'], icon: BookOpen },
+    { id: 'res-3', ...t.resourceCards['res-3'], icon: Archive },
+    { id: 'res-4', ...t.resourceCards['res-4'], icon: ClipboardList },
+    { id: 'res-2', ...t.resourceCards['res-2'], icon: FileText },
   ];
 
   const serviceTiles = [
-    { title: 'Ordinances', description: 'Search enacted and proposed ordinances', icon: ScrollText, action: () => applyQuickFilter({ classification: 'Ordinance' }) },
-    { title: 'Resolutions', description: 'Browse resolutions adopted by the SB', icon: FileText, action: () => applyQuickFilter({ classification: 'Resolution' }) },
-    { title: 'Session Calendar', description: 'Upcoming sessions and public hearings', icon: CalendarDays, action: () => scrollToSection('public-sessions') },
-    { title: 'Members & Committees', description: 'Composition of the Sanggunian', icon: Users, action: () => scrollToSection('sangguniang-bayan') },
-    { title: 'Request a Document', description: 'Copies of legislative records', icon: FileSearch, action: () => openRequestDialog() },
-    { title: 'Register for Updates', description: 'Get notified of new legislation', icon: UserPlus, action: () => scrollToSection('register') },
+    { ...t.tiles.ordinances, icon: ScrollText, action: () => applyQuickFilter({ classification: 'Ordinance' }) },
+    { ...t.tiles.resolutions, icon: FileText, action: () => applyQuickFilter({ classification: 'Resolution' }) },
+    { ...t.tiles.calendar, icon: CalendarDays, action: () => scrollToSection('public-sessions') },
+    { ...t.tiles.members, icon: Users, action: () => scrollToSection('sangguniang-bayan') },
+    { ...t.tiles.request, icon: FileSearch, action: () => openRequestDialog() },
+    { ...t.tiles.register, icon: UserPlus, action: () => scrollToSection('register') },
   ];
+
+  const hearingSession = mockSessions.find((session) => session.id === 's2');
+
+  const heroSlides: HeroSlide[] = [
+    {
+      id: 'welcome',
+      kicker: `${t.heroKicker} · Capas, Tarlac`,
+      title: t.heroTitle,
+      text: t.heroText,
+      icon: Gavel,
+      tone: 'navy',
+      actions: [
+        { label: t.slides.welcome.browse, icon: ScrollText, primary: true, onClick: () => applyQuickFilter({}) },
+        { label: t.sessionCalendar, icon: CalendarDays, onClick: () => scrollToSection('public-sessions') },
+      ],
+    },
+    {
+      id: 'hearing',
+      ...t.slides.hearing,
+      icon: Megaphone,
+      tone: 'violet',
+      actions: [
+        { label: t.slides.hearing.read, icon: Megaphone, primary: true, onClick: () => setActiveNewsId('news-hearing') },
+        ...(hearingSession ? [{ label: t.addToCalendar, icon: CalendarPlus, onClick: () => addSessionToCalendar(hearingSession) }] : []),
+      ],
+    },
+    {
+      id: 'award',
+      ...t.slides.award,
+      icon: Award,
+      tone: 'gold',
+      actions: [
+        { label: t.slides.award.read, icon: Award, primary: true, onClick: () => setActiveNewsId('news-lla') },
+        { label: t.slides.award.meet, icon: Users, onClick: () => scrollToSection('sangguniang-bayan') },
+      ],
+    },
+    {
+      id: 'heritage',
+      ...t.slides.heritage,
+      icon: Landmark,
+      tone: 'teal',
+      actions: [
+        { label: t.slides.heritage.view, icon: Eye, primary: true, onClick: () => openDoc('leg-3') },
+        { label: t.tiles.ordinances.title, icon: ScrollText, onClick: () => applyQuickFilter({ classification: 'Ordinance' }) },
+      ],
+    },
+    {
+      id: 'register',
+      ...t.slides.register,
+      icon: UserPlus,
+      tone: 'navy',
+      actions: [
+        { label: t.slides.register.register, icon: UserPlus, primary: true, onClick: () => scrollToSection('register') },
+        { label: t.slides.register.inquiry, icon: Mail, onClick: () => scrollToSection('contact') },
+      ],
+    },
+  ];
+
+  const mapQuery = encodeURIComponent(LGU_PROFILE.address.replace(/ \d{4}$/, ''));
+  const dateLocale = lang === 'FIL' ? 'fil-PH' : 'en-PH';
 
   const container = 'mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8';
 
@@ -816,7 +942,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         href="#legislation"
         className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[60] focus:rounded focus:bg-white focus:px-4 focus:py-2 focus:text-primary focus:shadow"
       >
-        Skip to main content
+        {t.skipToMain}
       </a>
 
       {/* GOVPH top bar */}
@@ -827,7 +953,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               GOVPH
             </a>
             <span className="hidden h-3 w-px bg-white/25 sm:block" aria-hidden />
-            <span className="hidden sm:inline">Republic of the Philippines</span>
+            <span className="hidden sm:inline">{t.republic}</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="hidden items-center gap-1.5 lg:flex">
@@ -866,7 +992,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <img src="/capas-logo.jpg" alt="Seal of the Municipality of Capas" className="h-10 w-10 shrink-0 rounded-full object-cover" />
             <span className="min-w-0">
               <span className="block truncate text-[15px] font-bold leading-tight text-slate-900">Sangguniang Bayan ng Capas</span>
-              <span className="block truncate text-xs text-slate-500">Legislative Information System</span>
+              <span className="block truncate text-xs text-slate-500">{t.systemName}</span>
             </span>
           </button>
 
@@ -878,7 +1004,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     type="button"
                     onClick={() => scrollToSection(id)}
                     className={cn(
-                      'rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      'whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors',
                       activeSection === id ? 'bg-primary/5 text-primary' : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                     )}
                     aria-current={activeSection === id ? 'true' : undefined}
@@ -893,14 +1019,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           <div className="ml-auto flex items-center gap-2 lg:ml-0">
             <Button onClick={() => openRequestDialog()} className="hidden h-9 rounded-lg px-4 font-semibold sm:inline-flex">
               <FileSearch className="mr-2 h-4 w-4" />
-              Request a Document
+              {t.requestDocument}
             </Button>
             <button
               type="button"
               onClick={() => setMobileNavOpen((open) => !open)}
               className="flex h-9 w-9 items-center justify-center rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 lg:hidden"
               aria-expanded={mobileNavOpen}
-              aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+              aria-label={mobileNavOpen ? t.closeMenu : t.openMenu}
             >
               {mobileNavOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
@@ -926,7 +1052,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <li className="pt-2 sm:hidden">
                 <Button onClick={() => openRequestDialog()} className="w-full rounded-lg font-semibold">
                   <FileSearch className="mr-2 h-4 w-4" />
-                  Request a Document
+                  {t.requestDocument}
                 </Button>
               </li>
             </ul>
@@ -935,22 +1061,17 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       </header>
 
       <main>
-        {/* Hero */}
-        <section id="home" className="relative overflow-hidden border-b border-slate-200 bg-gradient-to-b from-[#f4f6fd] to-white">
-          <div
-            className="pointer-events-none absolute inset-0 bg-[radial-gradient(#1a237e1a_1px,transparent_1px)] [background-size:24px_24px] [mask-image:linear-gradient(to_bottom,black,transparent_85%)]"
-            aria-hidden
-          />
-          <div className={cn(container, 'relative grid gap-12 py-16 md:py-24 lg:grid-cols-[1.3fr_1fr] lg:items-center')}>
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-              <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-[#d4a72c]" aria-hidden />
-                {t.heroKicker} · Capas, Tarlac
-              </p>
-              <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 md:text-5xl">{t.heroTitle}</h1>
-              <p className="mt-5 max-w-xl text-lg leading-relaxed text-slate-600">{t.heroText}</p>
-
-              <form onSubmit={handleHeroSearch} className="mt-8 flex max-w-xl items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm focus-within:border-primary/40 focus-within:ring-4 focus-within:ring-primary/10" role="search">
+        {/* Hero: rotating announcements; the search bar and the next-session card stay in place. */}
+        <HeroSlider
+          slides={heroSlides}
+          labels={t.heroSlider}
+          below={
+            <>
+              <form
+                onSubmit={handleHeroSearch}
+                className="flex max-w-xl items-center gap-2 rounded-xl border border-white/20 bg-white p-1.5 shadow-lg focus-within:ring-4 focus-within:ring-[#d4a72c]/40"
+                role="search"
+              >
                 <label htmlFor="hero-search" className="sr-only">
                   {t.searchPlaceholder}
                 </label>
@@ -968,31 +1089,32 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </form>
 
               <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
-                <span className="text-slate-500">Quick links:</span>
+                <span className="text-white/60">{t.quickLinks}</span>
                 {[
-                  { label: 'Ordinances', action: () => applyQuickFilter({ classification: 'Ordinance' }) },
-                  { label: 'Resolutions', action: () => applyQuickFilter({ classification: 'Resolution' }) },
-                  { label: 'Session calendar', action: () => scrollToSection('public-sessions') },
+                  { label: t.ordinances, action: () => applyQuickFilter({ classification: 'Ordinance' }) },
+                  { label: t.resolutions, action: () => applyQuickFilter({ classification: 'Resolution' }) },
+                  { label: t.sessionCalendar, action: () => scrollToSection('public-sessions') },
                 ].map((link) => (
                   <button
                     key={link.label}
                     type="button"
                     onClick={link.action}
-                    className="rounded-full border border-slate-200 bg-white px-3 py-1 font-medium text-slate-700 transition-colors hover:border-primary/30 hover:text-primary"
+                    className="rounded-full border border-white/20 bg-white/5 px-3 py-1 font-medium text-white/90 transition-colors hover:bg-white/15 hover:text-white"
                   >
                     {link.label}
                   </button>
                 ))}
               </div>
-            </motion.div>
-
-            {nextSession && nextSessionDate ? (
+            </>
+          }
+          aside={
+            nextSession && nextSessionDate ? (
               <motion.aside
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.1 }}
-                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.25)]"
-                aria-label="Next session"
+                className="rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-[0_20px_50px_-24px_rgba(15,23,42,0.45)]"
+                aria-label={t.nextSession}
               >
                 <div className="flex items-center justify-between">
                   <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
@@ -1000,33 +1122,33 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60 motion-reduce:hidden" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
                     </span>
-                    Next session
+                    {t.nextSession}
                   </p>
-                  <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(nextSession.type))}>{nextSession.type}</span>
+                  <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(nextSession.type))}>{t.sessionTypes[nextSession.type]}</span>
                 </div>
 
                 <div className="mt-5 flex items-start gap-4">
                   <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-primary text-white">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-white/75">
-                      {nextSessionDate.toLocaleDateString('en-PH', { month: 'short' })}
+                      {nextSessionDate.toLocaleDateString(dateLocale, { month: 'short' })}
                     </span>
                     <span className="text-2xl font-bold leading-none">{nextSessionDate.getDate()}</span>
                   </div>
                   <div className="min-w-0">
                     <h2 className="text-lg font-semibold leading-snug text-slate-900">{nextSession.title}</h2>
-                    <p className="mt-1 text-sm text-slate-500">{formatLongDate(nextSession.date)}</p>
+                    <p className="mt-1 text-sm text-slate-500">{formatLongDate(nextSession.date, dateLocale)}</p>
                   </div>
                 </div>
 
                 <dl className="mt-5 space-y-2.5 border-t border-slate-100 pt-5 text-sm">
                   <div className="flex items-center gap-2.5 text-slate-600">
                     <Clock className="h-4 w-4 shrink-0 text-slate-400" />
-                    <dt className="sr-only">Time</dt>
+                    <dt className="sr-only">{t.time}</dt>
                     <dd>{nextSession.time}</dd>
                   </div>
                   <div className="flex items-center gap-2.5 text-slate-600">
                     <MapPin className="h-4 w-4 shrink-0 text-slate-400" />
-                    <dt className="sr-only">Venue</dt>
+                    <dt className="sr-only">{t.venue}</dt>
                     <dd>{nextSession.location}</dd>
                   </div>
                 </dl>
@@ -1034,17 +1156,18 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <div className="mt-6 grid grid-cols-2 gap-2">
                   <Button onClick={() => setAgendaSessionId(nextSession.id)} className="rounded-lg font-semibold">
                     <Eye className="mr-2 h-4 w-4" />
-                    View Agenda
+                    {t.viewAgenda}
                   </Button>
                   <Button variant="outline" onClick={() => addSessionToCalendar(nextSession)} className="rounded-lg font-semibold">
                     <CalendarPlus className="mr-2 h-4 w-4" />
-                    Add to Calendar
+                    {t.addToCalendar}
                   </Button>
                 </div>
               </motion.aside>
-            ) : null}
-          </div>
-        </section>
+
+            ) : null
+          }
+        />
 
         {/* Public services */}
         <section aria-labelledby="services-heading" className="py-16 md:py-20">
@@ -1052,7 +1175,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="mb-10 max-w-3xl">
               <p className="text-sm font-semibold text-primary">{t.services}</p>
               <h2 id="services-heading" className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
-                How can we help you?
+                {t.helpTitle}
               </h2>
             </div>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -1080,7 +1203,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* Records at a glance */}
         <section className="border-y border-slate-200 bg-slate-50 py-16 md:py-20">
           <div className={container}>
-            {sectionHeading('Transparency', t.overview, 'Totals of legislative records on file with the Office of the Secretary to the Sanggunian.')}
+            {sectionHeading(t.transparencyKicker, t.overview, t.overviewText)}
             <div className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white sm:grid-cols-2 lg:grid-cols-4">
               {publicStats.map((stat, index) => (
                 <article
@@ -1099,8 +1222,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   </p>
                   <p className="mt-3 text-4xl font-bold tracking-tight text-slate-900">{stat.value}</p>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{stat.description}</p>
-                  <button type="button" onClick={stat.action} className="mt-4 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
-                    {stat.actionLabel}
+                  <button type="button" onClick={stat.onClick} className="mt-4 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
+                    {stat.action}
                     <ArrowRight className="h-4 w-4" />
                   </button>
                 </article>
@@ -1109,19 +1232,39 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
         </section>
 
+        {/* Legislative process */}
+        <section aria-labelledby="process-heading" className="border-b border-slate-200 py-16 md:py-20">
+          <div className={container}>
+            <div className="mb-10 max-w-3xl">
+              <p className="text-sm font-semibold text-primary">{t.process.kicker}</p>
+              <h2 id="process-heading" className="mt-2 text-3xl font-bold tracking-tight text-slate-900">
+                {t.process.title}
+              </h2>
+              <p className="mt-3 text-base leading-relaxed text-slate-600">{t.process.text}</p>
+            </div>
+            <ProcessSimulation
+              copy={t.process}
+              bills={mockBills}
+              onViewStage={(status) => {
+                resetFilters();
+                setSelectedType('Legislation');
+                setSelectedStatus(status);
+                scrollToSection('legislation');
+              }}
+              onViewRecord={(billId) => openDoc(`leg-${billId}`)}
+            />
+          </div>
+        </section>
+
         {/* Legislation */}
         <section id="legislation" className="scroll-mt-[65px] py-16 md:py-20">
           <div className={container}>
-            {sectionHeading(
-              'Public Inquiry',
-              t.legislation,
-              'Search ordinances, resolutions, incoming documents, and public resources. Open a record to view, download, or print a watermarked public copy.'
-            )}
+            {sectionHeading(t.inquiryKicker, t.legislation, t.legislationText)}
 
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="space-y-4 border-b border-slate-200 p-4 sm:p-5">
                 <div className="-mx-1 overflow-x-auto px-1">
-                  <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label="Record type">
+                  <div className="inline-flex gap-1 rounded-lg bg-slate-100 p-1" role="tablist" aria-label={t.tabsLabel}>
                     {recordTabs.map((tab) => (
                       <button
                         key={tab.label}
@@ -1140,72 +1283,97 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   </div>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-[2fr_1fr_1fr_auto_auto]">
-                  <div className="relative">
+                <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-[2fr_1fr_1fr_1fr_auto_auto]">
+                  <div className="relative sm:col-span-2 md:col-span-3 xl:col-span-1">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input
                       value={inquiryKeyword}
                       onChange={(e) => setInquiryKeyword(e.target.value)}
-                      placeholder="Keyword, record no., author, subject..."
+                      placeholder={t.keywordPlaceholder}
                       className="pl-9"
-                      aria-label="Search records"
+                      aria-label={t.searchRecords}
                     />
                   </div>
                   <Select
                     options={statusOptions}
                     value={pickOption(statusOptions, selectedStatus)}
                     onChange={(opt) => setSelectedStatus(opt?.value ?? 'All')}
-                    placeholder="Status"
+                    placeholder={t.filters.status}
+                    aria-label={t.filters.status}
                   />
                   <Select
                     options={categoryOptions}
                     value={pickOption(categoryOptions, selectedCategory)}
                     onChange={(opt) => setSelectedCategory(opt?.value ?? 'All')}
-                    placeholder="Category"
+                    placeholder={t.filters.category}
+                    aria-label={t.filters.category}
+                  />
+                  <Select
+                    options={yearOptions}
+                    value={pickOption(yearOptions, selectedYear)}
+                    onChange={(opt) => setSelectedYear(opt?.value ?? 'All')}
+                    placeholder={t.filters.year}
+                    aria-label={t.filters.year}
+                    isSearchable={false}
                   />
                   <Button variant="outline" onClick={() => setShowAdvancedFilters((open) => !open)} aria-expanded={showAdvancedFilters}>
                     <SlidersHorizontal className="mr-2 h-4 w-4" />
-                    {showAdvancedFilters ? 'Fewer filters' : 'More filters'}
+                    {showAdvancedFilters ? t.fewerFilters : t.moreFilters}
                   </Button>
                   <Button variant="outline" onClick={resetFilters} disabled={activeFilterCount === 0}>
                     <RotateCcw className="mr-2 h-4 w-4" />
-                    Reset
+                    {t.reset}
                   </Button>
                 </div>
 
                 {showAdvancedFilters ? (
                   <div className="grid gap-3 border-t border-slate-100 pt-4 md:grid-cols-4">
-                    <Select options={typeOptions} value={pickOption(typeOptions, selectedType)} onChange={(opt) => setSelectedType(opt?.value ?? 'All')} placeholder="Type" isSearchable={false} />
-                    <Select options={subjectOptions} value={pickOption(subjectOptions, selectedSubject)} onChange={(opt) => setSelectedSubject(opt?.value ?? 'All')} placeholder="Subject" />
-                    <Select options={referralOptions} value={pickOption(referralOptions, selectedReferral)} onChange={(opt) => setSelectedReferral(opt?.value ?? 'All')} placeholder="Referral" />
+                    <Select options={typeOptions} value={pickOption(typeOptions, selectedType)} onChange={(opt) => setSelectedType(opt?.value ?? 'All')} placeholder={t.filters.type} aria-label={t.filters.type} isSearchable={false} />
+                    <Select options={subjectOptions} value={pickOption(subjectOptions, selectedSubject)} onChange={(opt) => setSelectedSubject(opt?.value ?? 'All')} placeholder={t.filters.subject} aria-label={t.filters.subject} />
+                    <Select options={referralOptions} value={pickOption(referralOptions, selectedReferral)} onChange={(opt) => setSelectedReferral(opt?.value ?? 'All')} placeholder={t.filters.referral} aria-label={t.filters.referral} />
                     <Select
                       options={classificationOptions}
                       value={pickOption(classificationOptions, selectedClassification)}
                       onChange={(opt) => setSelectedClassification(opt?.value ?? 'All')}
-                      placeholder="Classification"
+                      placeholder={t.filters.classification}
+                      aria-label={t.filters.classification}
                     />
                     <Select
                       options={actionTakenOptions}
                       value={pickOption(actionTakenOptions, selectedActionTaken)}
                       onChange={(opt) => setSelectedActionTaken(opt?.value ?? 'All')}
-                      placeholder="Action taken"
+                      placeholder={t.filters.actionTaken}
+                      aria-label={t.filters.actionTaken}
                     />
                     <Select
                       options={authorshipOptions}
                       value={pickOption(authorshipOptions, selectedAuthorship)}
                       onChange={(opt) => setSelectedAuthorship(opt?.value ?? 'All')}
-                      placeholder="Authorship"
+                      placeholder={t.filters.authorship}
+                      aria-label={t.filters.authorship}
                       isSearchable={false}
                     />
-                    <Select options={sponsorOptions} value={pickOption(sponsorOptions, selectedSponsor)} onChange={(opt) => setSelectedSponsor(opt?.value ?? 'All')} placeholder="Sponsor" />
-                    <Select options={coAuthorOptions} value={pickOption(coAuthorOptions, selectedCoAuthor)} onChange={(opt) => setSelectedCoAuthor(opt?.value ?? 'All')} placeholder="Co-author" />
+                    <Select options={sponsorOptions} value={pickOption(sponsorOptions, selectedSponsor)} onChange={(opt) => setSelectedSponsor(opt?.value ?? 'All')} placeholder={t.filters.sponsor} aria-label={t.filters.sponsor} />
+                    <Select options={coAuthorOptions} value={pickOption(coAuthorOptions, selectedCoAuthor)} onChange={(opt) => setSelectedCoAuthor(opt?.value ?? 'All')} placeholder={t.filters.coAuthor} aria-label={t.filters.coAuthor} />
                   </div>
                 ) : null}
 
-                <p className="text-xs text-slate-500">
-                  {unifiedInquiryResults.length} record{unifiedInquiryResults.length === 1 ? '' : 's'} found
-                  {activeFilterCount > 0 ? ` · ${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} applied` : ''}
-                </p>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs text-slate-500">
+                    {t.recordsFound(unifiedInquiryResults.length)}
+                    {activeFilterCount > 0 ? ` · ${t.filtersApplied(activeFilterCount)}` : ''}
+                  </p>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={printResults}>
+                      <Printer className="mr-1.5 h-4 w-4" />
+                      {t.printList}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-8 rounded-lg" onClick={exportResults}>
+                      <Download className="mr-1.5 h-4 w-4" />
+                      {t.exportCsv}
+                    </Button>
+                  </div>
+                </div>
               </div>
 
               <DataTable
@@ -1217,17 +1385,18 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 onPreviousPage={() => setInquiryPage((prev) => Math.max(1, prev - 1))}
                 onNextPage={() => setInquiryPage((prev) => Math.min(inquiryTotalPages, prev + 1))}
                 tableWrapperClassName="overflow-x-auto overflow-y-visible"
+                labels={t.pagination}
               >
                 <Table className="min-w-[760px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="text-left">Record No.</TableHead>
-                      <TableHead className="text-left">Title</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Status</TableHead>
+                      <TableHead className="text-left">{t.table.number}</TableHead>
+                      <TableHead className="text-left">{t.table.title}</TableHead>
+                      <TableHead>{t.table.type}</TableHead>
+                      <TableHead>{t.table.date}</TableHead>
+                      <TableHead>{t.table.status}</TableHead>
                       <TableHead>
-                        <span className="sr-only">Actions</span>
+                        <span className="sr-only">{t.table.actions}</span>
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1249,15 +1418,15 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                         <TableCell className="relative">
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={`Actions for ${record.number}`}>
+                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0" aria-label={t.actionsFor(record.number)}>
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent className="w-52">
-                              <DropdownMenuItem onClick={() => openDoc(record.id)}>View</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => downloadRecord(record)}>Download public copy</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => printRecord(record)}>Print public copy</DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openRequestDialog(record.number)}>Request certified copy</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openDoc(record.id)}>{t.view}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => downloadRecord(record)}>{t.downloadPublicCopy}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => printRecord(record)}>{t.printPublicCopy}</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openRequestDialog(record.number)}>{t.requestCertifiedCopy}</DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>
@@ -1266,9 +1435,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     {paginatedInquiryResults.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={6} className="px-4 py-10 text-center text-sm text-slate-500">
-                          No matching public records found.{' '}
+                          {t.noRecords}{' '}
                           <button type="button" onClick={resetFilters} className="font-semibold text-primary hover:underline">
-                            Clear filters
+                            {t.clearFilters}
                           </button>
                         </TableCell>
                       </TableRow>
@@ -1283,17 +1452,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* Sangguniang Bayan */}
         <section id="sangguniang-bayan" className="scroll-mt-[65px] border-y border-slate-200 bg-slate-50 py-16 md:py-20">
           <div className={container}>
-            {sectionHeading(
-              'Legislative Body',
-              t.sb,
-              'The legislative body of the Municipality of Capas, presided over by the Municipal Vice Mayor. It enacts ordinances, adopts resolutions, and appropriates funds for the general welfare of the municipality and its inhabitants.'
-            )}
+            {sectionHeading(t.sbKicker, t.sb, t.sbText)}
 
             <div className="mb-6 grid gap-4 sm:grid-cols-3">
               {[
-                { label: 'Municipal Councilors', value: '8', icon: Users },
-                { label: 'Ex-officio Members', value: '3', icon: ShieldCheck },
-                { label: 'Standing Committees', value: String(mockCommittees.length), icon: Landmark },
+                { label: t.councilors, value: String(mockMembers.filter((m) => m.seat === 'At-large').length), icon: Users },
+                { label: t.exOfficio, value: String(mockMembers.filter((m) => m.seat === 'Ex-officio').length), icon: ShieldCheck },
+                { label: t.standingCommittees, value: String(mockCommittees.length), icon: Landmark },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-4 rounded-xl border border-slate-200 bg-white p-5">
                   <span className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
@@ -1310,22 +1475,22 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
               <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h3 className="font-semibold text-slate-900">Composition of the Sangguniang Bayan</h3>
-                  <p className="text-sm text-slate-500">{mockMembers.length} members · select a member to see their committee assignments</p>
+                  <h3 className="font-semibold text-slate-900">{t.compositionTitle}</h3>
+                  <p className="text-sm text-slate-500">{t.compositionText(mockMembers.length)}</p>
                 </div>
                 <span className="inline-flex items-center gap-1.5 text-xs text-slate-500">
                   <span className="inline-flex items-center gap-1 rounded-full bg-[#fdf6e3] px-2 py-0.5 font-semibold text-[#8a6a12]">
-                    <Gavel className="h-3 w-3" /> Chair
+                    <Gavel className="h-3 w-3" /> {t.chair}
                   </span>
-                  chairs at least one committee
+                  {t.chairLegend}
                 </span>
               </div>
-              <CompositionChart onSelect={setPublicMemberId} />
+              <CompositionChart onSelect={setPublicMemberId} labels={t.composition} />
             </div>
 
             <div className="mt-10">
-              <h3 className="text-lg font-semibold text-slate-900">Standing Committees</h3>
-              <p className="mt-1 text-sm text-slate-500">Select a committee to see the measures referred to it.</p>
+              <h3 className="text-lg font-semibold text-slate-900">{t.standingCommittees}</h3>
+              <p className="mt-1 text-sm text-slate-500">{t.committeesHint}</p>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mockCommittees.map((committee) => (
                   <button
@@ -1350,11 +1515,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* Sessions */}
         <section id="public-sessions" className="scroll-mt-[65px] py-16 md:py-20">
           <div className={container}>
-            {sectionHeading(
-              'Schedule',
-              t.sessions,
-              `Sessions are open to the public and held at the ${LGU_PROFILE.sessionHall}. View the order of business, add a session to your calendar, or print the agenda.`
-            )}
+            {sectionHeading(t.scheduleKicker, t.sessions, t.sessionsText(LGU_PROFILE.sessionHall))}
 
             <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
               <div className="space-y-3">
@@ -1367,11 +1528,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     >
                       <div className="flex min-w-0 flex-1 items-start gap-4 sm:items-center">
                         <div className="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl border border-slate-200 bg-slate-50">
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{date.toLocaleDateString('en-PH', { month: 'short' })}</span>
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{date.toLocaleDateString(dateLocale, { month: 'short' })}</span>
                           <span className="text-2xl font-bold leading-none text-slate-900">{date.getDate()}</span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(session.type))}>{session.type}</span>
+                          <span className={cn('inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset', sessionTypeStyle(session.type))}>{t.sessionTypes[session.type]}</span>
                           <h3 className="mt-1.5 font-semibold text-slate-900">{session.title}</h3>
                           <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
                             <span className="inline-flex items-center gap-1.5">
@@ -1388,9 +1549,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       <div className="flex gap-2 sm:shrink-0">
                         <Button size="sm" variant="outline" className="rounded-lg" onClick={() => setAgendaSessionId(session.id)}>
                           <Eye className="mr-1.5 h-4 w-4" />
-                          Agenda
+                          {t.agenda}
                         </Button>
-                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => addSessionToCalendar(session)} aria-label={`Add ${session.title} to calendar`}>
+                        <Button size="sm" variant="outline" className="rounded-lg" onClick={() => addSessionToCalendar(session)} aria-label={t.addToCalendarFor(session.title)}>
                           <CalendarPlus className="h-4 w-4" />
                         </Button>
                       </div>
@@ -1400,8 +1561,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </div>
 
               <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                <h3 className="font-semibold text-slate-900">Recently Approved Measures</h3>
-                <p className="mt-1 text-sm text-slate-500">Ordinances and resolutions approved by the SB.</p>
+                <h3 className="font-semibold text-slate-900">{t.recentTitle}</h3>
+                <p className="mt-1 text-sm text-slate-500">{t.recentText}</p>
                 <ul className="mt-4 divide-y divide-slate-200">
                   {publicLegislationRecords
                     .filter((r) => ['Passed', 'Enacted'].includes(r.status))
@@ -1416,7 +1577,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     ))}
                 </ul>
                 <Button variant="outline" className="mt-4 w-full rounded-lg bg-white" onClick={() => applyQuickFilter({ type: 'Legislation' })}>
-                  View all legislation
+                  {t.viewAllLegislation}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
               </aside>
@@ -1427,7 +1588,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* Resources */}
         <section id="resources" className="scroll-mt-[65px] border-y border-slate-200 bg-slate-50 py-16 md:py-20">
           <div className={container}>
-            {sectionHeading('Downloads', t.resources, 'Guides, archives, and forms for citizens and organizations. Downloaded and printed copies carry a public-copy watermark.')}
+            {sectionHeading(t.downloadsKicker, t.resources, t.resourcesText)}
 
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {resourceCards.map((card) => {
@@ -1442,12 +1603,12 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                     <div className="mt-5 flex items-center gap-2 border-t border-slate-100 pt-4">
                       <Button size="sm" variant="outline" className="h-8 flex-1 rounded-lg" onClick={() => openDoc(card.id)}>
                         <Eye className="mr-1.5 h-4 w-4" />
-                        View
+                        {t.view}
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => downloadRecord(record)} aria-label={`Download ${card.title}`} title="Download">
+                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => downloadRecord(record)} aria-label={`${t.download}: ${card.title}`} title={t.download}>
                         <Download className="h-4 w-4" />
                       </Button>
-                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => printRecord(record)} aria-label={`Print ${card.title}`} title="Print">
+                      <Button size="sm" variant="ghost" className="h-8 w-8 rounded-lg p-0" onClick={() => printRecord(record)} aria-label={`${t.print}: ${card.title}`} title={t.print}>
                         <Printer className="h-4 w-4" />
                       </Button>
                     </div>
@@ -1461,23 +1622,23 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                   <UserPlus className="h-5 w-5" />
                 </span>
-                <h3 className="mt-4 text-lg font-semibold text-slate-900">Register for Legislative Updates</h3>
-                <p className="mt-1 text-sm text-slate-600">Receive notices of new ordinances, resolutions, and public hearings.</p>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">{t.registerTitle}</h3>
+                <p className="mt-1 text-sm text-slate-600">{t.registerText}</p>
                 <form onSubmit={handlePublicRegistration} className="mt-5 space-y-3">
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <Input value={publicName} onChange={(e) => setPublicName(e.target.value)} placeholder="Full name" aria-label="Full name" />
-                    <Input value={publicEmail} onChange={(e) => setPublicEmail(e.target.value)} type="email" placeholder="Email address" aria-label="Email address" />
+                    <Input value={publicName} onChange={(e) => setPublicName(e.target.value)} placeholder={t.fullName} aria-label={t.fullName} autoComplete="name" />
+                    <Input value={publicEmail} onChange={(e) => setPublicEmail(e.target.value)} type="email" placeholder={t.emailAddress} aria-label={t.emailAddress} autoComplete="email" />
                   </div>
                   <label className="flex items-center gap-2 text-sm text-slate-600">
                     <input type="checkbox" checked={notifyUpdates} onChange={(e) => setNotifyUpdates(e.target.checked)} className="h-4 w-4 accent-primary" />
-                    Subscribe to ordinance and resolution updates
+                    {t.subscribeLabel}
                   </label>
                   <div className="flex flex-wrap items-center gap-3 pt-1">
                     <Button type="submit" className="rounded-lg font-semibold">
-                      Register
+                      {t.register}
                     </Button>
                     <button type="button" onClick={() => setPolicyDialog('privacy')} className="text-xs text-slate-500 underline hover:text-primary">
-                      How we use your data
+                      {t.howWeUseData}
                     </button>
                   </div>
                   {registrationNotice ? <p className="text-sm font-medium text-primary">{registrationNotice}</p> : null}
@@ -1488,8 +1649,8 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
                   <ShieldCheck className="h-5 w-5" />
                 </span>
-                <h3 className="mt-4 text-lg font-semibold text-slate-900">Check Accreditation Status</h3>
-                <p className="mt-1 text-sm text-slate-600">Enter the reference number of your organization&apos;s accreditation request.</p>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">{t.accTitle}</h3>
+                <p className="mt-1 text-sm text-slate-600">{t.accText}</p>
                 <form onSubmit={handleAccreditationLookup} className="mt-5 flex gap-2">
                   <Input
                     value={accreditationQuery}
@@ -1497,11 +1658,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       setAccreditationQuery(e.target.value);
                       setAccreditationResult(null);
                     }}
-                    placeholder="e.g. ACC-2026-005"
-                    aria-label="Accreditation reference number"
+                    placeholder={t.accPlaceholder}
+                    aria-label={t.accLabel}
                   />
                   <Button type="submit" className="rounded-lg font-semibold">
-                    Check
+                    {t.check}
                   </Button>
                 </form>
                 {accreditationResult ? (
@@ -1510,11 +1671,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" className="rounded-lg" onClick={() => downloadRecord(recordById('res-2'))}>
                     <Download className="mr-1.5 h-4 w-4" />
-                    Download accreditation form
+                    {t.downloadAccForm}
                   </Button>
                   <Button size="sm" variant="outline" className="rounded-lg" onClick={() => openRequestDialog()}>
                     <FileSearch className="mr-1.5 h-4 w-4" />
-                    Request a document
+                    {t.requestADocument}
                   </Button>
                 </div>
               </article>
@@ -1525,7 +1686,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
         {/* News */}
         <section id="news" className="scroll-mt-[65px] py-16 md:py-20">
           <div className={container}>
-            {sectionHeading('Updates', t.news, 'Recent actions, notices, and announcements from the Sangguniang Bayan ng Capas.')}
+            {sectionHeading(t.newsKicker, t.news, t.newsText)}
             <div className="grid gap-4 lg:grid-cols-3">
               {NEWS.map((item) => (
                 <article
@@ -1542,7 +1703,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   <h3 className="mt-1.5 text-lg font-semibold leading-snug text-slate-900">{item.title}</h3>
                   <p className="mt-2 flex-1 text-sm leading-relaxed text-slate-600">{item.summary}</p>
                   <button type="button" onClick={() => setActiveNewsId(item.id)} className="mt-5 inline-flex items-center gap-1 self-start text-sm font-semibold text-primary hover:underline">
-                    Read more
+                    {t.readMore}
                     <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </button>
                 </article>
@@ -1551,14 +1712,136 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
         </section>
 
+        {/* Contact */}
+        <section id="contact" className="scroll-mt-[65px] border-t border-slate-200 bg-slate-50 py-16 md:py-20">
+          <div className={container}>
+            {sectionHeading(t.contactKicker, t.contactTitle, t.contactText)}
+
+            <div className="grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+              <div className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <dl className="grid gap-5 p-6 sm:grid-cols-2">
+                  <div className="flex gap-3">
+                    <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t.officeAddress}</dt>
+                      <dd className="mt-1 text-sm text-slate-800">
+                        {t.officeName}
+                        <br />
+                        {LGU_PROFILE.address}
+                      </dd>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <Clock className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t.officeHours}</dt>
+                      <dd className="mt-1 text-sm text-slate-800">{t.officeHoursValue}</dd>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <Mail className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div className="min-w-0">
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t.email}</dt>
+                      <dd className="mt-1 break-words text-sm">
+                        <a href={`mailto:${LGU_PROFILE.email}`} className="font-medium text-primary hover:underline">
+                          {LGU_PROFILE.email}
+                        </a>
+                      </dd>
+                    </div>
+                  </div>
+                  <div className="flex gap-3">
+                    <Phone className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+                    <div>
+                      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{t.viber}</dt>
+                      <dd className="mt-1 text-sm">
+                        <a href={`viber://chat?number=${LGU_PROFILE.viber.replace(/\s+/g, '')}`} className="font-medium text-primary hover:underline">
+                          {LGU_PROFILE.viber}
+                        </a>
+                      </dd>
+                    </div>
+                  </div>
+                </dl>
+                <div className="relative min-h-[260px] flex-1 border-t border-slate-200 bg-slate-100">
+                  <iframe
+                    title={t.mapTitle}
+                    src={`https://maps.google.com/maps?q=${mapQuery}&z=16&output=embed`}
+                    className="absolute inset-0 h-full w-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center justify-center gap-1.5 border-t border-slate-200 px-4 py-3 text-sm font-semibold text-primary hover:bg-primary/[0.03]"
+                >
+                  <MapPin className="h-4 w-4" />
+                  {t.getDirections}
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+
+              <article className="rounded-2xl border border-slate-200 bg-white p-6">
+                <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/5 text-primary ring-1 ring-inset ring-primary/10">
+                  <Mail className="h-5 w-5" />
+                </span>
+                <h3 className="mt-4 text-lg font-semibold text-slate-900">{t.inquiryTitle}</h3>
+                <p className="mt-1 text-sm text-slate-600">{t.inquiryText}</p>
+                <form onSubmit={handleContactInquiry} className="mt-5 space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input value={contactName} onChange={(e) => setContactName(e.target.value)} placeholder={t.fullName} aria-label={t.fullName} autoComplete="name" />
+                    <Input
+                      value={contactEmail}
+                      onChange={(e) => setContactEmail(e.target.value)}
+                      type="email"
+                      placeholder={t.emailAddress}
+                      aria-label={t.emailAddress}
+                      autoComplete="email"
+                    />
+                  </div>
+                  <Input value={contactSubject} onChange={(e) => setContactSubject(e.target.value)} placeholder={t.subject} aria-label={t.subject} />
+                  <textarea
+                    value={contactMessage}
+                    onChange={(e) => setContactMessage(e.target.value)}
+                    placeholder={t.message}
+                    aria-label={t.message}
+                    rows={6}
+                    maxLength={2000}
+                    className="w-full resize-y rounded-md border border-border bg-white px-3 py-2 text-sm text-text-main outline-none placeholder:text-slate-400 focus:border-primary/40 focus:ring-2 focus:ring-primary/10"
+                  />
+                  {contactError ? (
+                    <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
+                      {contactError}
+                    </p>
+                  ) : null}
+                  {contactNotice ? (
+                    <p className="rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-900" role="status">
+                      {contactNotice}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-3 pt-1">
+                    <Button type="submit" className="rounded-lg font-semibold">
+                      {t.sendInquiry}
+                    </Button>
+                    <button type="button" onClick={() => setPolicyDialog('privacy')} className="text-xs text-slate-500 underline hover:text-primary">
+                      {t.howWeUseData}
+                    </button>
+                  </div>
+                </form>
+              </article>
+            </div>
+          </div>
+        </section>
+
         {/* Transparency links */}
-        <section aria-labelledby="transparency-heading" className="border-t border-slate-200 bg-slate-50 py-12">
+        <section aria-labelledby="transparency-heading" className="border-t border-slate-200 bg-white py-12">
           <div className={container}>
             <h2 id="transparency-heading" className="text-sm font-semibold text-slate-900">
-              Transparency and Accountability
+              {t.transparencyTitle}
             </h2>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              {TRANSPARENCY_LINKS.map((link) => (
+              {TRANSPARENCY_LINKS.map((link, index) => (
                 <a
                   key={link.label}
                   href={link.href}
@@ -1572,7 +1855,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       {link.label}
                       <ExternalLink className="h-3.5 w-3.5 text-slate-400" />
                     </span>
-                    <span className="mt-0.5 block text-xs text-slate-500">{link.description}</span>
+                    <span className="mt-0.5 block text-xs text-slate-500">{t.transparencyDescriptions[index]}</span>
                   </span>
                 </a>
               ))}
@@ -1582,7 +1865,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       </main>
 
       {/* GOVPH footer */}
-      <footer id="contact" className="scroll-mt-[65px] bg-[#0a0f3d] text-sm text-white/65">
+      <footer className="bg-[#0a0f3d] text-sm text-white/65">
         <div className={cn(container, 'grid gap-10 py-14 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]')}>
           <div>
             <div className="flex items-center gap-3">
@@ -1594,16 +1877,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </p>
               </div>
             </div>
-            <p className="mt-5 max-w-sm leading-relaxed">All content is in the public domain unless otherwise stated.</p>
+            <p className="mt-5 max-w-sm leading-relaxed">{t.publicDomain}</p>
           </div>
 
           <div>
-            <h2 className="font-semibold text-white">Contact the SB Office</h2>
+            <h2 className="font-semibold text-white">{t.contactTitle}</h2>
             <ul className="mt-4 space-y-3">
               <li className="flex gap-2.5">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-white/45" />
                 <span>
-                  Office of the Sangguniang Bayan
+                  {t.officeName}
                   <br />
                   {LGU_PROFILE.address}
                 </span>
@@ -1617,21 +1900,21 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <li className="flex items-center gap-2.5">
                 <Phone className="h-4 w-4 shrink-0 text-white/45" />
                 <a href={`viber://chat?number=${LGU_PROFILE.viber.replace(/\s+/g, '')}`} className="hover:text-white">
-                  Viber: {LGU_PROFILE.viber}
+                  {t.viber}: {LGU_PROFILE.viber}
                 </a>
               </li>
               <li className="flex items-center gap-2.5">
                 <ExternalLink className="h-4 w-4 shrink-0 text-white/45" />
                 <a href="https://www.capas.gov.ph" target="_blank" rel="noopener noreferrer" className="hover:text-white">
-                  Municipality of Capas website
+                  {t.municipalWebsite}
                 </a>
               </li>
             </ul>
           </div>
 
           <div>
-            <h2 className="font-semibold text-white">About GOVPH</h2>
-            <p className="mt-4 leading-relaxed">Learn more about the Philippine government, its structure, how government works, and the people behind it.</p>
+            <h2 className="font-semibold text-white">{t.aboutGovph}</h2>
+            <p className="mt-4 leading-relaxed">{t.aboutGovphText}</p>
             <ul className="mt-3 space-y-2">
               {ABOUT_GOVPH_LINKS.map((link) => (
                 <li key={link.label}>
@@ -1644,7 +1927,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           </div>
 
           <div>
-            <h2 className="font-semibold text-white">Government Links</h2>
+            <h2 className="font-semibold text-white">{t.governmentLinks}</h2>
             <ul className="mt-4 space-y-2">
               {GOVERNMENT_LINKS.map((link) => (
                 <li key={link.label}>
@@ -1659,16 +1942,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
         <div className="border-t border-white/10">
           <div className={cn(container, 'flex flex-col items-center justify-between gap-4 py-5 text-xs md:flex-row')}>
-            <p>© 2026 {LGU_PROFILE.legislature}. All rights reserved.</p>
+            <p>© 2026 {LGU_PROFILE.legislature}. {t.rightsReserved}</p>
             <div className="flex flex-wrap items-center justify-center gap-5">
               <button type="button" onClick={() => setPolicyDialog('privacy')} className="hover:text-white">
-                Privacy Notice
+                {t.privacy}
               </button>
               <button type="button" onClick={() => setPolicyDialog('terms')} className="hover:text-white">
-                Terms of Use
+                {t.terms}
               </button>
               <button type="button" onClick={() => setPolicyDialog('accessibility')} className="hover:text-white">
-                Accessibility
+                {t.accessibility}
               </button>
               <button
                 type="button"
@@ -1676,7 +1959,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 className="inline-flex items-center gap-1 rounded-md border border-white/15 px-2.5 py-1 hover:bg-white/10 hover:text-white"
               >
                 <ArrowUp className="h-3.5 w-3.5" />
-                Back to top
+                {t.backToTop}
               </button>
             </div>
           </div>
@@ -1690,13 +1973,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Lock className="h-6 w-6" />
             </div>
-            <DialogTitle className="text-xl text-primary">Staff Login</DialogTitle>
-            <DialogDescription>For authorized personnel of the Sangguniang Bayan ng Capas.</DialogDescription>
+            <DialogTitle className="text-xl text-primary">{t.staffLogin}</DialogTitle>
+            <DialogDescription>{t.loginText}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handlePortalLogin} className="mt-5 space-y-4">
             <div className="space-y-1.5">
               <label htmlFor="portal-username" className="text-xs font-semibold text-text-muted">
-                Username
+                {t.username}
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -1705,14 +1988,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   autoComplete="username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username"
+                  placeholder={t.enterUsername}
                   className="h-11 pl-9"
                 />
               </div>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="portal-password" className="text-xs font-semibold text-text-muted">
-                Password
+                {t.password}
               </label>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
@@ -1722,14 +2005,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter password"
+                  placeholder={t.enterPassword}
                   className="h-11 pl-9"
                 />
               </div>
             </div>
             <label htmlFor="portal-remember" className="flex items-center gap-2 text-xs text-text-muted">
               <input id="portal-remember" type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="h-4 w-4 accent-primary" />
-              Remember me
+              {t.rememberMe}
             </label>
             {loginError ? (
               <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
@@ -1738,10 +2021,10 @@ export function LandingPage({ onLogin }: LandingPageProps) {
             ) : null}
             <Button type="submit" className="h-11 w-full text-base font-bold">
               <LogIn className="mr-2 h-4 w-4" />
-              Sign in
+              {t.signIn}
             </Button>
             <p className="text-center text-[11px] text-text-muted">
-              Demo access: <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
+              {t.demoAccess} <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
               <span className="font-mono font-semibold text-text-main">{DEMO_PASSWORD}</span>
             </p>
           </form>
@@ -1752,15 +2035,15 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={activePublicDoc !== null} onOpenChange={(open) => !open && setActivePublicDocId(null)}>
         <DialogContent className="relative max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Public Document Viewer</DialogTitle>
-            <DialogDescription>View, download, or print a watermarked public copy.</DialogDescription>
+            <DialogTitle>{t.viewerTitle}</DialogTitle>
+            <DialogDescription>{t.viewerText}</DialogDescription>
           </DialogHeader>
           {activePublicDoc ? (
             <div className="mt-4 space-y-4">
               <div className="flex flex-col gap-3 border border-border bg-muted/20 p-4 md:flex-row md:items-start md:justify-between">
                 <div className="space-y-1">
                   <div className="text-sm font-semibold text-text-main">
-                    {activePublicDoc.recordType} • {activePublicDoc.number}
+                    {t.recordTypes[activePublicDoc.recordType]} • {activePublicDoc.number}
                   </div>
                   <div className="text-lg font-bold text-primary">{activePublicDoc.title}</div>
                   <StatusBadge status={activePublicDoc.status} align="start" />
@@ -1768,11 +2051,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <div className="flex flex-wrap gap-2">
                   <Button size="sm" variant="outline" onClick={() => downloadRecord(activePublicDoc)}>
                     <Download className="mr-1.5 h-4 w-4" />
-                    Download
+                    {t.download}
                   </Button>
                   <Button size="sm" variant="outline" onClick={() => printRecord(activePublicDoc)}>
                     <Printer className="mr-1.5 h-4 w-4" />
-                    Print
+                    {t.print}
                   </Button>
                   <Button
                     size="sm"
@@ -1782,7 +2065,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                       openRequestDialog(number);
                     }}
                   >
-                    Request certified copy
+                    {t.requestCertifiedCopy}
                   </Button>
                 </div>
               </div>
@@ -1794,14 +2077,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 <div className="relative">
                   <div className="grid gap-2 text-xs text-text-muted md:grid-cols-2">
                     {[
-                      ['Date', activePublicDoc.date],
-                      ['Category', activePublicDoc.category],
-                      ['Subject', activePublicDoc.subject],
-                      ['Referral', activePublicDoc.referral],
-                      ['Classification', activePublicDoc.classification],
-                      ['Action taken', activePublicDoc.actionTaken],
-                      ['Author', activePublicDoc.author],
-                      ['Co-author', activePublicDoc.coAuthor || '—'],
+                      [t.fields.date, activePublicDoc.date],
+                      [t.fields.category, activePublicDoc.category],
+                      [t.fields.subject, activePublicDoc.subject],
+                      [t.fields.referral, activePublicDoc.referral],
+                      [t.fields.classification, activePublicDoc.classification],
+                      [t.fields.actionTaken, activePublicDoc.actionTaken],
+                      [t.fields.author, activePublicDoc.author],
+                      [t.fields.coAuthor, activePublicDoc.coAuthor || '—'],
                     ].map(([label, value]) => (
                       <div key={label}>
                         {label}: <span className="font-semibold text-text-main">{value}</span>
@@ -1822,13 +2105,13 @@ export function LandingPage({ onLogin }: LandingPageProps) {
           {agendaSession ? (
             <>
               <DialogHeader>
-                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{agendaSession.type}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-secondary">{t.sessionTypes[agendaSession.type]}</p>
                 <DialogTitle className="text-xl text-primary">{agendaSession.title}</DialogTitle>
                 <DialogDescription>
-                  {formatLongDate(agendaSession.date)} · {agendaSession.time} · {agendaSession.location}
+                  {formatLongDate(agendaSession.date, dateLocale)} · {agendaSession.time} · {agendaSession.location}
                 </DialogDescription>
               </DialogHeader>
-              <h3 className="mt-5 text-sm font-bold uppercase tracking-wider text-text-muted">Order of Business</h3>
+              <h3 className="mt-5 text-sm font-bold uppercase tracking-wider text-text-muted">{t.orderOfBusiness}</h3>
               <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-text-main">
                 {buildAgenda(agendaSession).map((item) => (
                   <li key={item}>{item}</li>
@@ -1837,11 +2120,11 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               <div className="mt-6 flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => printAgenda(agendaSession)}>
                   <Printer className="mr-1.5 h-4 w-4" />
-                  Print agenda
+                  {t.printAgenda}
                 </Button>
                 <Button variant="outline" onClick={() => addSessionToCalendar(agendaSession)}>
                   <CalendarPlus className="mr-1.5 h-4 w-4" />
-                  Add to calendar
+                  {t.addToCalendar}
                 </Button>
               </div>
             </>
@@ -1874,7 +2157,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   }}
                 >
                   <FileText className="mr-1.5 h-4 w-4" />
-                  View related document
+                  {t.viewRelatedDocument}
                 </Button>
               ) : null}
             </>
@@ -1886,17 +2169,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={requestOpen} onOpenChange={setRequestOpen}>
         <DialogContent className="relative max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-xl text-primary">Request a Document</DialogTitle>
-            <DialogDescription>Request a certified copy of a legislative record from the Office of the Secretary to the Sanggunian.</DialogDescription>
+            <DialogTitle className="text-xl text-primary">{t.requestDocument}</DialogTitle>
+            <DialogDescription>{t.requestText}</DialogDescription>
           </DialogHeader>
           {requestReference ? (
             <div className="mt-5 space-y-4">
               <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-900">
-                <p className="font-bold">Request received</p>
-                <p className="mt-1">
-                  Your reference number is <span className="font-mono font-bold">{requestReference}</span>. A confirmation will be sent to {requestEmail}. Please present
-                  this reference number when claiming your document at the SB Office.
-                </p>
+                <p className="font-bold">{t.requestReceivedTitle}</p>
+                <p className="mt-1">{t.requestReceivedText(requestReference, requestEmail)}</p>
               </div>
               <Button
                 onClick={() => {
@@ -1907,28 +2187,30 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   setRequestPurpose('Personal reference');
                 }}
               >
-                Done
+                {t.done}
               </Button>
             </div>
           ) : (
             <form onSubmit={handleDocumentRequest} className="mt-5 space-y-3">
-              <Input value={requestName} onChange={(e) => setRequestName(e.target.value)} placeholder="Full name" aria-label="Full name" />
-              <Input value={requestEmail} onChange={(e) => setRequestEmail(e.target.value)} type="email" placeholder="Email address" aria-label="Email address" />
+              <Input value={requestName} onChange={(e) => setRequestName(e.target.value)} placeholder={t.fullName} aria-label={t.fullName} autoComplete="name" />
+              <Input value={requestEmail} onChange={(e) => setRequestEmail(e.target.value)} type="email" placeholder={t.emailAddress} aria-label={t.emailAddress} autoComplete="email" />
               <Input
                 value={requestRecord}
                 onChange={(e) => setRequestRecord(e.target.value)}
-                placeholder="Record number or title (e.g. Mun. Ord. No. 2026-005)"
-                aria-label="Document requested"
+                placeholder={t.requestRecordPlaceholder}
+                aria-label={t.requestRecordLabel}
               />
               <label className="block text-xs font-semibold text-text-muted">
-                Purpose
+                {t.purpose}
                 <select
                   value={requestPurpose}
                   onChange={(e) => setRequestPurpose(e.target.value)}
                   className="mt-1 h-10 w-full rounded-md border border-border bg-white px-3 text-sm font-normal text-text-main"
                 >
-                  {['Personal reference', 'Research / Academic', 'Legal proceedings', 'Business compliance', 'Other'].map((purpose) => (
-                    <option key={purpose}>{purpose}</option>
+                  {Object.entries(t.purposes).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -1938,14 +2220,14 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </p>
               ) : null}
               <p className="text-[11px] text-text-muted">
-                By submitting, you agree to the processing of your personal data under the{' '}
+                {t.consentBefore}{' '}
                 <button type="button" onClick={() => setPolicyDialog('privacy')} className="underline hover:text-primary">
-                  Privacy Notice
+                  {t.privacy}
                 </button>
                 .
               </p>
               <Button type="submit" className="w-full">
-                Submit request
+                {t.submitRequest}
               </Button>
             </form>
           )}
@@ -1956,37 +2238,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={policyDialog !== null} onOpenChange={(open) => !open && setPolicyDialog(null)}>
         <DialogContent className="relative max-w-lg">
           <DialogHeader>
-            <DialogTitle>{policyDialog === 'privacy' ? 'Privacy Notice' : policyDialog === 'terms' ? 'Terms of Use' : 'Accessibility'}</DialogTitle>
+            <DialogTitle>{policyDialog ? t[policyDialog] : ''}</DialogTitle>
             <DialogDescription>{LGU_PROFILE.legislature}</DialogDescription>
           </DialogHeader>
-          {policyDialog === 'privacy' && (
+          {policyDialog ? (
             <div className="mt-3 space-y-3 text-sm text-text-muted">
-              <p>
-                The Sangguniang Bayan ng Capas collects only the personal information needed to process public registrations, inquiries, and requests for legislative
-                documents, in accordance with the Data Privacy Act of 2012 (RA 10173).
-              </p>
-              <p>
-                Information is used solely for the stated purpose, kept only as long as necessary, and protected against unauthorized access. You may request access to,
-                correction of, or deletion of your data through the Office of the Secretary to the Sanggunian at {LGU_PROFILE.email}.
-              </p>
+              {t.policies[policyDialog].map((paragraph) => (
+                <p key={paragraph}>{paragraph.replace('{email}', LGU_PROFILE.email)}</p>
+              ))}
             </div>
-          )}
-          {policyDialog === 'terms' && (
-            <div className="mt-3 space-y-3 text-sm text-text-muted">
-              <p>
-                Documents on this portal are provided for public information. Downloaded and printed copies are marked &ldquo;Public Copy&rdquo; and are not certified true
-                copies. Certified copies may be requested from the Office of the Secretary to the Sanggunian.
-              </p>
-            </div>
-          )}
-          {policyDialog === 'accessibility' && (
-            <div className="mt-3 space-y-3 text-sm text-text-muted">
-              <p>
-                This portal is designed to work on phones, tablets, and desktop computers, supports keyboard navigation, and uses readable text and color contrast. Report
-                accessibility issues to {LGU_PROFILE.email}.
-              </p>
-            </div>
-          )}
+          ) : null}
         </DialogContent>
       </Dialog>
 
@@ -2006,7 +2267,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                   </DialogDescription>
                 </DialogHeader>
               </div>
-              <h4 className="mt-5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">Committee assignments</h4>
+              <h4 className="mt-5 text-[11px] font-semibold uppercase tracking-wide text-text-muted">{t.committeeAssignments}</h4>
               {committeeRolesOf(publicMember.id).length > 0 ? (
                 <ul className="mt-2 space-y-2">
                   {committeeRolesOf(publicMember.id)
@@ -2031,7 +2292,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                                 entry.role === 'Chair' ? 'bg-[#fdf6e3] text-[#8a6a12]' : entry.role === 'Vice Chair' ? 'bg-primary/10 text-primary' : 'bg-muted text-text-muted'
                               )}
                             >
-                              {entry.role}
+                              {t.roles[entry.role]}
                             </span>
                             <ArrowRight className="h-4 w-4 text-text-muted" />
                           </span>
@@ -2041,10 +2302,10 @@ export function LandingPage({ onLogin }: LandingPageProps) {
                 </ul>
               ) : (
                 <p className="mt-2 text-sm text-text-muted">
-                  {publicMember.seat === 'Presiding Officer' ? 'The Municipal Vice Mayor presides over sessions and does not sit in standing committees.' : 'No committee assignments.'}
+                  {publicMember.seat === 'Presiding Officer' ? t.presidingNote : t.noAssignments}
                 </p>
               )}
-              <p className="mt-4 text-xs text-text-muted">Select a committee to see the measures referred to it.</p>
+              <p className="mt-4 text-xs text-text-muted">{t.committeesHint}</p>
             </>
           ) : null}
         </DialogContent>

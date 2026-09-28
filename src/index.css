@@ -300,3 +300,13 @@
     box-shadow: none;
   }
 }
+
+/* Hero slideshow: the active dot fills over the slide's display time; pausing freezes it. */
+@keyframes hero-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
