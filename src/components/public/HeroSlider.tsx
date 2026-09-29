@@ -84,7 +84,8 @@ export function HeroSlider({ slides, labels, aside, below, interval = 7000 }: He
       aria-roledescription="carousel"
       aria-label={labels.carousel}
       // Only the backgrounds are clipped, and the hero sits above the next section, so the live search results can hang over it.
-      className="relative z-10 border-b border-slate-200 bg-[#0a0f3d] text-white"
+      // overflow-x-clip keeps the off-screen slides (shifted 24px sideways) from widening the page on phones.
+      className="relative z-10 overflow-x-clip border-b border-slate-200 bg-[#0a0f3d] text-white"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)}

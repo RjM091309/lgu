@@ -692,11 +692,11 @@ export function RequirementsView({ activeTab }: RequirementsViewProps) {
           <p className="text-sm text-text-muted">
             Pipeline counts reflect current dataset progression from draft to enactment.
           </p>
-          <div className="grid gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 sm:gap-3 md:grid-cols-4">
             {['Draft', 'First Reading', 'Committee', 'Second Reading', 'Third Reading', 'Passed', 'Enacted'].map((stage) => (
-              <div key={stage} className="border border-border p-3">
-                <div className="text-xs uppercase text-text-muted">{stage}</div>
-                <div className="mt-1 text-2xl font-bold text-primary">{reports.byStatus[stage] ?? 0}</div>
+              <div key={stage} className="border border-border px-3 py-2 sm:p-3">
+                <div className="text-[11px] uppercase text-text-muted sm:text-xs">{stage}</div>
+                <div className="mt-0.5 text-xl font-bold text-primary sm:mt-1 sm:text-2xl">{reports.byStatus[stage] ?? 0}</div>
               </div>
             ))}
           </div>

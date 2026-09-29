@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { MobileNav } from '@/components/layout/MobileNav';
 import { Overview } from '@/components/dashboard/Overview';
 import { LegislativeTrackingList } from '@/components/legislation/LegislativeTrackingList';
 import { MasterListingsView } from '@/components/members/MasterListingsView';
@@ -283,7 +284,7 @@ export default function App() {
         </button>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col h-screen overflow-hidden">
+      <div className="flex-1 min-w-0 flex flex-col h-dvh overflow-hidden">
         <Navbar
           activeTab={activeTab}
           onLogout={handleLogout}
@@ -323,6 +324,8 @@ export default function App() {
             </AnimatePresence>
           </div>
         </main>
+
+        <MobileNav activeTab={activeTab} onNavigate={setActiveTab} onMoreClick={() => setIsSidebarOpen(true)} />
       </div>
       <Toaster />
       <ConfirmDialogHost />
