@@ -495,7 +495,7 @@ export function GroupedBarChart({
       {width > 0 ? (
         <svg width={width} height={height} className="block">
           {hoverIndex !== null ? (
-            <rect x={bandStart(hoverIndex) + 2} y={pad.top - 8} width={band - 4} height={plotHeight + 8} rx={6} fill="#f3f4f7" />
+            <rect x={bandStart(hoverIndex) + 2} y={pad.top - 8} width={band - 4} height={plotHeight + 8} rx={6} style={{ fill: "var(--chart-hover)" }} />
           ) : null}
 
           {ticks.map((tick) => (

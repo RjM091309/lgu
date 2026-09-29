@@ -543,3 +543,9 @@
 
 /* A coloured left accent (border-l-4) keeps its colour on a glass panel. */
 .dark .glass-card[class*="border-l-"], .dark .bg-white.shadow-sm[class*="border-l-"] { border-left-color: var(--color-primary); }
+
+/* Chart hover band and white separators */
+:root { --chart-hover: #f3f4f7; }
+.dark { --chart-hover: rgb(255 255 255 / 0.08); }
+.dark svg [stroke="#ffffff"] { stroke: #131a2e; }
+.dark svg [fill="#ffffff"] { fill: #131a2e; }

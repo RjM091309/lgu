@@ -64,7 +64,9 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
   const inProcess = mockBills.filter((bill) => !FINAL_STATUSES.includes(bill.status));
   const awaitingSignature = mockBills.filter((bill) => bill.status === 'Passed');
   const enacted = mockBills.filter((bill) => bill.status === 'Enacted');
-  const sessions = useCalendarSessions();
+  // The calendar also holds sessions already held; the dashboard only counts the ones still ahead.
+  const today = todayInManila();
+  const sessions = useCalendarSessions().filter((session) => session.date >= today);
   const nextSession = sessions[0];
   const agendaSession = sessions.find((session) => session.id === agendaSessionId) ?? null;
 

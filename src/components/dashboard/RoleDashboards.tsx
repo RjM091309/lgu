@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { mockBills, mockCommitteeHearings, mockMonthlyActivity, mockSessions, mockYearlyActivity, type Bill } from '@/lib/mock-data';
-import { FILE_SESSIONS, latestVersions, useSessionFiles } from '@/lib/session-files';
+import { FILE_SESSIONS, latestVersions, todayInManila, useSessionFiles } from '@/lib/session-files';
 import { useActivityLog } from '@/lib/activity-log';
 import { ADMIN_ROLE, useAccess, useRoles, useSecuritySettings, useUsers } from '@/lib/access-store';
 import { inviteesFor, rsvpOf, setRsvp, useAttendance } from '@/lib/attendance';
@@ -85,7 +85,8 @@ export function MyInvitations({ onNavigate }: DashboardProps) {
   const { user, can } = useAccess();
   const users = useUsers();
   const attendance = useAttendance();
-  const mine = useCalendarSessions().filter((session) => inviteesFor(session, users).some((invitee) => invitee.userId === user.id));
+  const today = todayInManila();
+  const mine = useCalendarSessions().filter((session) => session.date >= today && inviteesFor(session, users).some((invitee) => invitee.userId === user.id));
 
   const respond = (sessionId: string, title: string, status: 'attending' | 'declined') => {
     const inviteeId = `user:${user.id}`;
