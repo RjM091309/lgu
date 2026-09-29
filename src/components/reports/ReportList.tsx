@@ -9,7 +9,7 @@ import { toast } from '@/components/ui/toast';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { openPrintWindow, saveCsv } from '@/lib/files';
 import { BarChart3, TrendingUp, PieChart, FileText, Download, Users } from 'lucide-react';
-import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
+import { gridTableCardsRef, gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
 import { logActivity } from '@/lib/activity-log';
 import { StatisticsView } from '@/components/reports/StatisticsView';
 import { AttendancePublicationView } from '@/components/reports/AttendancePublicationView';
@@ -205,32 +205,32 @@ export function ReportList({ activeTab }: ReportListProps) {
       </div>
 
       {activeTab !== 'report-statistical-performance' && activeTab !== 'report-attendance-publication' ? (
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-6 lg:grid-cols-4">
           <Card className="border-none shadow-sm bg-primary text-white">
-            <CardContent className="p-6">
-              <TrendingUp className="h-8 w-8 mb-4 opacity-50" />
-              <div className="text-3xl font-bold">{statsSummary.approvalRate}%</div>
+            <CardContent className="p-4 sm:p-6">
+              <TrendingUp className="mb-3 h-6 w-6 sm:mb-4 sm:h-8 sm:w-8 opacity-50" />
+              <div className="text-2xl sm:text-3xl font-bold">{statsSummary.approvalRate}%</div>
               <div className="text-xs opacity-70 uppercase tracking-wider font-semibold mt-1">Resolution Rate</div>
             </CardContent>
           </Card>
           <Card className="border border-border shadow-sm bg-white">
-            <CardContent className="p-6">
-              <PieChart className="h-8 w-8 mb-4 text-secondary opacity-50" />
-              <div className="text-3xl font-bold text-primary">{reports.length}</div>
+            <CardContent className="p-4 sm:p-6">
+              <PieChart className="mb-3 h-6 w-6 sm:mb-4 sm:h-8 sm:w-8 text-secondary opacity-50" />
+              <div className="text-2xl sm:text-3xl font-bold text-primary">{reports.length}</div>
               <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Active Reports</div>
             </CardContent>
           </Card>
           <Card className="border border-border shadow-sm bg-white">
-            <CardContent className="p-6">
-              <FileText className="h-8 w-8 mb-4 text-success opacity-50" />
-              <div className="text-3xl font-bold text-primary">{mockBills.length}</div>
+            <CardContent className="p-4 sm:p-6">
+              <FileText className="mb-3 h-6 w-6 sm:mb-4 sm:h-8 sm:w-8 text-success opacity-50" />
+              <div className="text-2xl sm:text-3xl font-bold text-primary">{mockBills.length}</div>
               <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Records on File</div>
             </CardContent>
           </Card>
           <Card className="border border-border shadow-sm bg-white">
-            <CardContent className="p-6">
-              <Users className="h-8 w-8 mb-4 text-warning opacity-50" />
-              <div className="text-lg font-bold text-primary">{statsSummary.topAuthor}</div>
+            <CardContent className="p-4 sm:p-6">
+              <Users className="mb-3 h-6 w-6 sm:mb-4 sm:h-8 sm:w-8 text-warning opacity-50" />
+              <div className="text-sm sm:text-lg font-bold leading-snug text-primary">{statsSummary.topAuthor}</div>
               <div className="text-xs text-text-muted uppercase tracking-wider font-semibold mt-1">Most Active Committee</div>
             </CardContent>
           </Card>
@@ -265,7 +265,7 @@ export function ReportList({ activeTab }: ReportListProps) {
               placeholder="Filter by category"
             />
           </div>
-          <div className={gridTableClassName}>
+          <div ref={gridTableCardsRef} className={gridTableClassName}>
             <div className={gridTableHeaderClassName}>
               <div className="col-span-2">Bill No.</div>
               <div className="col-span-4">Title</div>
@@ -315,14 +315,14 @@ export function ReportList({ activeTab }: ReportListProps) {
 
       {(activeTab === 'report-search-listing' || activeTab === 'reports') && (
         <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-border bg-[#fafafa] font-semibold text-primary">
+          <div className="px-4 sm:px-6 py-4 border-b border-border bg-[#fafafa] font-semibold text-primary">
             Available Reports
           </div>
           <div className="divide-y divide-border">
             {reports.map((report) => (
-              <div key={report.title} className="px-6 py-4 flex items-center justify-between hover:bg-muted/5 transition-colors">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-lg bg-primary/5 flex items-center justify-center text-primary">
+              <div key={report.title} className="px-4 sm:px-6 py-4 flex flex-wrap items-center justify-between gap-2 hover:bg-muted/5 transition-colors">
+                <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                  <div className="w-10 h-10 shrink-0 rounded-lg bg-primary/5 flex items-center justify-center text-primary">
                     <FileText className="h-5 w-5" />
                   </div>
                   <div>

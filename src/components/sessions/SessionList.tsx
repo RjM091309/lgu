@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowRight, Bell, CheckCircle2, Clock, FileText, Inbox, Mail, Plus, Send, Trash2, Undo2 } from 'lucide-react';
+import { ArrowRight, Bell, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, Inbox, Mail, Plus, Send, Trash2, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -70,6 +70,8 @@ export function SessionList() {
     { event: 'Publication / posting', system: true, email: true, recipients: ['Public subscribers', 'PIO'] },
   ];
 
+  // Phones show one routing stage at a time, picked from the stage tabs.
+  const [mobileStage, setMobileStage] = useState<Stage>(STATUS_FLOW[0]);
   const [createOpen, setCreateOpen] = useState(false);
   const [form, setForm] = useState<{ item: string; type: TransactionType; origin: string; status: Stage; days: number }>({ item: '', type: 'Incoming letter', origin: '', status: 'In Routing', days: 7 });
   const [createError, setCreateError] = useState('');
@@ -202,13 +204,77 @@ export function SessionList() {
             <span className={cn('rounded-full px-2.5 py-1', overdue.length ? 'bg-red-50 text-red-700' : 'bg-muted text-text-muted')}>{overdue.length} overdue</span>
           </div>
         </header>
-        <div className="overflow-x-auto p-4">
-          <div className="grid min-w-[1100px] grid-cols-5 gap-3">
+        {/* Phones: a stage stepper instead of five side-by-side columns. */}
+        {(() => {
+          const stageIndex = STATUS_FLOW.indexOf(mobileStage);
+          const stageCount = routingQueue.filter((entry) => entry.status === mobileStage).length;
+          return (
+            <div className="space-y-3 px-4 pt-4 md:hidden">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setMobileStage(STATUS_FLOW[stageIndex - 1])}
+                  disabled={stageIndex === 0}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-text-main transition-colors hover:bg-muted disabled:opacity-30"
+                  aria-label="Previous stage"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                <div className="min-w-0 flex-1 text-center" aria-live="polite">
+                  <div className="flex items-center justify-center gap-2 text-sm font-semibold text-text-main">
+                    <span className={cn('h-2 w-2 shrink-0 rounded-full', STAGE_STYLE[mobileStage].dot)} />
+                    <span className="truncate">{mobileStage}</span>
+                  </div>
+                  <div className="text-[11px] text-text-muted">
+                    Stage {stageIndex + 1} of {STATUS_FLOW.length} · {stageCount} document{stageCount === 1 ? '' : 's'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMobileStage(STATUS_FLOW[stageIndex + 1])}
+                  disabled={stageIndex === STATUS_FLOW.length - 1}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border text-text-main transition-colors hover:bg-muted disabled:opacity-30"
+                  aria-label="Next stage"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-5 gap-1.5" role="tablist" aria-label="Routing stages">
+                {STATUS_FLOW.map((stage, index) => {
+                  const count = routingQueue.filter((entry) => entry.status === stage).length;
+                  const active = mobileStage === stage;
+                  return (
+                    <button
+                      key={stage}
+                      type="button"
+                      role="tab"
+                      aria-selected={active}
+                      aria-label={`${stage}: ${count}`}
+                      title={stage}
+                      onClick={() => setMobileStage(stage)}
+                      className="group flex flex-col items-center gap-1.5"
+                    >
+                      <span
+                        className={cn(
+                          'h-1.5 w-full rounded-full transition-colors',
+                          active ? 'bg-primary' : index < stageIndex ? 'bg-primary/35' : 'bg-[#e5e7eb] group-hover:bg-primary/20'
+                        )}
+                      />
+                      <span className={cn('text-[11px] font-semibold tabular-nums', active ? 'text-primary' : 'text-text-muted')}>{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        <div className="p-4 md:overflow-x-auto">
+          <div className="grid grid-cols-1 gap-3 md:min-w-[1100px] md:grid-cols-5">
             {STATUS_FLOW.map((stage, stageIndex) => {
               const cards = routingQueue.filter((entry) => entry.status === stage);
               return (
-                <div key={stage} className={cn('flex flex-col rounded-lg p-2.5', STAGE_STYLE[stage].column)}>
-                  <div className="mb-2.5 flex items-center justify-between px-1">
+                <div key={stage} className={cn('flex-col rounded-lg p-2.5 md:flex', mobileStage === stage ? 'flex' : 'hidden', STAGE_STYLE[stage].column)}>
+                  <div className="mb-2.5 hidden items-center justify-between px-1 md:flex">
                     <span className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-text-main">
                       <span className={cn('h-2 w-2 rounded-full', STAGE_STYLE[stage].dot)} />
                       {stage}
@@ -225,7 +291,7 @@ export function SessionList() {
                             <span className="font-mono text-[10px] text-text-muted">{entry.id}</span>
                             <span className={cn('rounded-full px-1.5 py-px text-[10px] font-semibold', due.tone)}>{due.label}</span>
                           </div>
-                          <p className="mt-1.5 line-clamp-3 text-[12px] font-semibold leading-snug text-text-main" title={entry.item}>
+                          <p className="mt-1.5 line-clamp-3 text-sm font-semibold md:text-[12px] leading-snug text-text-main" title={entry.item}>
                             {entry.item}
                           </p>
                           <div className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-text-muted">
@@ -239,7 +305,7 @@ export function SessionList() {
                               <button
                                 type="button"
                                 onClick={() => advanceQueue(entry.id)}
-                                className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-primary/[0.06] px-2 py-1 text-[10px] font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
+                                className="inline-flex min-w-0 flex-1 items-center justify-center gap-1 rounded-md bg-primary/[0.06] px-2 py-1.5 text-xs font-semibold md:py-1 md:text-[10px] text-primary transition-colors hover:bg-primary hover:text-white"
                               >
                                 <span className="truncate">{next}</span>
                                 <ArrowRight className="h-3 w-3 shrink-0" />
@@ -327,7 +393,7 @@ export function SessionList() {
             <p className="text-xs text-text-muted">Applications checked against their documentary requirements</p>
           </header>
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[680px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Application</TableHead>

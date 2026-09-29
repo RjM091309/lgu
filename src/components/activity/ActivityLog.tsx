@@ -170,13 +170,13 @@ export function ActivityLog() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {tiles.map((tile) => (
-          <div key={tile.label} className="flex items-center gap-4 rounded-xl border border-border bg-white p-5 shadow-sm">
+          <div key={tile.label} className="flex min-w-0 flex-col items-start gap-3 rounded-xl border border-border bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:gap-4 sm:p-5">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
               <tile.icon className="h-5 w-5" />
             </span>
-            <div className="min-w-0">
+            <div className="w-full min-w-0">
               <div className={cn('truncate font-semibold leading-tight text-text-main', typeof tile.value === 'number' ? 'text-2xl' : 'text-base')}>{tile.value}</div>
               <div className="text-xs text-text-muted">{tile.label}</div>
             </div>
@@ -186,7 +186,7 @@ export function ActivityLog() {
 
       <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <div className="space-y-3 border-b border-border p-4 md:p-5">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <Input placeholder="Search activity, record no., user" value={keyword} onChange={(e) => setKeyword(e.target.value)} />
             <Select options={userOptions} value={userOptions.find((option) => option.value === userFilter) ?? null} onChange={(option) => setUserFilter(option?.value ?? 'All')} />
             <Select options={moduleOptions} value={moduleOptions.find((option) => option.value === moduleFilter) ?? null} onChange={(option) => setModuleFilter(option?.value ?? 'All')} />
@@ -213,7 +213,7 @@ export function ActivityLog() {
           onPreviousPage={() => setCurrentPage(Math.max(1, page - 1))}
           onNextPage={() => setCurrentPage(Math.min(totalPages, page + 1))}
         >
-          <Table>
+          <Table className="min-w-[860px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Date &amp; Time</TableHead>

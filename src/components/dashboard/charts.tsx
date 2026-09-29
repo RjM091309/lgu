@@ -204,7 +204,7 @@ export function PipelineChart({
             <button
               type="button"
               onClick={() => onSelect(stage.status)}
-              className="relative grid w-full grid-cols-[14px_1fr_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-background focus-visible:bg-background"
+              className="relative grid w-full grid-cols-[14px_minmax(0,1fr)_auto] items-center gap-3 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-background focus-visible:bg-background"
               aria-label={`${stage.status}: ${stage.count} measure${stage.count === 1 ? '' : 's'}, ${phases[stage.phase]} phase`}
             >
               <span
@@ -602,7 +602,7 @@ export function BarList({
             <button
               type="button"
               onClick={onSelect}
-              className="grid w-full grid-cols-[24px_1fr] items-center gap-x-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-background focus-visible:bg-background"
+              className="grid w-full grid-cols-[24px_minmax(0,1fr)] items-center gap-x-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-background focus-visible:bg-background"
               aria-label={`${item.label}: ${item.value} measure${item.value === 1 ? '' : 's'}`}
             >
               <span className="row-span-2 flex h-6 w-6 items-center justify-center rounded-md bg-[#f3f4f7] text-[11px] font-semibold text-text-muted">

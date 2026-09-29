@@ -2,11 +2,91 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Table = React.forwardRef<HTMLTableElement, React.TableHTMLAttributes<HTMLTableElement>>(
-  ({ className, ...props }, ref) => (
-    <table ref={ref} className={cn("w-full caption-bottom text-sm", className)} {...props} />
-  )
-);
+// On phones, tables render as a stack of cards (see "table-cards" in index.css). Each cell is
+// labelled with its column header through data-th, so the pages don't have to repeat the labels.
+const headerLabel = (cell: Element) =>
+  Array.from(cell.childNodes)
+    .map((node) => node.textContent?.trim() ?? "")
+    .filter(Boolean)
+    .join(" ");
+
+// A column whose header is empty or screen-reader-only holds row actions; its cell floats to the card's corner.
+const isActionHeader = (th: HTMLTableCellElement, label: string) => {
+  if (th.hasAttribute("data-action") || !label) return true;
+  const srOnly = th.querySelector(".sr-only");
+  return srOnly !== null && srOnly.textContent?.trim() === th.textContent?.trim();
+};
+
+function labelTableCells(table: HTMLTableElement) {
+  const headRow = table.tHead?.rows[0];
+  if (!headRow) return;
+  const columns: { label: string; action: boolean }[] = [];
+  for (const th of Array.from(headRow.cells)) {
+    const label = headerLabel(th);
+    const action = isActionHeader(th, label);
+    for (let i = 0; i < th.colSpan; i++) columns.push({ label, action });
+  }
+  const rows = [...Array.from(table.tBodies).flatMap((body) => Array.from(body.rows)), ...Array.from(table.tFoot?.rows ?? [])];
+  for (const row of rows) {
+    let index = 0;
+    for (const cell of Array.from(row.cells)) {
+      const column = columns[index];
+      cell.dataset.th = column?.label ?? "";
+      cell.toggleAttribute("data-action", Boolean(column?.action) && cell.colSpan === 1);
+      cell.toggleAttribute("data-full", cell.colSpan >= columns.length);
+      index += cell.colSpan;
+    }
+  }
+}
+
+function labelGridCells(container: HTMLElement) {
+  const head = container.querySelector(":scope > .grid-table-head");
+  if (!head) return;
+  const labels = Array.from(head.children).map(headerLabel);
+  container.querySelectorAll<HTMLElement>(":scope > .grid-table-row").forEach((row) => {
+    Array.from(row.children).forEach((cell, index) => {
+      (cell as HTMLElement).dataset.th = labels[index] ?? "";
+    });
+  });
+}
+
+// Ref callbacks that label the cells now and again whenever rows change (filters, paging).
+const observeLabels =
+  <T extends HTMLElement>(label: (el: T) => void) =>
+  (el: T | null) => {
+    if (!el) return;
+    label(el);
+    const observer = new MutationObserver(() => label(el));
+    observer.observe(el, { childList: true, subtree: true, characterData: true });
+    return () => observer.disconnect();
+  };
+
+const tableCardsRef = observeLabels(labelTableCells);
+
+/** Attach to a grid table's container (the element holding the header and rows) to get phone cards. */
+const gridTableCardsRef = observeLabels(labelGridCells);
+
+interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
+  /** Show rows as cards on phones. Turn off for matrices that only read as a grid. */
+  mobileCards?: boolean;
+}
+
+const Table = React.forwardRef<HTMLTableElement, TableProps>(({ className, mobileCards = true, ...props }, ref) => {
+  const setRef = React.useCallback(
+    (node: HTMLTableElement | null) => {
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+      const disconnect = mobileCards ? tableCardsRef(node) : undefined;
+      return () => {
+        disconnect?.();
+        if (typeof ref === "function") ref(null);
+        else if (ref) ref.current = null;
+      };
+    },
+    [ref, mobileCards]
+  );
+  return <table ref={setRef} className={cn("relative w-full caption-bottom text-sm", mobileCards && "table-cards", className)} {...props} />;
+});
 Table.displayName = "Table";
 
 const TableHeader = React.forwardRef<HTMLTableSectionElement, React.HTMLAttributes<HTMLTableSectionElement>>(
@@ -46,11 +126,12 @@ const TableCell = React.forwardRef<HTMLTableCellElement, React.TdHTMLAttributes<
 TableCell.displayName = "TableCell";
 
 // Shared look for the div/grid-based tables (12-column grid), matching <Table> above.
-const gridTableClassName = "overflow-hidden rounded-md border border-border";
+// Put gridTableCardsRef on the container so the rows turn into cards on phones.
+const gridTableClassName = "grid-table overflow-x-auto rounded-md border border-border";
 const gridTableHeaderClassName =
-  "grid grid-cols-12 items-center gap-x-4 bg-muted/40 px-4 py-2 text-center text-xs font-bold uppercase";
+  "grid-table-head grid min-w-[720px] grid-cols-12 items-center gap-x-4 bg-muted/40 px-4 py-2 text-center text-xs font-bold uppercase";
 const gridTableRowClassName =
-  "grid grid-cols-12 items-center gap-x-4 border-t border-border px-4 py-2.5 text-center text-sm";
+  "grid-table-row grid min-w-[720px] grid-cols-12 items-center gap-x-4 border-t border-border px-4 py-2.5 text-center text-sm";
 
-export { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName };
+export { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName, gridTableCardsRef };
 export { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell };

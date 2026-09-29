@@ -11,6 +11,7 @@ interface SelectProps {
   onChange: (option: SelectOption | null) => void;
   placeholder?: string;
   isSearchable?: boolean;
+  'aria-label'?: string;
 }
 
 export function Select({
@@ -19,6 +20,7 @@ export function Select({
   onChange,
   placeholder = 'Select option...',
   isSearchable = true,
+  'aria-label': ariaLabel,
 }: SelectProps) {
   return (
     <ReactSelect
@@ -27,6 +29,7 @@ export function Select({
       onChange={(next: SingleValue<SelectOption>) => onChange(next ?? null)}
       isSearchable={isSearchable}
       placeholder={placeholder}
+      aria-label={ariaLabel ?? placeholder}
       classNamePrefix="lgu-select"
       styles={{
         control: (base, state) => ({

@@ -16,15 +16,28 @@ interface ChatMessage {
   progress?: string;
   sources?: string[];
   pending?: PendingConfirmation & { resolution?: 'approved' | 'declined' };
+  /** Suggested next questions, shown under the latest answer. */
+  followUps?: string[];
 }
 
-const SUGGESTIONS = [
-  'When is the next session?',
-  'Is there an ordinance on garbage?',
-  'What is the status of the tricycle franchising ordinance?',
-  'How do I contact the SB Secretariat?',
-  'Subscribe me to session notices',
-];
+const SUGGESTIONS = {
+  EN: [
+    'When is the next session?',
+    'Is there an ordinance on garbage?',
+    'What is the status of the tricycle franchising ordinance?',
+    'How does an ordinance become law?',
+    'How do I contact the SB Secretariat?',
+    'Subscribe me to session notices',
+  ],
+  FIL: [
+    'Kailan ang susunod na sesyon?',
+    'May ordinansa ba tungkol sa basura?',
+    'Ano na ang lagay ng ordinansa sa traysikel?',
+    'Paano naipapasa ang isang ordinansa?',
+    'Paano makipag-ugnayan sa SB Secretariat?',
+    'Abisuhan ako sa mga sesyon',
+  ],
+} as const;
 
 const MAX_QUESTION_LENGTH = 2000;
 
@@ -137,6 +150,7 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
   const launcherRef = useRef<HTMLButtonElement | null>(null);
 
   const isBusy = messages.some((message) => message.status === 'streaming');
+  const lastMessage = messages[messages.length - 1];
   const awaitingConfirmation = messages.some((message) => message.pending && !message.pending.resolution);
 
   useEffect(() => {
@@ -172,6 +186,7 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
         question,
         sessionId,
         confirmation,
+        lang,
         signal: controller.signal,
         onEvent: (event) => {
           if (event.type === 'progress') updateMessage(replyId, () => ({ progress: event.label }));
@@ -184,6 +199,7 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
               progress: undefined,
               sources: event.sources,
               pending: event.pendingConfirmation ?? undefined,
+              followUps: event.followUps,
             }));
           }
         },
@@ -323,7 +339,7 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
 
               {!messages.length && (
                 <div className="flex flex-wrap gap-2">
-                  {SUGGESTIONS.map((suggestion) => (
+                  {SUGGESTIONS[lang].map((suggestion) => (
                     <button
                       key={suggestion}
                       type="button"
@@ -389,6 +405,21 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
                               <FileText className="h-3 w-3" />
                               {source}
                             </span>
+                          ))}
+                        </div>
+                      )}
+
+                      {message === lastMessage && message.status === 'done' && !message.pending && message.followUps && message.followUps.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 pt-0.5">
+                          {message.followUps.map((followUp) => (
+                            <button
+                              key={followUp}
+                              type="button"
+                              onClick={() => send(followUp)}
+                              className="rounded-full border border-primary/25 bg-surface px-2.5 py-1 text-left text-xs font-medium text-primary transition hover:border-primary hover:bg-primary/5"
+                            >
+                              {followUp}
+                            </button>
                           ))}
                         </div>
                       )}

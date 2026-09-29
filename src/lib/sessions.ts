@@ -1,8 +1,8 @@
 import { LGU_PROFILE, mockBills, type Session } from '@/lib/mock-data';
 import { openPrintWindow, saveFile } from '@/lib/files';
 
-export const formatLongDate = (iso: string) =>
-  new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+export const formatLongDate = (iso: string, locale = 'en-PH') =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
 export const buildAgenda = (session: Session) => {
   if (session.type === 'Committee Hearing') {

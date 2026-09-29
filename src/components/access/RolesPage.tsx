@@ -196,7 +196,7 @@ export function RolesPage() {
 
       {/* Access matrix */}
       <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-        <header className="border-b border-border px-5 py-4">
+        <header className="border-b border-border px-4 py-4 sm:px-5">
           <h2 className="text-base font-semibold text-text-main">Access Matrix</h2>
           <p className="text-xs text-text-muted">
             Tick a page to let a role open it; the group row ticks every page in the group. People only see the pages their role allows. The Administrator role always has full access.
@@ -206,7 +206,7 @@ export function RolesPage() {
           <table className="w-full min-w-[760px] text-sm">
             <thead>
               <tr className="border-b border-border bg-muted/40">
-                <th className="px-5 py-3 text-left text-xs font-bold uppercase text-text-main">Page</th>
+                <th className="sticky left-0 z-10 w-[190px] bg-[#f9fbfd] px-4 py-3 text-left text-xs font-bold uppercase text-text-main sm:w-auto sm:px-5">Page</th>
                 {roles.map((role) => (
                   <th key={role.name} className="px-3 py-3 text-center text-xs font-bold uppercase text-text-main">
                     <span className="inline-flex items-center gap-1.5">
@@ -223,7 +223,7 @@ export function RolesPage() {
                 return (
                   <Fragment key={group.id}>
                     <tr className="border-b border-border bg-muted/25">
-                      <td className="px-5 py-2.5 font-semibold text-text-main">{group.name}</td>
+                      <td className="sticky left-0 z-10 w-[190px] bg-[#fbfcfe] px-4 py-2.5 font-semibold text-text-main shadow-[1px_0_0_var(--color-border)] sm:w-auto sm:px-5">{group.name}</td>
                       {roles.map((role) => {
                         const locked = role.name === ADMIN_ROLE;
                         const granted = locked ? ids.length : ids.filter((id) => pagesOf(role).includes(id)).length;
@@ -242,7 +242,7 @@ export function RolesPage() {
                     </tr>
                     {group.pages.map((page) => (
                       <tr key={page.id} className="border-b border-border last:border-b-0">
-                        <td className="py-2.5 pl-10 pr-5 text-text-main">{page.label}</td>
+                        <td className="sticky left-0 z-10 w-[190px] bg-white py-2.5 pl-8 pr-4 text-text-main shadow-[1px_0_0_var(--color-border)] sm:w-auto sm:pl-10 sm:pr-5">{page.label}</td>
                         {roles.map((role) => {
                           const locked = role.name === ADMIN_ROLE;
                           const granted = locked || pagesOf(role).includes(page.id);

@@ -345,7 +345,7 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
           onPreviousPage={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
           onNextPage={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
         >
-          <Table>
+          <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow>
                 <TableHead>Record No.</TableHead>

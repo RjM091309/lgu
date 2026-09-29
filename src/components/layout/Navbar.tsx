@@ -311,14 +311,18 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   const closeDialog = () => setDialog(null);
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-border bg-white">
-      <div className="flex h-16 items-center gap-3 px-4 md:px-6">
-        <Button variant="ghost" size="icon" className="md:hidden" onClick={onMenuClick} aria-label="Open menu">
+    // A floating navy panel that matches the sidebar: same gradient, rounded edge, inner ring and layered shadow.
+    <header className="sticky top-0 z-40 w-full bg-background px-2 pt-2 sm:px-3 sm:pt-3 lg:pl-0 lg:pr-4 lg:pt-4">
+      <div className="relative flex h-16 items-center gap-1.5 rounded-2xl bg-gradient-to-r from-[#18237f] via-[#0f1650] to-[#0a0f3d] px-3 ring-1 ring-inset ring-white/10 shadow-[0_1px_2px_rgba(10,15,61,0.30),0_6px_12px_-2px_rgba(10,15,61,0.22),0_18px_36px_-8px_rgba(10,15,61,0.35)] sm:gap-3 sm:px-4 md:px-6">
+        {/* Hairline highlight on the top edge and the sidebar's gold accent along the edge that meets the content. */}
+        <span className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" aria-hidden />
+        <span className="pointer-events-none absolute inset-x-8 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-[#d4a72c]/80 to-transparent" aria-hidden />
+        <Button variant="ghost" size="icon" className="shrink-0 text-white hover:bg-white/10 lg:hidden" onClick={onMenuClick} aria-label="Open menu">
           <Menu className="h-5 w-5" />
         </Button>
 
         {/* Dashboard is the home page, so it roots the trail; every crumb navigates. */}
-        <nav aria-label="Breadcrumb" className="hidden min-w-0 items-center gap-1.5 text-sm lg:flex">
+        <nav aria-label="Breadcrumb" className="hidden shrink-0 items-center gap-1.5 whitespace-nowrap text-sm xl:flex">
           {(() => {
             const crumbs: { label: string; tab: string }[] = [{ label: 'Dashboard', tab: 'dashboard' }];
             if (current && current.item.id !== 'dashboard') {
@@ -329,14 +333,14 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
               const isCurrent = index === crumbs.length - 1;
               return (
                 <span key={crumb.label} className="flex min-w-0 items-center gap-1.5">
-                  {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-muted" /> : null}
+                  {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-white/40" /> : null}
                   <button
                     type="button"
                     onClick={() => onNavigate(crumb.tab)}
                     aria-current={isCurrent ? 'page' : undefined}
                     className={cn(
-                      'truncate rounded px-1 py-0.5 transition-colors hover:bg-primary/[0.06] hover:text-primary',
-                      isCurrent ? 'font-semibold text-primary' : 'text-text-muted'
+                      'truncate rounded px-1 py-0.5 transition-colors hover:bg-white/10 hover:text-white',
+                      isCurrent ? 'font-semibold text-[#e8c766]' : 'text-white/65'
                     )}
                     title={!isCurrent && index === 1 && crumbs.length === 3 ? `Go to ${current?.group.items[0].label}` : undefined}
                   >
@@ -348,9 +352,9 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
           })()}
         </nav>
 
-        <div ref={searchBoxRef} className="relative ml-auto w-full max-w-sm">
+        <div ref={searchBoxRef} className="relative ml-auto min-w-0 flex-1 sm:max-w-sm">
           <form onSubmit={handleGlobalSearchSubmit} role="search">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/60" />
             <input
               ref={searchInputRef}
               type="text"
@@ -360,28 +364,28 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
                 setSearchKeyword(e.target.value);
                 setIsSearchOpen(true);
               }}
-              placeholder="Search pages, records, members..."
+              placeholder="Search pages, records..."
               aria-label="Search"
-              className="h-10 w-full rounded-md border border-border bg-background pl-9 pr-16 text-[13px] outline-none focus:border-primary focus:bg-white focus:ring-2 focus:ring-primary/15"
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/10 pl-9 pr-16 text-[13px] text-white outline-none placeholder:text-white/50 focus:border-white/40 focus:bg-white/15 focus:ring-2 focus:ring-white/15"
             />
             {searchKeyword ? (
               <button
                 type="button"
                 onClick={() => setSearchKeyword('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-text-muted hover:bg-muted"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-white/60 hover:bg-white/10 hover:text-white"
                 aria-label="Clear search"
               >
                 <X className="h-4 w-4" />
               </button>
             ) : (
-              <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-border bg-white px-1.5 text-[11px] text-text-muted sm:block">
+              <kbd className="pointer-events-none absolute right-2 top-1/2 hidden -translate-y-1/2 rounded border border-white/20 bg-white/10 px-1.5 text-[11px] text-white/70 sm:block">
                 /
               </kbd>
             )}
           </form>
 
           {isSearchOpen ? (
-            <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-lg border border-border bg-white p-2 shadow-xl">
+            <div className="absolute left-0 top-full z-50 mt-2 w-full rounded-lg border border-border bg-white p-2 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-[4.75rem] max-sm:w-auto">
               {searchKeyword.trim() ? (
                 searchResults.length > 0 ? (
                   <ul className="max-h-80 space-y-0.5 overflow-y-auto">
@@ -428,18 +432,18 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
           ) : null}
         </div>
 
-        <span className="hidden whitespace-nowrap text-xs text-text-muted xl:inline">{today}</span>
+        <span className="hidden whitespace-nowrap text-xs text-white/60 2xl:inline">{today}</span>
 
-        <Button variant="ghost" size="icon" onClick={() => setDialog('help')} aria-label="Help" title="Help">
-          <CircleHelp className="h-5 w-5 text-text-muted" />
+        <Button variant="ghost" size="icon" className="hidden hover:bg-white/10 sm:inline-flex" onClick={() => setDialog('help')} aria-label="Help" title="Help">
+          <CircleHelp className="h-5 w-5 text-white/70" />
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative" aria-label={`Notifications (${unreadCount} unread)`} title="Notifications">
-              <Bell className={cn('h-5 w-5', unreadCount > 0 ? 'bell-ring text-primary' : 'text-text-muted')} />
+            <Button variant="ghost" size="icon" className="relative shrink-0 hover:bg-white/10" aria-label={`Notifications (${unreadCount} unread)`} title="Notifications">
+              <Bell className={cn('h-5 w-5', unreadCount > 0 ? 'bell-ring text-[#e8c766]' : 'text-white/70')} />
               {unreadCount > 0 ? (
-                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-[#0f1650]">
                   {unreadCount}
                 </span>
               ) : null}
@@ -447,7 +451,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-[380px] overflow-hidden rounded-xl p-0 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-16 max-sm:w-auto"
+            className="w-[380px] overflow-hidden rounded-xl p-0 shadow-xl max-sm:fixed max-sm:inset-x-3 max-sm:top-[4.75rem] max-sm:w-auto"
           >
             <div className="px-4 pb-3 pt-4">
               <div className="flex items-center justify-between gap-3">
@@ -562,13 +566,13 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className="flex items-center gap-2 rounded-md py-1 pl-1 pr-2 hover:bg-muted" aria-label="Account menu">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">{initials(user.name)}</span>
-              <span className="hidden text-left leading-tight md:block">
-                <span className="block text-[13px] font-semibold">{user.name}</span>
-                <span className="block text-[11px] text-text-muted">{user.role}</span>
+            <button type="button" className="flex shrink-0 items-center gap-2 rounded-lg p-1 hover:bg-white/10 xl:pr-2" aria-label="Account menu">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-bold text-primary ring-2 ring-[#d4a72c]/40">{initials(user.name)}</span>
+              <span className="hidden whitespace-nowrap text-left leading-tight xl:block">
+                <span className="block text-[13px] font-semibold text-white">{user.name}</span>
+                <span className="block text-[11px] text-white/55">{user.role}</span>
               </span>
-              <ChevronDown className="hidden h-4 w-4 text-text-muted md:block" />
+              <ChevronDown className="hidden h-4 w-4 text-white/60 xl:block" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-60" align="end">

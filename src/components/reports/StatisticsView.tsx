@@ -279,7 +279,7 @@ export function StatisticsView({
         {/* Year over year */}
         <Section className="xl:col-span-3" title="Year-over-Year Comparison" subtitle="Select a year to highlight it; the trend shows 2023 to 2026">
           <div className="overflow-x-auto">
-            <Table>
+            <Table className="min-w-[640px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Indicator</TableHead>

@@ -1,9 +1,8 @@
 // Client for the DICT eGovAI Agent Engine, reached through our own proxy (/api/egovai/*).
-// When the proxy has no credentials yet, the chat runs a local demo engine over the sample records
-// so the flow can be shown before the LGU's eGovAI access is approved.
+// When the proxy has no credentials yet, the chat runs the local LIMS assistant (lims-assistant.ts) over
+// the sample records so the flow can be shown before the LGU's eGovAI access is approved.
 
-import { LGU_PROFILE, mockBills, mockSessions } from '@/lib/mock-data';
-import { formatLongDate } from '@/lib/sessions';
+import { answerQuestion } from '@/lib/lims-assistant';
 
 export interface PendingConfirmation {
   token: string;
@@ -13,13 +12,22 @@ export interface PendingConfirmation {
 export type EgovAiEvent =
   | { type: 'progress'; label: string }
   | { type: 'chunk'; content: string }
-  | { type: 'complete'; sessionId: string | null; sources: string[]; pendingConfirmation: PendingConfirmation | null }
+  | {
+      type: 'complete';
+      sessionId: string | null;
+      sources: string[];
+      pendingConfirmation: PendingConfirmation | null;
+      /** Suggested next questions (demo engine only). */
+      followUps?: string[];
+    }
   | { type: 'error'; message: string };
 
 export interface AskOptions {
   question: string;
   sessionId: string | null;
   confirmation?: { token: string; approved: boolean };
+  /** The portal's language; the demo engine answers in it when the question doesn't show a language. */
+  lang?: 'EN' | 'FIL';
   signal: AbortSignal;
   onEvent: (event: EgovAiEvent) => void;
 }
@@ -149,8 +157,6 @@ function toPendingConfirmation(value: unknown): PendingConfirmation | null {
 // Demo engine (sample records only, no network)
 // ---------------------------------------------------------------------------
 
-const DEMO_CONFIRM_TOKEN = 'demo-subscribe-session-notices';
-
 const wait = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -164,164 +170,29 @@ const wait = (ms: number, signal: AbortSignal) =>
     );
   });
 
-const STOP_WORDS = new Set(
-  'ang ng mga sa na at ba po ko mo ano sino kailan saan paano may meron para yung iyong the of and for a an in on to is are what when where how about ordinance ordinansa resolution resolusyon capas'.split(' ')
-);
+let demoSessionCounter = 0;
 
-const tokenize = (text: string) =>
-  text
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .split(/[^a-z0-9]+/)
-    .filter((word) => word.length > 2 && !STOP_WORDS.has(word));
-
-// Everyday and Tagalog/Taglish words mapped to the terms used in the sample records.
-const SYNONYMS: Record<string, string[]> = {
-  garbage: ['waste', 'littering', 'segregation'],
-  trash: ['waste', 'littering'],
-  rubbish: ['waste', 'littering'],
-  fines: ['penalties'],
-  fine: ['penalties'],
-  farmer: ['farmers', 'agriculture'],
-  hospital: ['health'],
-  basura: ['waste', 'littering', 'segregation'],
-  kalat: ['littering'],
-  traysikel: ['tricycle', 'tricycles'],
-  pamasahe: ['fare'],
-  palengke: ['market'],
-  puwesto: ['stall'],
-  iskolar: ['scholarship'],
-  scholar: ['scholarship'],
-  magsasaka: ['farmers', 'agriculture'],
-  pataba: ['fertilizer'],
-  binhi: ['seed'],
-  kalsada: ['road'],
-  daan: ['road'],
-  bagyo: ['disaster'],
-  baha: ['flood', 'disaster'],
-  sakuna: ['disaster'],
-  kalusugan: ['health'],
-  laboratoryo: ['laboratory'],
-  bundok: ['pinatubo'],
-  turista: ['tourism'],
-  multa: ['penalties'],
-};
-
-function findRelatedBills(question: string) {
-  const words = tokenize(question).flatMap((word) => [word, ...(SYNONYMS[word] ?? [])]);
-  if (!words.length) return [];
-  return mockBills
-    .map((bill) => {
-      const haystack = tokenize(`${bill.title} ${bill.description} ${bill.subject ?? ''} ${bill.category} ${bill.number}`);
-      // Prefix matching ("tricycle" ~ "tricycles") only for longer words, so "status" doesn't match "Sta.".
-      const matches = (h: string, word: string) =>
-        h === word || (h.length >= 4 && word.length >= 4 && (h.startsWith(word) || word.startsWith(h)));
-      const score = words.reduce((total, word) => total + (haystack.some((h) => matches(h, word)) ? 1 : 0), 0);
-      return { bill, score };
-    })
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
-    .map((entry) => entry.bill);
-}
-
-interface DemoAnswer {
-  progress: string[];
-  text: string;
-  sources: string[];
-  pendingConfirmation?: PendingConfirmation;
-}
-
-function buildDemoAnswer(question: string, confirmation?: { token: string; approved: boolean }): DemoAnswer {
-  const q = question.toLowerCase();
-
-  if (confirmation?.token === DEMO_CONFIRM_TOKEN) {
-    return {
-      progress: ['Processing subscription'],
-      text: 'You are now subscribed to **LIMS session notices**. You will be notified before every regular session, special session, and public hearing.\n\n_(This is a demo only; no actual subscription was made.)_',
-      sources: ['Notification service (demo)'],
-    };
-  }
-
-  if (/(subscribe|abisuhan|notify|paalala|remind)/.test(q)) {
-    return {
-      progress: ['Preparing action'],
-      text: 'I can subscribe you to session notices so you are notified before every session and public hearing.',
-      sources: [],
-      pendingConfirmation: {
-        token: DEMO_CONFIRM_TOKEN,
-        message: 'Subscribe you to LIMS session notices?',
-      },
-    };
-  }
-
-  if (/\b(session|sesyon|hearing|pagdinig|schedule|iskedyul|kailan)\b/.test(q)) {
-    const lines = mockSessions.map(
-      (session) => `- **${session.title}** (${session.type}): ${formatLongDate(session.date)}, ${session.time}, ${session.location}`
-    );
-    return {
-      progress: ['Checking the session calendar'],
-      text: `Here are the scheduled sessions and hearings:\n\n${lines.join('\n')}\n\nSessions are open to the public. To speak at a public hearing, please coordinate with the SB Secretariat first.`,
-      sources: ['Session Calendar'],
-    };
-  }
-
-  if (/\b(contact|makipag-?ugnayan|email|telepono|numero|opisina|address|saan)\b/.test(q)) {
-    return {
-      progress: ['Retrieving contact information'],
-      text: `You can reach the SB Secretariat here:\n\n- **Office:** ${LGU_PROFILE.address}\n- **Email:** ${LGU_PROFILE.email}\n- **Viber:** ${LGU_PROFILE.viber}`,
-      sources: ['LGU Profile'],
-    };
-  }
-
-  const related = findRelatedBills(question);
-  if (related.length) {
-    const [top, ...others] = related;
-    const parts = [
-      `Based on the Sanggunian's records, the closest match is **${top.number}**: ${top.title}.`,
-      '',
-      top.description,
-      '',
-      `- **Status:** ${top.status}`,
-      `- **Committee:** ${top.committee ?? top.author}`,
-      top.actionTaken ? `- **Latest action:** ${top.actionTaken}` : '',
-    ];
-    if (others.length) {
-      parts.push('', 'Possibly related:', ...others.map((bill) => `- **${bill.number}**: ${bill.title}`));
-    }
-    return {
-      progress: ['Searching ordinances and resolutions', `Reading ${top.number}`],
-      text: parts.filter((line, index, all) => line !== '' || all[index - 1] !== '').join('\n'),
-      sources: related.map((bill) => bill.number),
-    };
-  }
-
-  return {
-    progress: ['Searching ordinances and resolutions'],
-    text: `I couldn't find an ordinance or resolution on that in the records available to me. Try rephrasing your question, or contact the SB Secretariat at ${LGU_PROFILE.email}.`,
-    sources: [],
-  };
-}
-
-async function askDemo({ question, confirmation, signal, onEvent }: AskOptions) {
+async function askDemo({ question, sessionId, confirmation, lang = 'EN', signal, onEvent }: AskOptions) {
   if (confirmation && !confirmation.approved) return;
-  const answer = buildDemoAnswer(question, confirmation);
+  // Each conversation gets its own id, so follow-up questions ("who sponsored it?") refer to this chat only.
+  const conversationId = sessionId ?? `demo-${Date.now()}-${demoSessionCounter++}`;
+  const answer = answerQuestion(question, { sessionId: conversationId, uiLang: lang, confirmationToken: confirmation?.token });
 
   for (const label of answer.progress) {
     onEvent({ type: 'progress', label });
-    await wait(550, signal);
+    await wait(450, signal);
   }
   // Stream a few words at a time, like the real generate_stream endpoint.
   const pieces = answer.text.match(/\S+\s*/g) ?? [];
   for (let i = 0; i < pieces.length; i += 3) {
     onEvent({ type: 'chunk', content: pieces.slice(i, i + 3).join('') });
-    await wait(45, signal);
+    await wait(35, signal);
   }
   onEvent({
     type: 'complete',
-    sessionId: 'demo-session',
+    sessionId: conversationId,
     sources: answer.sources,
     pendingConfirmation: answer.pendingConfirmation ?? null,
+    followUps: answer.followUps,
   });
 }

@@ -26,7 +26,7 @@ import {
 import { CalendarDatePicker } from '@/components/ui/CalendarDatePicker';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
+import { gridTableCardsRef, gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
 import { LEGISLATIVE_STAGES, StageProgress, StatusBadge, stageProgress } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
 
@@ -487,14 +487,14 @@ export function LegislativeTrackingList() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Legislative Tracking System</h1>
           <p className="text-sm text-text-muted">
             Capture incoming/outgoing docs, route to workflow, manage lifecycle history, and link full text/committee reports.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             variant="outline"
             size="sm"
@@ -513,8 +513,8 @@ export function LegislativeTrackingList() {
       </div>
 
       <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden flex flex-col">
-        <div className="px-4 py-3 border-b border-border flex items-center gap-4 bg-[#fafafa]">
-          <div className="relative flex-1 max-w-md">
+        <div className="px-4 py-3 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 bg-[#fafafa]">
+          <div className="relative w-full sm:flex-1 sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
             <Input
               placeholder="Search by title, number, or author..."
@@ -523,7 +523,7 @@ export function LegislativeTrackingList() {
               onChange={(e) => onKeywordChange(e.target.value)}
             />
           </div>
-          <div className="ml-auto w-[180px]">
+          <div className="w-full sm:ml-auto sm:w-[180px]">
             <Select
               options={[
                 { value: 'All', label: 'All Stages' },
@@ -549,7 +549,7 @@ export function LegislativeTrackingList() {
           onPreviousPage={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
           onNextPage={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
         >
-          <Table className="table-fixed w-full">
+          <Table className="table-fixed w-full min-w-[1440px]">
             <TableHeader>
               <TableRow>
                 <TableHead className="w-[215px]">RECORD NO.</TableHead>
@@ -560,7 +560,7 @@ export function LegislativeTrackingList() {
                 <TableHead className="w-[140px]">CATEGORY</TableHead>
                 <TableHead className="w-[140px]">STAGE</TableHead>
                 <TableHead className="w-[130px]">PROGRESS</TableHead>
-                <TableHead className="w-[72px]">ACTION</TableHead>
+                <TableHead className="w-[72px]" data-action>ACTION</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -644,8 +644,8 @@ export function LegislativeTrackingList() {
         </DataTable>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="flex flex-col rounded-lg border border-border bg-white shadow-sm">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="flex min-w-0 flex-col rounded-lg border border-border bg-white shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
             <h3 className="text-base font-bold text-primary">Searchable Document Repository</h3>
             <div className="relative w-full sm:w-64">
@@ -680,11 +680,11 @@ export function LegislativeTrackingList() {
           </div>
         </div>
 
-        <div className="flex flex-col rounded-lg border border-border bg-white shadow-sm">
+        <div className="flex min-w-0 flex-col overflow-hidden rounded-lg border border-border bg-white shadow-sm">
           <div className="border-b border-border px-4 py-3">
             <h3 className="text-base font-bold text-primary">Governance Monitoring</h3>
           </div>
-          <div className="max-h-72 overflow-y-auto">
+          <div ref={gridTableCardsRef} className="grid-table max-h-72 overflow-auto">
             <div className={cn('sticky top-0', gridTableHeaderClassName)}>
               <div className="col-span-4">Measure</div>
               <div className="col-span-3">Duplicate Risk</div>
@@ -793,7 +793,7 @@ export function LegislativeTrackingList() {
               placeholder="Select the sponsoring SB member"
             />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-text-muted">Direction</label>
               <Select
@@ -817,7 +817,7 @@ export function LegislativeTrackingList() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-text-muted">Tracking Date</label>
               <CalendarDatePicker
@@ -841,7 +841,7 @@ export function LegislativeTrackingList() {
               />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1">
               <label className="text-xs font-semibold text-text-muted">Initial Stage</label>
               <Select

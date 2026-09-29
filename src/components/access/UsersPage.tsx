@@ -262,7 +262,7 @@ export function UsersPage() {
           onPreviousPage={() => setCurrentPage(Math.max(1, page - 1))}
           onNextPage={() => setCurrentPage(Math.min(totalPages, page + 1))}
         >
-          <Table>
+          <Table className="min-w-[880px]">
             <TableHeader>
               <TableRow>
                 <TableHead>User</TableHead>

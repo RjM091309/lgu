@@ -88,7 +88,7 @@ function DialogContent({
   return (
     <div
       className={cn(
-        "fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 transition-opacity duration-200 ease-out",
+        "fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-3 transition-opacity sm:px-4 duration-200 ease-out",
         isVisible ? "opacity-100" : "opacity-0"
       )}
       onClick={() => {
@@ -99,7 +99,7 @@ function DialogContent({
         role="dialog"
         aria-modal="true"
         className={cn(
-          "relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-lg border bg-white p-6 shadow-xl transition-all duration-200 ease-out",
+          "relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-lg border bg-white p-5 shadow-xl sm:p-6 transition-all duration-200 ease-out",
           isVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-3 scale-95 opacity-0",
           className
         )}
@@ -109,7 +109,7 @@ function DialogContent({
           <button
             type="button"
             onClick={() => setOpen(false)}
-            className="absolute right-4 top-4 rounded-md p-1 text-text-muted hover:bg-muted hover:text-text-main"
+            className="absolute right-3 top-3 rounded-md p-1 text-text-muted sm:right-4 sm:top-4 hover:bg-muted hover:text-text-main"
             aria-label="Close"
           >
             <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>

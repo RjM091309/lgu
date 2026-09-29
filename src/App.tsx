@@ -253,12 +253,12 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background font-sans antialiased md:flex">
+    <div className="min-h-screen bg-background font-sans antialiased lg:flex">
       {/* Desktop Sidebar: a floating panel that collapses to an icon rail. */}
       <aside
         className={cn(
-          'relative z-20 hidden shrink-0 transition-[width] duration-200 ease-out md:sticky md:top-0 md:block md:h-screen md:p-4',
-          isSidebarCollapsed ? 'md:w-[104px]' : 'md:w-[308px]'
+          'relative z-20 hidden shrink-0 transition-[width] duration-200 ease-out lg:sticky lg:top-0 lg:block lg:h-screen lg:p-4',
+          isSidebarCollapsed ? 'lg:w-[104px]' : 'lg:w-[308px]'
         )}
       >
         {/* Tinted glow beneath the panel so it lifts off the page. */}
@@ -291,9 +291,9 @@ export default function App() {
           onMenuClick={() => setIsSidebarOpen(true)}
         />
 
-        {/* Mobile Sidebar */}
+        {/* Mobile Sidebar: the same floating panel as on desktop, inset from the screen edges. */}
         <Sheet open={isSidebarOpen} onOpenChange={setIsSidebarOpen}>
-          <SheetContent side="left" className="p-0 w-72">
+          <SheetContent side="left" className="w-[85vw] max-w-[300px] bg-transparent p-2 shadow-none sm:p-3">
             <Sidebar
               activeTab={activeTab}
               setActiveTab={(tab) => {
@@ -301,13 +301,15 @@ export default function App() {
                 setIsSidebarOpen(false);
               }}
               onLogout={handleLogout}
+              compactHeader
+              className="rounded-2xl ring-1 ring-inset ring-white/10 shadow-[0_1px_2px_rgba(10,15,61,0.30),0_6px_12px_-2px_rgba(10,15,61,0.22),0_18px_36px_-8px_rgba(10,15,61,0.35),0_40px_80px_-24px_rgba(26,35,126,0.45)]"
             />
           </SheetContent>
         </Sheet>
 
         {/* Main Content */}
         <main ref={mainScrollRef} className="relative flex-1 overflow-y-auto bg-background">
-          <div className="mx-auto w-full max-w-[1600px] px-4 py-8 md:px-8">
+          <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:py-8 md:px-8">
             <AnimatePresence mode="wait">
               <motion.div
                 key={`${viewKey}-${showPageSkeleton ? 'loading' : 'ready'}`}
