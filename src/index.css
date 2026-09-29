@@ -500,3 +500,35 @@
 .dark .matrix-changed { background-color: rgb(123 140 255 / 0.12); }
 
 .dark .bg-\[\#fbfcfe\] { background-color: #131a2e; }
+
+/* Dark theme: the sidebar, header and active role pill are one flat colour with a light blur, no gradients. */
+.dark .theme-chrome,
+.dark .theme-chrome-v {
+  background-image: none;
+  background-color: rgb(19 26 46 / 0.85);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.30);
+}
+/* The sidebar's decorative top glow is a gradient too. */
+.dark .theme-chrome-v > span.blur-3xl { display: none; }
+
+/* Dark theme glass for dashboard containers: translucent, blurred, with a light edge. The page gets
+   soft coloured light behind it so the blur has something to refract. */
+.dark body {
+  background-image:
+    radial-gradient(52rem 34rem at 12% 8%, rgb(91 108 240 / 0.20), transparent 62%),
+    radial-gradient(46rem 32rem at 92% 40%, rgb(74 90 223 / 0.14), transparent 62%),
+    radial-gradient(50rem 34rem at 40% 105%, rgb(212 167 44 / 0.08), transparent 62%);
+  background-attachment: fixed;
+}
+.dark .min-h-screen.bg-background,
+.dark main.bg-background,
+.dark header.bg-background { background-color: transparent; }
+.dark .glass-card {
+  background-color: rgb(255 255 255 / 0.05);
+  border-color: rgb(255 255 255 / 0.12);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.10), 0 8px 24px rgb(0 0 0 / 0.25);
+}

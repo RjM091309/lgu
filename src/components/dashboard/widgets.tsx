@@ -16,7 +16,7 @@ export const CHECKLIST_CATEGORIES: FileCategory[] = ['Agenda', 'Order of Busines
 
 export function Card({ title, subtitle, action, children, className }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={cn('rounded-xl border border-border bg-white p-5 shadow-sm', className)}>
+    <section className={cn('glass-card rounded-xl border border-border bg-white p-5 shadow-sm', className)}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-text-main">{title}</h2>
@@ -83,7 +83,7 @@ export function StatTiles({ tiles, can, onNavigate }: { tiles: Tile[]; can: (tab
             onClick={() => linked && onNavigate(tile.tab)}
             disabled={!linked}
             className={cn(
-              'group flex flex-col rounded-xl border border-border bg-white p-5 text-left shadow-sm transition-all',
+              'glass-card group flex flex-col rounded-xl border border-border bg-white p-5 text-left shadow-sm transition-all',
               linked ? 'hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md' : 'cursor-default'
             )}
           >

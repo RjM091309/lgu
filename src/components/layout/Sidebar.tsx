@@ -43,7 +43,7 @@ export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, 
   const hideHint = () => setHint(null);
 
   return (
-    <div className={cn('relative flex h-full flex-col overflow-hidden bg-gradient-to-b from-[#18237f] via-[#0f1650] to-[#0a0f3d] text-white', className)}>
+    <div className={cn('theme-chrome-v relative flex h-full flex-col overflow-hidden bg-gradient-to-b from-[#18237f] via-[#0f1650] to-[#0a0f3d] text-white', className)}>
       {/* Soft light from above plus a hairline highlight on the top edge give the panel depth. */}
       <span className="pointer-events-none absolute -top-24 left-1/2 h-56 w-56 -translate-x-1/2 rounded-full bg-white/10 blur-3xl" aria-hidden />
       <span className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" aria-hidden />

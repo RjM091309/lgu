@@ -319,7 +319,7 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
       </div>
 
       {/* Recent measures */}
-      <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
+      <section className="glass-card overflow-hidden rounded-xl border border-border bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <div>
             <h2 className="text-base font-semibold text-text-main">Recent Legislative Actions</h2>

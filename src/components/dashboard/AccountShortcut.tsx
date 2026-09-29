@@ -69,7 +69,7 @@ export function AccountShortcut() {
               title={`${account!.name} · ${account!.username}`}
               className={cn(
                 'inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold uppercase tracking-wide transition-colors',
-                active ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:bg-primary/5 hover:text-primary'
+                active ? 'theme-chrome bg-gradient-to-r from-[#18237f] via-[#151e74] to-[#111866] text-white shadow-sm ring-1 ring-inset ring-white/10' : 'text-text-muted hover:bg-primary/5 hover:text-primary'
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
