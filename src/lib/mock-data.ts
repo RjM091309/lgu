@@ -318,6 +318,41 @@ export const mockSessions: Session[] = [
   },
 ];
 
+// Sessions and hearings already held (June–September 2026), shown on the calendars as completed.
+// The regular and special sessions from July on are the ones in the attendance register below.
+const pastSession = (id: string, title: string, date: string, type: Session['type'], time = '09:00 AM', committeeId?: string): Session => ({
+  id,
+  title,
+  date,
+  time,
+  location: LGU_PROFILE.sessionHall,
+  type,
+  committeeId,
+});
+
+export const mockPastSessions: Session[] = [
+  pastSession('ps26', '26th Regular Session', '2026-06-08', 'Regular'),
+  pastSession('ps27', '27th Regular Session', '2026-06-15', 'Regular'),
+  pastSession('ph1', 'Public Hearing: Mt. Pinatubo Trekking and 4x4 Tour Safety Standards', '2026-06-18', 'Committee Hearing', '02:00 PM', 'c2'),
+  pastSession('ps28', '28th Regular Session', '2026-06-22', 'Regular'),
+  pastSession('ps29', '29th Regular Session', '2026-06-29', 'Regular'),
+  pastSession('ps30', '30th Regular Session', '2026-07-06', 'Regular'),
+  pastSession('ph2', 'Public Hearing: Capas National Shrine Heritage Protection Zone', '2026-07-09', 'Committee Hearing', '02:00 PM', 'c2'),
+  pastSession('ps31', '31st Regular Session', '2026-07-13', 'Regular'),
+  pastSession('ph3', 'Public Hearing: Supplemental Funds for Barangay Disaster Preparedness Equipment', '2026-07-16', 'Committee Hearing', '10:00 AM', 'c1'),
+  pastSession('ps32', '32nd Regular Session', '2026-07-20', 'Regular'),
+  pastSession('psp1', 'Special Session on Supplemental Budget No. 1', '2026-07-24', 'Special'),
+  pastSession('ps33', '33rd Regular Session', '2026-08-03', 'Regular'),
+  pastSession('ph4', 'Public Hearing: Access Road Linking Barangay Sta. Lucia to New Clark City', '2026-08-12', 'Committee Hearing', '02:00 PM', 'c5'),
+  pastSession('ps34', '34th Regular Session', '2026-08-17', 'Regular'),
+  pastSession('ps35', '35th Regular Session', '2026-08-24', 'Regular'),
+  pastSession('ph5', 'Public Hearing: RHU Laboratory Services Memorandum of Agreement', '2026-08-26', 'Committee Hearing', '02:00 PM', 'c3'),
+  pastSession('ps36', '36th Regular Session', '2026-09-07', 'Regular'),
+  pastSession('ph6', 'Public Hearing: Revised Stall Rental Rates at the Capas Public Market', '2026-09-09', 'Committee Hearing', '10:00 AM', 'c1'),
+  pastSession('ph7', 'Public Hearing: Tricycle Fare Rates (First Hearing)', '2026-09-16', 'Committee Hearing', '02:00 PM', 'c9'),
+  pastSession('ps37', '37th Regular Session', '2026-09-21', 'Regular'),
+];
+
 export interface SessionDevice {
   name: string;
   type: string;
@@ -342,7 +377,7 @@ export const mockAttendanceSessions = [
   { id: 'asp1', label: 'Special Session', short: 'Special', date: '2026-07-24', type: 'Special' },
   { id: 'as33', label: '33rd Regular', short: '33rd', date: '2026-08-03', type: 'Regular' },
   { id: 'as34', label: '34th Regular', short: '34th', date: '2026-08-17', type: 'Regular' },
-  { id: 'as35', label: '35th Regular', short: '35th', date: '2026-08-31', type: 'Regular' },
+  { id: 'as35', label: '35th Regular', short: '35th', date: '2026-08-24', type: 'Regular' },
   { id: 'as36', label: '36th Regular', short: '36th', date: '2026-09-07', type: 'Regular' },
   { id: 'as37', label: '37th Regular', short: '37th', date: '2026-09-21', type: 'Regular' },
 ];

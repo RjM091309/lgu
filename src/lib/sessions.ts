@@ -1,6 +1,13 @@
 import { LGU_PROFILE, mockBills, type Session } from '@/lib/mock-data';
 import { openPrintWindow, saveFile } from '@/lib/files';
 
+/** Colour of each kind of session on the calendars (web and mobile). */
+export const SESSION_TONE: Record<Session['type'], string> = {
+  Regular: 'bg-primary text-white',
+  'Committee Hearing': 'bg-violet-600 text-white',
+  Special: 'bg-orange-500 text-white',
+};
+
 export const formatLongDate = (iso: string, locale = 'en-PH') =>
   new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 

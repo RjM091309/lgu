@@ -26,6 +26,7 @@ import { useSessionFiles } from '@/lib/session-files';
 import { useActivityLog } from '@/lib/activity-log';
 import { ADMIN_ROLE, useAccess, useRoles, useSecuritySettings, useUsers } from '@/lib/access-store';
 import { inviteesFor, rsvpOf, setRsvp, useAttendance } from '@/lib/attendance';
+import { useCalendarSessions } from '@/lib/esession-sync';
 import { logActivity } from '@/lib/activity-log';
 import { LEGISLATIVE_PHASES, LEGISLATIVE_STAGES, StatusBadge } from '@/components/ui/status-badge';
 import { BarList, DonutChart, GroupedBarChart, PHASE_COLORS, PipelineChart, SERIES_COLORS, SegmentMeter } from '@/components/dashboard/charts';
@@ -84,7 +85,7 @@ export function MyInvitations({ onNavigate }: DashboardProps) {
   const { user, can } = useAccess();
   const users = useUsers();
   const attendance = useAttendance();
-  const mine = mockSessions.filter((session) => inviteesFor(session, users).some((invitee) => invitee.userId === user.id));
+  const mine = useCalendarSessions().filter((session) => inviteesFor(session, users).some((invitee) => invitee.userId === user.id));
 
   const respond = (sessionId: string, title: string, status: 'attending' | 'declined') => {
     const inviteeId = `user:${user.id}`;

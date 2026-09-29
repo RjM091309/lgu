@@ -1,25 +1,23 @@
-import { useMemo, useState } from 'react';
-import { AlertTriangle, BellRing, CalendarPlus, Check, ChevronLeft, ChevronRight, Clock, FileText, Flag, MapPin, Printer, Undo2, Users, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, BellRing, CalendarPlus, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, Flag, MapPin, Plus, Printer, Smartphone, Trash2, Undo2, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
-import { mockSessions, type Session } from '@/lib/mock-data';
-import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
+import { type Session } from '@/lib/mock-data';
+import { SESSION_TONE, addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
 import { openPrintWindow } from '@/lib/files';
 import { HOLIDAY_SOURCE_LABEL, holidayTitle, holidayTone, useHolidays } from '@/lib/holidays';
 import { SCOPE_LABEL } from '@/lib/local-holidays';
 import { ADMIN_ROLE, useAccess, useUsers } from '@/lib/access-store';
 import { QUORUM, committeeNameOf, inviteesFor, rsvpOf, setRsvp, useAttendance, type Invitee, type RsvpStatus } from '@/lib/attendance';
+import { cancelScheduledSession, isScheduledInApp, nowInManila, sendReminder, useCalendarSessions, useSyncStatus } from '@/lib/esession-sync';
+import { confirmAction } from '@/components/ui/confirm';
+import { ScheduleSessionForm } from '@/components/esession/ScheduleSessionForm';
+import { MobileAppDialog } from '@/components/esession/MobileAppDialog';
 import { logActivity } from '@/lib/activity-log';
 import { cn } from '@/lib/utils';
-
-const SESSION_TONE: Record<Session['type'], string> = {
-  Regular: 'bg-primary text-white',
-  'Committee Hearing': 'bg-violet-600 text-white',
-  Special: 'bg-orange-500 text-white',
-};
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DECLINE_REASONS = ['On official travel', 'On leave', 'Schedule conflict', 'Health reasons'];
@@ -33,22 +31,13 @@ const shiftMonth = (month: string, by: number) => {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-const nowInManila = () => {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .formatToParts(new Date())
-      .map((part) => [part.type, part.value])
-  );
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
-};
-
 const formatResponded = (stamp: string) =>
   new Date(`${stamp}:00`).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 /** Full-page calendar of sessions and hearings, with each session's invitees and their attendance responses. */
 export function CalendarSessionsPanel() {
   const today = todayInManila();
-  const sessions = useMemo(() => [...mockSessions].sort((a, b) => a.date.localeCompare(b.date)), []);
+  const sessions = useCalendarSessions();
   const firstUpcoming = sessions.find((session) => session.date >= today) ?? sessions[0];
 
   const [month, setMonth] = useState(monthOf(firstUpcoming?.date ?? today));
@@ -57,6 +46,10 @@ export function CalendarSessionsPanel() {
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [declineTarget, setDeclineTarget] = useState<Invitee | null>(null);
   const [declineReason, setDeclineReason] = useState('');
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [chipList, setChipList] = useState<'upcoming' | 'completed'>('upcoming');
+  const syncStatus = useSyncStatus();
 
   const { user, role } = useAccess();
   const users = useUsers();
@@ -72,7 +65,8 @@ export function CalendarSessionsPanel() {
   const monthHolidays = holidays.filter((holiday) => holiday.date.startsWith(month));
   const monthSessions = sessions.filter((session) => session.date.startsWith(month));
 
-  const session = sessions.find((entry) => entry.id === selectedId) ?? null;
+  // A session cancelled from another device falls back to the next one.
+  const session = sessions.find((entry) => entry.id === selectedId) ?? firstUpcoming ?? null;
   const invitees = session ? inviteesFor(session, users) : [];
   const statusOf = (invitee: Invitee) => (session ? rsvpOf(attendance, session.id, invitee.id)?.status ?? 'none' : 'none');
   const counts = {
@@ -84,6 +78,38 @@ export function CalendarSessionsPanel() {
   const self = invitees.find((invitee) => invitee.userId === user.id) ?? null;
   const visible = invitees.filter((invitee) => filter === 'all' || statusOf(invitee) === filter);
   const holidayOnSession = session ? holidaysByDate.get(session.date) : undefined;
+  // A session already held: responses read as who was present, and there is nothing left to answer.
+  const isDone = (entry: Session) => entry.date < today;
+  const held = session ? isDone(session) : false;
+  const upcomingSessions = sessions.filter((entry) => !isDone(entry));
+  const completedSessions = sessions.filter(isDone).reverse();
+  const chipSessions = chipList === 'upcoming' ? upcomingSessions : completedSessions;
+
+  // Responses given in the mobile app arrive through the sync; tell the Administrator as they come in.
+  // The first update after connecting is the server catching this page up, not a new reply.
+  const previousRsvps = useRef(attendance);
+  const wasLive = useRef(false);
+  useEffect(() => {
+    const before = previousRsvps.current;
+    const live = wasLive.current;
+    previousRsvps.current = attendance;
+    wasLive.current = syncStatus === 'live';
+    if (!canManage || !live || before === attendance) return;
+    const changed = Object.entries(attendance).filter(
+      ([key, rsvp]) => rsvp.recordedBy !== user.name && (before[key]?.status !== rsvp.status || before[key]?.respondedAt !== rsvp.respondedAt)
+    );
+    changed.slice(0, 3).forEach(([key, rsvp]) => {
+      const [sessionId, inviteeId] = key.split('|');
+      const target = sessions.find((entry) => entry.id === sessionId);
+      const who = target ? inviteesFor(target, users).find((invitee) => invitee.id === inviteeId) : undefined;
+      if (!target || !who) return;
+      toast(
+        rsvp.status === 'attending' ? 'Attendance confirmed' : 'Not attending',
+        `${who.name} · ${target.title}${rsvp.reason ? ` · “${rsvp.reason}”` : ''}`,
+        rsvp.status === 'attending' ? 'success' : 'info'
+      );
+    });
+  }, [attendance, syncStatus, canManage, sessions, user.name, users]);
 
   const selectSession = (entry: Session) => {
     setSelectedId(entry.id);
@@ -120,15 +146,31 @@ export function CalendarSessionsPanel() {
       toast('No reminders needed', 'Everyone invited has already responded.', 'info');
       return;
     }
-    toast('Reminders sent', `${pending.length} invitee(s) were reminded to confirm attendance for ${session.title}.`);
+    sendReminder(session.id, pending.map((invitee) => invitee.id), user.name, nowInManila());
+    toast('Reminders sent', `${pending.length} invitee(s) were reminded in the mobile app to confirm attendance for ${session.title}.`);
     logActivity({ module: 'E-Session', action: 'Updated', summary: `Sent attendance reminders for ${session.title}`, detail: pending.map((invitee) => invitee.name).join(', ') });
+  };
+
+  const cancelSession = async () => {
+    if (!session) return;
+    const confirmed = await confirmAction({
+      title: `Cancel ${session.title}?`,
+      description: 'It is removed from the calendar of everyone invited, together with their responses.',
+      confirmLabel: 'Cancel session',
+      cancelLabel: 'Keep',
+      tone: 'destructive',
+    });
+    if (!confirmed) return;
+    cancelScheduledSession(session.id);
+    toast('Session cancelled', `${session.title} was removed from the calendar.`);
+    logActivity({ module: 'E-Session', action: 'Deleted', summary: `Cancelled ${session.title}`, detail: `${formatLongDate(session.date)}, ${session.time}` });
   };
 
   const printAttendance = () => {
     if (!session) return;
     const row = (invitee: Invitee) => {
       const rsvp = rsvpOf(attendance, session.id, invitee.id);
-      const status = rsvp?.status === 'attending' ? 'Attending' : rsvp?.status === 'declined' ? 'Not attending' : 'No response';
+      const status = statusChip(rsvp?.status ?? 'none').label;
       return `<tr><td>${invitee.name}</td><td>${invitee.detail}</td><td>${status}</td><td>${rsvp?.reason ?? ''}</td></tr>`;
     };
     const ok = openPrintWindow(
@@ -137,7 +179,7 @@ export function CalendarSessionsPanel() {
        <div class="rows">
          <div><b>Date</b>: ${formatLongDate(session.date)}, ${session.time}</div>
          <div><b>Venue</b>: ${session.location}</div>
-         <div><b>Confirmed</b>: ${counts.attending} attending · ${counts.declined} not attending · ${counts.none} no response</div>
+         <div><b>${held ? 'Attendance' : 'Confirmed'}</b>: ${counts.attending} ${statusChip('attending').label.toLowerCase()} · ${counts.declined} ${statusChip('declined').label.toLowerCase()} · ${counts.none} ${statusChip('none').label.toLowerCase()}</div>
        </div>
        <table><thead><tr><th>Name</th><th>Position / Office</th><th>Response</th><th>Reason</th></tr></thead><tbody>${invitees.map(row).join('')}</tbody></table>`
     );
@@ -146,10 +188,10 @@ export function CalendarSessionsPanel() {
 
   const statusChip = (status: RsvpStatus | 'none') =>
     status === 'attending'
-      ? { label: 'Attending', tone: 'border-green-200 bg-green-50 text-green-800' }
+      ? { label: held ? 'Present' : 'Attending', tone: 'border-green-200 bg-green-50 text-green-800' }
       : status === 'declined'
-        ? { label: 'Not attending', tone: 'border-red-200 bg-red-50 text-red-800' }
-        : { label: 'No response', tone: 'border-slate-200 bg-slate-50 text-slate-600' };
+        ? { label: held ? 'Absent' : 'Not attending', tone: 'border-red-200 bg-red-50 text-red-800' }
+        : { label: held ? 'No record' : 'No response', tone: 'border-slate-200 bg-slate-50 text-slate-600' };
 
   const renderInvitee = (invitee: Invitee) => {
     const rsvp = session ? rsvpOf(attendance, session.id, invitee.id) : undefined;
@@ -227,9 +269,50 @@ export function CalendarSessionsPanel() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Calendar Sessions</h1>
           <p className="text-sm text-text-muted">Sessions and hearings by month, with who is invited and whether they will attend.</p>
+          <p
+            className="mt-1.5 inline-flex items-center gap-1.5 text-[11px] font-medium text-text-muted"
+            title={syncStatus === 'live' ? 'Responses from the mobile app appear here at once' : 'Changes stay in this browser'}
+          >
+            <span className={cn('h-2 w-2 rounded-full', syncStatus === 'live' ? 'animate-pulse bg-green-500' : syncStatus === 'connecting' ? 'bg-amber-400' : 'bg-slate-300')} aria-hidden />
+            {syncStatus === 'live' ? 'Live with the mobile app' : syncStatus === 'connecting' ? 'Connecting to the mobile app…' : 'Mobile sync offline'}
+          </p>
+        </div>
+        {canManage ? (
+          <div className="flex flex-wrap gap-2 sm:justify-end">
+            <Button variant="outline" size="sm" className="h-9" onClick={() => setMobileOpen(true)}>
+              <Smartphone className="mr-1.5 h-4 w-4" />
+              Mobile app
+            </Button>
+            <Button size="sm" className="h-9" onClick={() => setScheduleOpen(true)}>
+              <Plus className="mr-1.5 h-4 w-4" />
+              Schedule session
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
+      <div className="space-y-2.5">
+        <div className="inline-flex rounded-lg bg-muted p-0.5" role="tablist" aria-label="Show sessions">
+          {(
+            [
+              ['upcoming', 'Upcoming', upcomingSessions.length],
+              ['completed', 'Completed', completedSessions.length],
+            ] as const
+          ).map(([value, label, count]) => (
+            <button
+              key={value}
+              type="button"
+              role="tab"
+              aria-selected={chipList === value}
+              onClick={() => setChipList(value)}
+              className={cn('rounded-md px-3 py-1 text-xs font-semibold', chipList === value ? 'bg-white text-text-main shadow-sm' : 'text-text-muted hover:text-text-main')}
+            >
+              {label} <span className="tabular-nums opacity-70">({count})</span>
+            </button>
+          ))}
         </div>
         <div className="flex flex-wrap gap-2">
-          {sessions.map((entry) => (
+          {chipSessions.map((entry) => (
             <button
               key={entry.id}
               type="button"
@@ -239,10 +322,15 @@ export function CalendarSessionsPanel() {
                 entry.id === selectedId ? 'border-primary bg-primary text-white' : 'border-border bg-white text-text-main hover:border-primary/40'
               )}
             >
-              <span className={cn('h-2 w-2 rounded-full', entry.id === selectedId ? 'bg-white' : SESSION_TONE[entry.type].split(' ')[0])} aria-hidden />
+              {isDone(entry) ? (
+                <CheckCircle2 className={cn('h-3.5 w-3.5', entry.id === selectedId ? 'text-white' : 'text-green-600')} aria-hidden />
+              ) : (
+                <span className={cn('h-2 w-2 rounded-full', entry.id === selectedId ? 'bg-white' : SESSION_TONE[entry.type].split(' ')[0])} aria-hidden />
+              )}
               {new Date(`${entry.date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} · {entry.title}
             </button>
           ))}
+          {chipSessions.length === 0 ? <p className="text-xs text-text-muted">{chipList === 'upcoming' ? 'No upcoming sessions.' : 'No completed sessions yet.'}</p> : null}
         </div>
       </div>
 
@@ -317,15 +405,19 @@ export function CalendarSessionsPanel() {
                       key={entry.id}
                       type="button"
                       onClick={() => selectSession(entry)}
-                      title={`${entry.title} · ${entry.time}`}
+                      title={`${entry.title} · ${entry.time}${isDone(entry) ? ' · Completed' : ''}`}
                       className={cn(
                         'w-full rounded-md px-1.5 py-1 text-left text-[11px] font-semibold leading-tight shadow-sm transition-opacity hover:opacity-90',
                         SESSION_TONE[entry.type],
-                        entry.id === selectedId && 'ring-2 ring-[#d4a72c] ring-offset-1'
+                        isDone(entry) && 'opacity-60',
+                        entry.id === selectedId && 'opacity-100 ring-2 ring-[#d4a72c] ring-offset-1'
                       )}
                     >
                       <span className="block truncate">{entry.title}</span>
-                      <span className="block text-[10px] font-medium opacity-80">{entry.time}</span>
+                      <span className="flex items-center gap-1 text-[10px] font-medium opacity-80">
+                        {isDone(entry) ? <CheckCircle2 className="h-3 w-3 shrink-0" aria-hidden /> : null}
+                        {isDone(entry) ? 'Done' : entry.time}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -368,6 +460,7 @@ export function CalendarSessionsPanel() {
                         <span className={cn('h-2 w-2 shrink-0 rounded-full', SESSION_TONE[entry.type].split(' ')[0])} />
                         <span className="w-12 shrink-0 font-semibold tabular-nums">{new Date(`${entry.date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}</span>
                         <span className="min-w-0 flex-1 truncate">{entry.title}</span>
+                        {isDone(entry) ? <span className="shrink-0 rounded bg-green-50 px-1 text-[9px] font-semibold uppercase text-green-800">Done</span> : null}
                       </button>
                     </li>
                   ))}
@@ -383,7 +476,15 @@ export function CalendarSessionsPanel() {
         {session ? (
           <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm xl:sticky xl:top-4">
             <header className="border-b border-border px-5 py-4">
-              <span className={cn('inline-block rounded px-1.5 py-px text-[10px] font-semibold', SESSION_TONE[session.type])}>{session.type}</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className={cn('inline-block rounded px-1.5 py-px text-[10px] font-semibold', SESSION_TONE[session.type])}>{session.type}</span>
+                {held ? (
+                  <span className="inline-flex items-center gap-1 rounded border border-green-200 bg-green-50 px-1.5 py-px text-[10px] font-semibold text-green-800">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Completed
+                  </span>
+                ) : null}
+              </div>
               <h2 className="mt-1.5 text-lg font-semibold leading-snug text-text-main">{session.title}</h2>
               {committeeNameOf(session) ? <p className="text-xs text-text-muted">{committeeNameOf(session)}</p> : null}
               <div className="mt-2 space-y-1 text-xs text-text-muted">
@@ -396,7 +497,7 @@ export function CalendarSessionsPanel() {
                   {session.location}
                 </p>
               </div>
-              {holidayOnSession ? (
+              {holidayOnSession && !held ? (
                 <p className="mt-2 flex items-center gap-1.5 rounded bg-red-50 px-2 py-1.5 text-[11px] font-medium text-red-700">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
                   Falls on a holiday: {holidayOnSession.name}. Consider rescheduling.
@@ -407,20 +508,35 @@ export function CalendarSessionsPanel() {
                   <FileText className="mr-1.5 h-3.5 w-3.5" />
                   Agenda
                 </Button>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => addSessionToCalendar(session)}>
-                  <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />
-                  Add to calendar
-                </Button>
+                {!held ? (
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => addSessionToCalendar(session)}>
+                    <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />
+                    Add to calendar
+                  </Button>
+                ) : null}
                 {canManage ? (
                   <Button variant="outline" size="sm" className="h-8 text-xs" onClick={printAttendance}>
                     <Printer className="mr-1.5 h-3.5 w-3.5" />
                     Print attendance
                   </Button>
                 ) : null}
+                {canManage && isScheduledInApp(session.id) ? (
+                  <Button variant="outline" size="sm" className="h-8 text-xs text-red-700 hover:border-red-300 hover:bg-red-50" onClick={cancelSession}>
+                    <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                    Cancel session
+                  </Button>
+                ) : null}
               </div>
             </header>
 
-            {self ? (
+            {self && held ? (
+              <div className="border-b border-border bg-primary/[0.04] px-5 py-3">
+                <p className="text-sm text-text-main">
+                  You were invited.{' '}
+                  <span className="font-semibold">{selfStatus === 'attending' ? 'You were present.' : selfStatus === 'declined' ? 'You were absent.' : 'No attendance recorded for you.'}</span>
+                </p>
+              </div>
+            ) : self ? (
               <div className="border-b border-border bg-primary/[0.04] px-5 py-4">
                 <p className="text-sm font-semibold text-text-main">You are invited. Will you attend?</p>
                 <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -455,9 +571,9 @@ export function CalendarSessionsPanel() {
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                 {[
-                  { label: 'Attending', value: counts.attending, tone: 'text-green-700' },
-                  { label: 'Not attending', value: counts.declined, tone: 'text-red-700' },
-                  { label: 'No response', value: counts.none, tone: 'text-slate-600' },
+                  { label: held ? 'Present' : 'Attending', value: counts.attending, tone: 'text-green-700' },
+                  { label: held ? 'Absent' : 'Not attending', value: counts.declined, tone: 'text-red-700' },
+                  { label: held ? 'No record' : 'No response', value: counts.none, tone: 'text-slate-600' },
                 ].map((stat) => (
                   <div key={stat.label} className="rounded-lg border border-border px-2 py-2">
                     <p className={cn('text-xl font-bold tabular-nums', stat.tone)}>{stat.value}</p>
@@ -471,9 +587,13 @@ export function CalendarSessionsPanel() {
               </div>
               {session.type !== 'Committee Hearing' ? (
                 <p className={cn('mt-2 text-[11px] font-medium', membersAttending >= QUORUM ? 'text-green-700' : 'text-amber-700')}>
-                  {membersAttending >= QUORUM
-                    ? `Quorum expected: ${membersAttending} of ${QUORUM} members needed have confirmed.`
-                    : `Quorum not yet assured: ${membersAttending} of ${QUORUM} members needed have confirmed.`}
+                  {held
+                    ? membersAttending >= QUORUM
+                      ? `Quorum was met: ${membersAttending} members present (${QUORUM} needed).`
+                      : `No quorum: only ${membersAttending} members present (${QUORUM} needed).`
+                    : membersAttending >= QUORUM
+                      ? `Quorum expected: ${membersAttending} of ${QUORUM} members needed have confirmed.`
+                      : `Quorum not yet assured: ${membersAttending} of ${QUORUM} members needed have confirmed.`}
                 </p>
               ) : null}
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
@@ -481,9 +601,9 @@ export function CalendarSessionsPanel() {
                   {(
                     [
                       ['all', 'All'],
-                      ['attending', 'Attending'],
-                      ['declined', 'Not attending'],
-                      ['none', 'No response'],
+                      ['attending', held ? 'Present' : 'Attending'],
+                      ['declined', held ? 'Absent' : 'Not attending'],
+                      ['none', held ? 'No record' : 'No response'],
                     ] as [RsvpFilter, string][]
                   ).map(([value, label]) => (
                     <button
@@ -498,10 +618,12 @@ export function CalendarSessionsPanel() {
                     </button>
                   ))}
                 </div>
-                <Button variant="outline" size="sm" className="h-8 text-xs" onClick={sendReminders}>
-                  <BellRing className="mr-1.5 h-3.5 w-3.5" />
-                  Remind no-response
-                </Button>
+                {!held ? (
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={sendReminders}>
+                    <BellRing className="mr-1.5 h-3.5 w-3.5" />
+                    Remind no-response
+                  </Button>
+                ) : null}
               </div>
             </div>
 
@@ -578,6 +700,32 @@ export function CalendarSessionsPanel() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Schedule a session */}
+      <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-primary">Schedule session</DialogTitle>
+            <DialogDescription>Everyone the session concerns is invited and notified in the mobile app.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5">
+            {scheduleOpen ? (
+              <ScheduleSessionForm
+                scheduledBy={user.name}
+                onCancel={() => setScheduleOpen(false)}
+                onScheduled={(entry) => {
+                  setScheduleOpen(false);
+                  selectSession(entry);
+                  toast('Session scheduled', `${entry.title} on ${formatLongDate(entry.date)}. Invitees were notified in the mobile app.`);
+                  logActivity({ module: 'E-Session', action: 'Created', summary: `Scheduled ${entry.title}`, detail: `${formatLongDate(entry.date)}, ${entry.time} · ${entry.location}` });
+                }}
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <MobileAppDialog open={mobileOpen} onOpenChange={setMobileOpen} />
 
       {/* Agenda */}
       <Dialog open={agendaOpen && session !== null} onOpenChange={setAgendaOpen}>

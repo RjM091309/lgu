@@ -40,10 +40,11 @@ const toneStyles: Record<ToastTone, { icon: typeof Info; className: string }> = 
   error: { icon: XCircle, className: 'border-[#ef9a9a] border-l-[#c62828] bg-[#fde0e0] text-[#b71c1c]' },
 };
 
-export function Toaster() {
+/** `className` overrides the placement (the mobile app shows toasts at the top, clear of its tab bar). */
+export function Toaster({ className = 'bottom-4 right-4' }: { className?: string }) {
   const items = useSyncExternalStore(subscribe, () => toasts);
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
+    <div className={`pointer-events-none fixed z-[70] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2 ${className}`} aria-live="polite">
       {items.map((item) => {
         const { icon: Icon, className } = toneStyles[item.tone];
         return (

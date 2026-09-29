@@ -53,14 +53,11 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
-import { findLoginAccount } from '@/lib/access-store';
+import { DEMO_PASSWORD, findLoginAccount } from '@/lib/access-store';
 import { EgovAiChat } from '@/components/public/EgovAiChat';
 import { LANDING_COPY, type Lang } from '@/components/public/landing-copy';
 import { HeroSlider, type HeroSlide } from '@/components/public/HeroSlider';
 import { ProcessSimulation } from '@/components/public/ProcessSimulation';
-
-// Demo sign-in.
-const DEMO_PASSWORD = 'admin123';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

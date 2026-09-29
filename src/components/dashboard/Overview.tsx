@@ -19,7 +19,8 @@ import {
   Upload,
   Users,
 } from 'lucide-react';
-import { mockBills, mockMonthlyActivity, mockSessions, type Bill } from '@/lib/mock-data';
+import { mockBills, mockMonthlyActivity, type Bill } from '@/lib/mock-data';
+import { useCalendarSessions } from '@/lib/esession-sync';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/DataTable';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -63,8 +64,9 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
   const inProcess = mockBills.filter((bill) => !FINAL_STATUSES.includes(bill.status));
   const awaitingSignature = mockBills.filter((bill) => bill.status === 'Passed');
   const enacted = mockBills.filter((bill) => bill.status === 'Enacted');
-  const nextSession = mockSessions[0];
-  const agendaSession = mockSessions.find((session) => session.id === agendaSessionId) ?? null;
+  const sessions = useCalendarSessions();
+  const nextSession = sessions[0];
+  const agendaSession = sessions.find((session) => session.id === agendaSessionId) ?? null;
 
   const pipelineStages = PIPELINE.map((stage) => ({ ...stage, count: mockBills.filter((bill) => bill.status === stage.status).length }));
 
@@ -131,12 +133,12 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
       period: nextSession
         ? `Next: ${new Date(`${nextSession.date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })} · ${nextSession.time}`
         : 'None scheduled',
-      value: mockSessions.length,
+      value: sessions.length,
       icon: CalendarDays,
       tab: 'esig-calendar-sessions',
       footer: (
         <div className="flex flex-wrap gap-1.5">
-          {mockSessions.map((session) => (
+          {sessions.map((session) => (
             <span key={session.id} className="rounded-md border border-border bg-background px-2 py-1 text-[11px]">
               <span className="font-semibold text-text-main">
                 {new Date(`${session.date}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' })}
@@ -248,7 +250,7 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
           action={can('esig-calendar-sessions') ? <LinkButton onClick={() => onNavigate('esig-calendar-sessions')}>View all</LinkButton> : null}
         >
           <ul className="space-y-2.5">
-            {mockSessions.map((session) => {
+            {sessions.map((session) => {
               const date = new Date(`${session.date}T00:00:00`);
               const daysAway = Math.round((date.getTime() - new Date(`${todayInManila()}T00:00:00`).getTime()) / 86_400_000);
               const when = daysAway < 0 ? 'Concluded' : daysAway === 0 ? 'Today' : daysAway === 1 ? 'Tomorrow' : `In ${daysAway} days`;
