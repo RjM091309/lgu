@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { LGU_PROFILE, mockSessions, type Session } from '@/lib/mock-data';
+import { LGU_PROFILE, mockPastSessions, mockSessions, type Session } from '@/lib/mock-data';
 import { buildAgenda, formatLongDate } from '@/lib/sessions';
 import { createPdf, type PdfLine } from '@/lib/pdf';
 import { STORES, requestPersistentStorage, runTransaction, storageErrorMessage } from '@/lib/app-db';
@@ -150,10 +150,41 @@ const orderOfBusinessPdf = (session: Session) =>
 
 const regularSession = mockSessions.find((session) => session.type === 'Regular') ?? mockSessions[0];
 
+// Recently held sessions whose folders are kept next to the upcoming ones, newest first.
+const HELD_SESSIONS = ['ps37', 'ps36', 'ps35']
+  .map((id) => mockPastSessions.find((session) => session.id === id))
+  .filter((session): session is Session => session !== undefined);
+
+/** Sessions that have a folder in Session Files, latest date first. */
+export const FILE_SESSIONS: Session[] = [...mockSessions, ...HELD_SESSIONS].sort((a, b) => b.date.localeCompare(a.date));
+
+/** The folder opened first: the next session to be held, or the latest one when none is upcoming. */
+export const DEFAULT_FILE_SESSION_ID =
+  [...FILE_SESSIONS].reverse().find((session) => session.date >= todayInManila())?.id ?? FILE_SESSIONS[0]?.id ?? '';
+
+const daysBefore = (iso: string, days: number) => {
+  const date = new Date(`${iso}T00:00:00`);
+  date.setDate(date.getDate() - days);
+  return date.toLocaleDateString('en-CA');
+};
+
+// The agenda and order of business of each held session, prepared a few days before it met.
+const heldSessionFiles = (): SessionFile[] =>
+  HELD_SESSIONS.flatMap((session) => {
+    const agenda = agendaPdf(session);
+    const orderOfBusiness = orderOfBusinessPdf(session);
+    const shared = { sessionId: session.id, kind: 'pdf' as const, uploadedAt: daysBefore(session.date, 3), uploadedBy: 'SB Secretariat', source: 'system' as const };
+    return [
+      { ...shared, id: `sf-${session.id}-agenda`, name: `${session.title} Agenda.pdf`, category: 'Agenda' as const, size: agenda.size, blob: agenda },
+      { ...shared, id: `sf-${session.id}-ob`, name: `${session.title} Order of Business.pdf`, category: 'Order of Business' as const, size: orderOfBusiness.size, blob: orderOfBusiness },
+    ];
+  });
+
 const seedFiles = (): SessionFile[] => {
   const agenda = agendaPdf(regularSession);
   const orderOfBusiness = orderOfBusinessPdf(regularSession);
   return [
+    ...heldSessionFiles(),
     {
       id: 'sf-1',
       name: '38th Regular Session Agenda - Week 41.pdf',
