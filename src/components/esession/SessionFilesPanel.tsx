@@ -9,10 +9,12 @@ import {
   Eye,
   FileAudio,
   FileImage,
+  FilePen,
   FileText,
   FileVideo,
   File as FileIcon,
   FolderOpen,
+  History,
   Minus,
   Paperclip,
   Play,
@@ -38,11 +40,15 @@ import {
   extensionsFor,
   fileUrl,
   formatBytes,
+  latestVersions,
   removeSessionFile,
   suggestCategory,
   todayInManila,
   updateSessionFile,
   useSessionFiles,
+  versionGroupOf,
+  versionNumber,
+  versionsOf,
   type FileCategory,
   type FileKind,
   type SessionFile,
@@ -84,6 +90,12 @@ const KIND_TABS: { value: KindFilter; label: string }[] = [
   { value: 'other', label: 'Office docs' },
 ];
 const KIND_ORDER = KIND_TABS.map((tab) => tab.value);
+
+// Categories whose documents always show their version number, since later sessions amend them.
+const VERSIONED_CATEGORIES: FileCategory[] = ['Resolution', 'Enacted Ordinance'];
+const isRecording = (file: SessionFile) => file.kind === 'audio' || file.kind === 'video';
+// An amended version may be a PDF, a scanned image or an Office document, whatever the original was.
+const AMEND_ACCEPT = (['pdf', 'image', 'other'] as FileKind[]).flatMap((kind) => extensionsFor(kind).map((ext) => `.${ext}`)).join(',');
 
 const matchesKind = (file: SessionFile, filter: KindFilter) => filter === 'all' || file.kind === filter;
 
@@ -164,22 +176,37 @@ export function SessionFilesPanel() {
   const [isDragging, setIsDragging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [attachTarget, setAttachTarget] = useState<SessionFile | null>(null);
+  const [amendTarget, setAmendTarget] = useState<SessionFile | null>(null);
+  const [amendFile, setAmendFile] = useState<File | null>(null);
+  const [amendNote, setAmendNote] = useState('');
+  const [historyGroup, setHistoryGroup] = useState<string | null>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
+  const amendInputRef = useRef<HTMLInputElement>(null);
+
+  // Lists, counts and the checklist show only the current version of each document; older ones are in its history.
+  const currentFiles = useMemo(() => latestVersions(files), [files]);
+  const versionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    files.forEach((file) => counts.set(versionGroupOf(file), (counts.get(versionGroupOf(file)) ?? 0) + 1));
+    return counts;
+  }, [files]);
+  const historyVersions = historyGroup ? files.filter((file) => versionGroupOf(file) === historyGroup).sort((a, b) => versionNumber(b) - versionNumber(a)) : [];
+  const showsVersion = (file: SessionFile) => (versionCounts.get(versionGroupOf(file)) ?? 1) > 1 || VERSIONED_CATEGORIES.includes(file.category);
 
   const inSession = (file: SessionFile, tab: string) =>
     tab === OTHER_TAB ? !mockSessions.some((session) => session.id === file.sessionId) : file.sessionId === tab;
-  const sessionFiles = useMemo(() => files.filter((file) => inSession(file, activeSession)), [files, activeSession]);
-  const otherCount = files.filter((file) => inSession(file, OTHER_TAB)).length;
+  const sessionFiles = useMemo(() => currentFiles.filter((file) => inSession(file, activeSession)), [currentFiles, activeSession]);
+  const otherCount = currentFiles.filter((file) => inSession(file, OTHER_TAB)).length;
   const sessionTabs = [
-    ...mockSessions.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}`, count: files.filter((file) => file.sessionId === session.id).length })),
+    ...mockSessions.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}`, count: currentFiles.filter((file) => file.sessionId === session.id).length })),
     ...(otherCount > 0 ? [{ id: OTHER_TAB, title: 'Other files', meta: 'No listed session', count: otherCount }] : []),
   ];
 
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
     return sortFiles(
-      sessionFiles.filter((file) => matchesKind(file, kindFilter) && (!q || [file.name, file.category, file.uploadedBy].some((value) => value.toLowerCase().includes(q)))),
+      sessionFiles.filter((file) => matchesKind(file, kindFilter) && (!q || [file.name, file.category, file.uploadedBy, file.changeNote ?? ''].some((value) => value.toLowerCase().includes(q)))),
       sort
     );
   }, [sessionFiles, keyword, kindFilter, sort]);
@@ -283,7 +310,7 @@ export function SessionFilesPanel() {
       files.some((file) => file.sessionId === uploadSession && file.name.toLowerCase() === item.file.name.toLowerCase())
     );
     if (duplicates.length > 0) {
-      toast('Nothing uploaded', `Already in this session: ${duplicates.map((item) => item.file.name).join(', ')}. Rename or remove them first.`, 'error');
+      toast('Nothing uploaded', `Already in this session: ${duplicates.map((item) => item.file.name).join(', ')}. To upload an amended copy, use Amend on that file instead.`, 'error');
       return;
     }
     const totalSize = pending.reduce((sum, item) => sum + item.file.size, 0);
@@ -371,10 +398,84 @@ export function SessionFilesPanel() {
     setAttachTarget(null);
   };
 
-  const remove = async (file: SessionFile) => {
+  const startAmend = (file: SessionFile) => {
+    setAmendTarget(file);
+    setAmendFile(null);
+    setAmendNote('');
+  };
+
+  const chooseAmendFile = (selected: File | undefined) => {
+    if (!selected) return;
+    const kind = detectKind(selected);
+    if (!kind || kind === 'audio' || kind === 'video') {
+      toast('File not added', `${selected.name} is not a PDF, image or Office document.`, 'error');
+      return;
+    }
+    if (selected.size === 0 || selected.size > MAX_UPLOAD_BYTES) {
+      toast('File not added', selected.size === 0 ? `${selected.name} is empty.` : `${selected.name} is larger than ${formatBytes(MAX_UPLOAD_BYTES)}.`, 'error');
+      return;
+    }
+    setAmendFile(selected);
+  };
+
+  const nextVersionOf = (file: SessionFile) => Math.max(...versionsOf(files, file).map(versionNumber)) + 1;
+
+  const submitAmend = async () => {
+    const target = amendTarget;
+    if (!target) return;
+    if (!amendFile) {
+      toast('Version not uploaded', 'Choose the amended file first.', 'error');
+      return;
+    }
+    const note = amendNote.trim();
+    if (!note) {
+      toast('Version not uploaded', 'Describe what this amendment changed.', 'error');
+      return;
+    }
+    const next = nextVersionOf(target);
     const confirmed = await confirmAction({
-      title: 'Remove this file?',
-      description: `${file.name} will be removed from ${sessionTitle(file.sessionId)}. This cannot be undone.`,
+      title: `Upload version ${next}?`,
+      description: `${amendFile.name} (${formatBytes(amendFile.size)}) becomes the current copy of ${target.name}. Earlier versions stay in its history.`,
+      confirmLabel: `Upload version ${next}`,
+    });
+    if (!confirmed) return;
+    setIsSaving(true);
+    const error = await addSessionFiles([
+      {
+        name: amendFile.name,
+        category: target.category,
+        sessionId: target.sessionId,
+        kind: detectKind(amendFile) ?? target.kind,
+        size: amendFile.size,
+        uploadedAt: todayInManila(),
+        uploadedBy: getCurrentUser().name,
+        uploadedByRole: getCurrentUser().role,
+        source: 'upload',
+        blob: amendFile,
+        versionOf: versionGroupOf(target),
+        version: next,
+        changeNote: note,
+      },
+    ]);
+    setIsSaving(false);
+    if (error) {
+      toast('Version not uploaded', error, 'error');
+      return;
+    }
+    toast(`Version ${next} uploaded`, `${amendFile.name} is now the current copy.`);
+    logActivity({ module: 'E-Session', action: 'Uploaded', summary: `Uploaded version ${next} of ${target.name}`, detail: note });
+    setAmendTarget(null);
+  };
+
+  const remove = async (file: SessionFile) => {
+    const versions = versionsOf(files, file);
+    const replacement = versions[0]?.id === file.id ? versions[1] : undefined;
+    const confirmed = await confirmAction({
+      title: versions.length > 1 ? `Remove version ${versionNumber(file)}?` : 'Remove this file?',
+      description:
+        versions.length > 1
+          ? `Version ${versionNumber(file)} (${file.name}) will be removed.${replacement ? ` Version ${versionNumber(replacement)} becomes the current copy.` : ''} This cannot be undone.`
+          : `${file.name} will be removed from ${sessionTitle(file.sessionId)}. This cannot be undone.`,
       confirmLabel: 'Remove file',
       tone: 'destructive',
     });
@@ -389,14 +490,14 @@ export function SessionFilesPanel() {
     logActivity({ module: 'E-Session', action: 'Deleted', summary: `Removed ${file.name}`, detail: `From ${sessionTitle(file.sessionId)}` });
   };
 
-  const recordings = files.filter((file) => file.kind === 'audio' || file.kind === 'video');
+  const recordings = currentFiles.filter(isRecording);
   const awaitingRecordings = recordings.filter((file) => !file.blob && !file.src).length;
   const totalBytes = files.reduce((sum, file) => sum + (file.size ?? 0), 0);
   const sessionsCovered = new Set(files.map((file) => file.sessionId)).size;
 
   const stats = [
-    { label: 'Total files', value: String(files.length), icon: FolderOpen, hint: `${formatBytes(totalBytes)} stored` },
-    { label: 'Documents', value: String(files.length - recordings.length), icon: FileText, hint: 'Agendas, minutes, supporting papers' },
+    { label: 'Total files', value: String(currentFiles.length), icon: FolderOpen, hint: `${formatBytes(totalBytes)} stored` },
+    { label: 'Documents', value: String(currentFiles.length - recordings.length), icon: FileText, hint: 'Agendas, minutes, resolutions, ordinances' },
     {
       label: 'Recordings',
       value: String(recordings.length),
@@ -411,7 +512,7 @@ export function SessionFilesPanel() {
   const checklistSessionId = currentSession?.id ?? mockSessions[0]?.id ?? '';
   const checklistSession = mockSessions.find((session) => session.id === checklistSessionId);
   const checklist = CHECKLIST_CATEGORIES.map((category) => {
-    const matches = files.filter((file) => file.sessionId === checklistSessionId && file.category === category);
+    const matches = currentFiles.filter((file) => file.sessionId === checklistSessionId && file.category === category);
     const ready = matches.some((file) => file.blob || file.src);
     return { category, status: ready ? 'ready' : matches.length ? 'awaiting' : 'missing' } as const;
   });
@@ -422,7 +523,8 @@ export function SessionFilesPanel() {
     const author = authorOf(file);
     const missing = !file.blob && !file.src;
     const canView = file.kind === 'pdf' || file.kind === 'image';
-    const canPlay = file.kind === 'audio' || file.kind === 'video';
+    const canPlay = isRecording(file);
+    const versionCount = versionCounts.get(versionGroupOf(file)) ?? 1;
     return (
       <li key={file.id} className="flex flex-col gap-3 px-5 py-3.5 transition-colors hover:bg-muted/30 sm:flex-row sm:items-center">
         <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -435,6 +537,17 @@ export function SessionFilesPanel() {
             </p>
             <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
               <span className="rounded-full bg-muted px-2 py-px font-medium text-text-main">{file.category}</span>
+              {showsVersion(file) ? (
+                <span className="rounded-full bg-primary/10 px-2 py-px font-bold text-primary" title={file.changeNote ? `Amendment: ${file.changeNote}` : 'Original version'}>
+                  v{versionNumber(file)}
+                </span>
+              ) : null}
+              {versionCount > 1 ? (
+                <button type="button" onClick={() => setHistoryGroup(versionGroupOf(file))} className="inline-flex items-center gap-1 font-semibold text-primary hover:underline">
+                  <History className="h-3 w-3" />
+                  {versionCount} versions
+                </button>
+              ) : null}
               {missing ? <span className="font-semibold text-amber-700">Recording not yet attached</span> : <span>{formatBytes(file.size)}</span>}
             </p>
           </div>
@@ -462,6 +575,11 @@ export function SessionFilesPanel() {
                 <Button size="sm" variant="outline" className="h-8" onClick={() => openPreview(file)}>
                   {canPlay ? <Play className="mr-1.5 h-4 w-4" /> : <Eye className="mr-1.5 h-4 w-4" />}
                   {canPlay ? 'Play' : 'View'}
+                </Button>
+              ) : null}
+              {!canPlay ? (
+                <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => startAmend(file)} aria-label={`Upload an amended version of ${file.name}`} title="Amend (upload new version)">
+                  <FilePen className="h-4 w-4" />
                 </Button>
               ) : null}
               <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => download(file)} aria-label={`Download ${file.name}`} title="Download">
@@ -740,8 +858,10 @@ export function SessionFilesPanel() {
               <DialogHeader className="space-y-1">
                 <DialogTitle className="truncate text-primary" title={previewFile.name}>{previewFile.name}</DialogTitle>
                 <DialogDescription>
-                  {sessionTitle(previewFile.sessionId)} · {previewFile.category} · {formatBytes(previewFile.size)} · Uploaded by {previewFile.uploadedBy}
+                  {sessionTitle(previewFile.sessionId)} · {previewFile.category}
+                  {showsVersion(previewFile) ? ` · Version ${versionNumber(previewFile)}` : ''} · {formatBytes(previewFile.size)} · Uploaded by {previewFile.uploadedBy}
                   {authorOf(previewFile).role ? ` (${authorOf(previewFile).role})` : ''} on {previewFile.uploadedAt}
+                  {previewFile.changeNote ? ` · Amendment: ${previewFile.changeNote}` : ''}
                 </DialogDescription>
               </DialogHeader>
             </div>
@@ -963,6 +1083,150 @@ export function SessionFilesPanel() {
             </Button>
           </div>
         </div>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={amendTarget !== null} onOpenChange={(open) => !open && !isSaving && setAmendTarget(null)}>
+      <DialogContent closeOnOverlayClick={false} className="flex flex-col gap-0 p-0 sm:max-w-lg">
+        {amendTarget ? (
+          <>
+            <div className="border-b border-border px-6 py-4 pr-12">
+              <DialogHeader className="space-y-1">
+                <DialogTitle className="text-primary">Amend {amendTarget.category}</DialogTitle>
+                <DialogDescription className="truncate" title={amendTarget.name}>
+                  Upload version {nextVersionOf(amendTarget)} of {amendTarget.name}
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!amendInputRef.current) return;
+                  // Reset so choosing the same file again still fires a change event.
+                  amendInputRef.current.value = '';
+                  amendInputRef.current.click();
+                }}
+                className="flex w-full flex-col items-center gap-1 rounded-lg border-2 border-dashed border-border px-4 py-5 text-center hover:border-primary/50 hover:bg-primary/5"
+              >
+                <Upload className="h-5 w-5 text-primary" />
+                {amendFile ? (
+                  <>
+                    <span className="max-w-full truncate text-sm font-semibold text-text-main">{amendFile.name}</span>
+                    <span className="text-[11px] text-text-muted">{formatBytes(amendFile.size)} · click to choose another file</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm font-semibold text-text-main">Choose the amended file</span>
+                    <span className="text-[11px] text-text-muted">PDF, image or Office document · up to {formatBytes(MAX_UPLOAD_BYTES)}</span>
+                  </>
+                )}
+              </button>
+              <input ref={amendInputRef} type="file" accept={AMEND_ACCEPT} className="hidden" onChange={(e) => chooseAmendFile(e.target.files?.[0])} />
+              <label className="block text-xs font-semibold text-text-muted">
+                What was amended
+                <textarea
+                  value={amendNote}
+                  onChange={(e) => setAmendNote(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Section 3 amended per Resolution No. 2026-045"
+                  className="mt-1 w-full rounded-md border border-border bg-white px-3 py-2 text-sm font-normal text-text-main"
+                />
+              </label>
+              <p className="text-[11px] text-text-muted">The new file becomes the current copy. Earlier versions stay in the version history and can still be viewed and downloaded.</p>
+            </div>
+            <div className="flex justify-end gap-2 rounded-b-lg border-t border-border bg-[#fafafa] px-6 py-3">
+              <Button variant="outline" onClick={() => setAmendTarget(null)} disabled={isSaving}>
+                Cancel
+              </Button>
+              <Button onClick={submitAmend} disabled={isSaving}>
+                {isSaving ? 'Saving…' : 'Upload version'}
+              </Button>
+            </div>
+          </>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+
+    <Dialog open={historyVersions.length > 0} onOpenChange={(open) => !open && setHistoryGroup(null)}>
+      <DialogContent className="flex max-h-[85vh] flex-col gap-0 p-0 sm:max-w-2xl">
+        {historyVersions.length > 0 ? (
+          <>
+            <div className="border-b border-border px-6 py-4 pr-12">
+              <DialogHeader className="space-y-1">
+                <DialogTitle className="text-primary">Version history</DialogTitle>
+                <DialogDescription className="truncate" title={historyVersions[0].name}>
+                  {historyVersions[0].name} · {historyVersions.length} versions
+                </DialogDescription>
+              </DialogHeader>
+            </div>
+            <ol className="min-h-0 flex-1 divide-y divide-border overflow-y-auto">
+              {historyVersions.map((version, index) => {
+                const author = authorOf(version);
+                return (
+                  <li key={version.id} className="flex flex-col gap-2 px-6 py-3.5 sm:flex-row sm:items-start">
+                    <span
+                      className={cn(
+                        'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold',
+                        index === 0 ? 'bg-primary text-white' : 'bg-muted text-text-muted'
+                      )}
+                    >
+                      v{versionNumber(version)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-text-main">
+                        <span className="truncate" title={version.name}>{version.name}</span>
+                        {index === 0 ? <span className="shrink-0 rounded-full bg-green-50 px-2 py-px text-[10px] font-bold uppercase text-green-700">Current</span> : null}
+                      </p>
+                      <p className="text-xs text-text-muted">
+                        {version.uploadedAt} · {author.name}
+                        {author.role ? ` (${author.role})` : ''} · {formatBytes(version.size)}
+                      </p>
+                      <p className="mt-1 text-xs text-text-main">{version.changeNote ?? 'Original version'}</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1">
+                      {version.kind === 'pdf' || version.kind === 'image' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-8"
+                          onClick={() => {
+                            // Dialogs share one layer, so close the history for the preview to show on top.
+                            setHistoryGroup(null);
+                            openPreview(version);
+                          }}
+                        >
+                          <Eye className="mr-1.5 h-4 w-4" />
+                          View
+                        </Button>
+                      ) : null}
+                      <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => download(version)} aria-label={`Download version ${versionNumber(version)}`} title="Download">
+                        <Download className="h-4 w-4" />
+                      </Button>
+                      {version.source === 'upload' ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8 w-8 p-0 text-[#c62828] hover:bg-[#ffebee]"
+                          onClick={() => remove(version)}
+                          aria-label={`Remove version ${versionNumber(version)}`}
+                          title="Remove version"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="flex justify-end rounded-b-lg border-t border-border bg-[#fafafa] px-6 py-3">
+              <Button size="sm" onClick={() => setHistoryGroup(null)}>
+                Close
+              </Button>
+            </div>
+          </>
+        ) : null}
       </DialogContent>
     </Dialog>
     </>

@@ -6,7 +6,7 @@ import { STORES, requestPersistentStorage, runTransaction, storageErrorMessage }
 
 export type FileKind = 'pdf' | 'audio' | 'video' | 'image' | 'other';
 
-export const FILE_CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Supporting Document'] as const;
+export const FILE_CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Resolution', 'Supporting Document'] as const;
 export type FileCategory = (typeof FILE_CATEGORIES)[number];
 
 export interface SessionFile {
@@ -27,6 +27,12 @@ export interface SessionFile {
   src?: string;
   // A prepared WebVTT transcript shipped with the app, so captions show without transcribing in the browser.
   transcriptSrc?: string;
+  /** Id of the first version when this file amends an earlier one; every version of a document shares it. */
+  versionOf?: string;
+  /** Version number, 1 for the original (older records have none and count as version 1). */
+  version?: number;
+  /** What the amendment changed, entered when a new version is uploaded. */
+  changeNote?: string;
 }
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -75,8 +81,28 @@ export const suggestCategory = (kind: FileKind, name: string): FileCategory => {
   if (lower.includes('minutes')) return 'Minutes';
   // Scanned copies of ordinances passed during the session.
   if (/\bord(inance)?\b/.test(lower)) return 'Enacted Ordinance';
+  if (/\bres(o|olution)?\b/.test(lower)) return 'Resolution';
   return 'Supporting Document';
 };
+
+/** Versions of one document share the id of its first version. */
+export const versionGroupOf = (file: SessionFile) => file.versionOf ?? file.id;
+export const versionNumber = (file: SessionFile) => file.version ?? 1;
+
+/** Keeps only the current (highest) version of each document, in the list's order. */
+export const latestVersions = (list: SessionFile[]) => {
+  const latest = new Map<string, SessionFile>();
+  list.forEach((file) => {
+    const current = latest.get(versionGroupOf(file));
+    if (!current || versionNumber(file) > versionNumber(current)) latest.set(versionGroupOf(file), file);
+  });
+  const keep = new Set(latest.values());
+  return list.filter((file) => keep.has(file));
+};
+
+/** Every version of the file's document, newest first. */
+export const versionsOf = (list: SessionFile[], file: SessionFile) =>
+  list.filter((entry) => versionGroupOf(entry) === versionGroupOf(file)).sort((a, b) => versionNumber(b) - versionNumber(a));
 
 export const formatBytes = (bytes: number | null) => {
   if (bytes === null) return '—';

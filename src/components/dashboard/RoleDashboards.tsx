@@ -22,7 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { mockBills, mockCommitteeHearings, mockMonthlyActivity, mockSessions, mockYearlyActivity, type Bill } from '@/lib/mock-data';
-import { useSessionFiles } from '@/lib/session-files';
+import { latestVersions, useSessionFiles } from '@/lib/session-files';
 import { useActivityLog } from '@/lib/activity-log';
 import { ADMIN_ROLE, useAccess, useRoles, useSecuritySettings, useUsers } from '@/lib/access-store';
 import { inviteesFor, rsvpOf, setRsvp, useAttendance } from '@/lib/attendance';
@@ -442,7 +442,7 @@ export function EncoderDashboard({ onNavigate }: DashboardProps) {
     (sum, session) => sum + CHECKLIST_CATEGORIES.filter((category) => !files.some((file) => file.sessionId === session.id && file.category === category && (file.blob || file.src))).length,
     0
   );
-  const scannedOrdinances = files.filter((file) => file.category === 'Enacted Ordinance').length;
+  const scannedOrdinances = latestVersions(files).filter((file) => file.category === 'Enacted Ordinance').length;
   const sessionTitle = (id: string) => mockSessions.find((session) => session.id === id)?.title ?? 'Other files';
 
   const tiles: Tile[] = [
