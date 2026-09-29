@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LIMS navy, behind the logo on the launcher icon and the splash screen. -->
+    <color name="ic_launcher_background">#1A237E</color>
+</resources>

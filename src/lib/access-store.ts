@@ -149,6 +149,9 @@ export const setCurrentUser = (id: string) => {
   emit();
 };
 
+/** Every sample account, on the web portal and the mobile app, signs in with this password. */
+export const DEMO_PASSWORD = 'admin123';
+
 /** Account for a login name. */
 export const findLoginAccount = (username: string) => {
   const login = username.trim().toLowerCase();

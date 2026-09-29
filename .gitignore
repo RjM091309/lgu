@@ -1,8 +1,11 @@
 node_modules/
 build/
 dist/
+dist-app/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+# Built Android app (npm run apk)
+downloads/

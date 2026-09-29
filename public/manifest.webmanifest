@@ -1,0 +1,19 @@
+{
+  "name": "LIMS Mobile",
+  "short_name": "LIMS",
+  "description": "Session schedule and attendance for members and staff",
+  "start_url": "/m",
+  "scope": "/m",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a237e",
+  "theme_color": "#1a237e",
+  "icons": [
+    {
+      "src": "/lims-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

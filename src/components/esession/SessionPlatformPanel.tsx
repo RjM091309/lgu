@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import {
   Check,
@@ -10,8 +10,10 @@ import {
   MonitorSmartphone,
   Play,
   Radio,
+  QrCode,
   RefreshCw,
   Send,
+  Smartphone,
   Square,
   Tablet,
   Users,
@@ -26,6 +28,9 @@ import { mockMembers, mockSessionDevices, mockSessions, type SessionDevice } fro
 import { buildAgenda, formatLongDate } from '@/lib/sessions';
 import { useSessionFiles } from '@/lib/session-files';
 import { logActivity } from '@/lib/activity-log';
+import { useAccess } from '@/lib/access-store';
+import { nowInManila, sendAnnouncement, useMobileDevices, type MobileDevice } from '@/lib/esession-sync';
+import { MobileAppDialog } from '@/components/esession/MobileAppDialog';
 
 interface PlatformDevice extends SessionDevice {
   agendaSynced: boolean;
@@ -61,6 +66,9 @@ const formatElapsed = (ms: number) => {
   return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
 };
 
+const clockOf = (ms: number) => new Date(ms).toLocaleTimeString('en-PH', { hour: '2-digit', minute: '2-digit' });
+const phoneLabel = (phone: MobileDevice) => (phone.account ? `${phone.account.name}'s phone (${phone.model})` : `A phone (${phone.model})`);
+
 const DeviceIcon = ({ type, className }: { type: string; className?: string }) =>
   type === 'Laptop' ? <Laptop className={className} /> : type === 'Tablet' || type === 'iPad' ? <Tablet className={className} /> : <MonitorSmartphone className={className} />;
 
@@ -87,6 +95,32 @@ export function SessionPlatformPanel() {
   ]);
 
   const isLive = liveSince !== null;
+  const { user } = useAccess();
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Phones running LIMS Mobile (Android app or browser) that connected to this server.
+  const phones = useMobileDevices();
+  const phonesOnline = phones.filter((phone) => phone.online);
+
+  // Tell the Secretariat as phones connect, sign in, and drop off (not for the list already there on load).
+  const knownPhones = useRef<Map<string, MobileDevice> | null>(null);
+  useEffect(() => {
+    const previous = knownPhones.current;
+    knownPhones.current = new Map(phones.map((phone) => [phone.id, phone]));
+    if (!previous) return;
+    phones.forEach((phone) => {
+      const before = previous.get(phone.id);
+      const where = phone.platform === 'app' ? 'Android app' : 'browser';
+      if (phone.online && (!before || !before.online)) {
+        addFeed(`${phoneLabel(phone)} connected through the ${where}.`, 'success');
+        toast('Phone connected', `${phone.model} · ${phone.account?.name ?? 'not signed in yet'}`, 'info');
+      } else if (!phone.online && before?.online) {
+        addFeed(`${phoneLabel(phone)} went offline.`, 'warning');
+      } else if (phone.online && phone.account && before?.account?.inviteeId !== phone.account.inviteeId) {
+        addFeed(`${phone.account.name} signed in on ${phone.model}.`, 'info');
+      }
+    });
+  }, [phones]);
 
   useEffect(() => {
     if (liveSince === null) return;
@@ -101,6 +135,10 @@ export function SessionPlatformPanel() {
   const offline = devices.filter((d) => d.status === 'Disconnected');
   const synced = connected.filter((d) => d.agendaSynced);
   const allSynced = connected.length > 0 && synced.length === connected.length;
+  // Phones read the order of business live from LIMS, so a connected phone is always up to date.
+  const connectedCount = connected.length + phonesOnline.length;
+  const deviceCount = devices.length + phones.length;
+  const syncedCount = synced.length + phonesOnline.length;
 
   const addFeed = (text: string, tone: FeedEntry['tone']) =>
     setFeed((current) => [{ id: (current[0]?.id ?? 0) + 1, time: nowLabel(), text, tone }, ...current].slice(0, 12));
@@ -173,31 +211,41 @@ export function SessionPlatformPanel() {
     event.preventDefault();
     const text = notice.trim();
     if (!text) return;
-    if (!connected.length) {
+    if (!connectedCount) {
       toast('No devices connected', 'Connect a device before pushing updates.', 'error');
       return;
     }
+    // Phones get it as an alert (and a notification in the Android app).
+    sendAnnouncement(session.id, text, user.name, nowInManila());
     addFeed(`Update pushed: “${text}”`, isLive ? 'live' : 'info');
-    toast('Update pushed', `Sent to ${connected.length} connected device${connected.length === 1 ? '' : 's'}.`);
+    const phoneNote = phonesOnline.length ? `, including ${phonesOnline.length} phone${phonesOnline.length === 1 ? '' : 's'}` : '';
+    toast('Update pushed', `Sent to ${connectedCount} connected device${connectedCount === 1 ? '' : 's'}${phoneNote}.`);
     setNotice('');
   };
 
   const steps = [
-    { title: 'Connect devices', detail: `${connected.length} of ${devices.length} connected`, done: pending.length === 0 && connected.length > 0 },
-    { title: 'Sync agenda', detail: `${synced.length} of ${connected.length} devices up to date`, done: allSynced },
+    { title: 'Connect devices', detail: `${connectedCount} of ${deviceCount} connected`, done: pending.length === 0 && connected.length > 0 },
+    { title: 'Sync agenda', detail: `${syncedCount} of ${connectedCount} devices up to date`, done: allSynced },
     { title: 'Go live', detail: isLive ? `Live for ${formatElapsed(elapsed)}` : 'Push live updates to participants', done: isLive },
   ];
   const currentStep = steps.findIndex((step) => !step.done);
 
   const stats = [
-    { label: 'Devices online', value: `${connected.length}/${devices.length}`, icon: Wifi, progress: connected.length / devices.length },
-    { label: 'Agenda synced', value: `${synced.length}/${connected.length || 0}`, icon: RefreshCw, progress: connected.length ? synced.length / connected.length : 0 },
+    {
+      label: 'Devices online',
+      value: `${connectedCount}/${deviceCount}`,
+      icon: Wifi,
+      progress: connectedCount / deviceCount,
+      hint: phones.length ? `${phonesOnline.length} of ${phones.length} phone${phones.length === 1 ? '' : 's'} online` : undefined,
+    },
+    { label: 'Agenda synced', value: `${syncedCount}/${connectedCount || 0}`, icon: RefreshCw, progress: connectedCount ? syncedCount / connectedCount : 0 },
     { label: 'Members present', value: `${presentCount}/${mockMembers.length}`, icon: Users, progress: presentCount / mockMembers.length, hint: hasQuorum ? 'Quorum met' : `Quorum is ${quorum}` },
     { label: 'Session files', value: String(sessionFiles.length), icon: FolderOpen, hint: 'Agenda, minutes, recordings' },
   ];
 
   return (
     <div className="space-y-6">
+      <MobileAppDialog open={mobileOpen} onOpenChange={setMobileOpen} />
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Session Platform</h1>
@@ -305,15 +353,94 @@ export function SessionPlatformPanel() {
           <header className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-main">Session Devices</h2>
-              <p className="text-xs text-text-muted">Tablets and consoles used by members and the Secretariat</p>
+              <p className="text-xs text-text-muted">Tablets, consoles, and members' phones connected to the session</p>
             </div>
-            <div className="flex flex-wrap gap-2 text-xs font-semibold">
-              <span className="rounded-full bg-green-50 px-2.5 py-1 text-green-800">{connected.length} connected</span>
+            <div className="flex flex-wrap items-center gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-green-50 px-2.5 py-1 text-green-800">{connectedCount} connected</span>
               <span className={cn('rounded-full px-2.5 py-1', pending.length ? 'bg-amber-50 text-amber-800' : 'bg-muted text-text-muted')}>{pending.length} pending</span>
-              <span className={cn('rounded-full px-2.5 py-1', offline.length ? 'bg-red-50 text-red-700' : 'bg-muted text-text-muted')}>{offline.length} offline</span>
+              <span className={cn('rounded-full px-2.5 py-1', offline.length + phones.length - phonesOnline.length ? 'bg-red-50 text-red-700' : 'bg-muted text-text-muted')}>
+                {offline.length + phones.length - phonesOnline.length} offline
+              </span>
+              <Button size="sm" variant="outline" className="h-7 px-2.5 text-xs" onClick={() => setMobileOpen(true)}>
+                <QrCode className="mr-1.5 h-3.5 w-3.5" />
+                Connect a phone
+              </Button>
             </div>
           </header>
           <div className="grid gap-3 p-4 md:grid-cols-2">
+            {/* Phones running LIMS Mobile */}
+            <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-text-muted md:col-span-2">
+              <Smartphone className="h-3.5 w-3.5" />
+              Phones · LIMS Mobile
+              <span className="font-semibold normal-case tracking-normal">
+                {phonesOnline.length} of {phones.length} online
+              </span>
+            </p>
+            {phones.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => setMobileOpen(true)}
+                className="flex items-center gap-3 rounded-lg border border-dashed border-border p-4 text-left text-xs text-text-muted transition-colors hover:border-primary/40 hover:bg-primary/[0.02] md:col-span-2"
+              >
+                <QrCode className="h-8 w-8 shrink-0 text-primary/50" />
+                <span>
+                  <span className="block text-sm font-semibold text-text-main">No phones connected yet</span>
+                  Scan the QR code with a phone on the same Wi-Fi (browser or Android app). It appears here as soon as it connects.
+                </span>
+              </button>
+            ) : (
+              [...phones]
+                .sort((a, b) => Number(b.online) - Number(a.online) || b.connectedAt - a.connectedAt)
+                .map((phone) => {
+                  const style = STATUS_STYLE[phone.online ? 'Connected' : 'Disconnected'];
+                  return (
+                    <article
+                      key={phone.id}
+                      className={cn('flex flex-col rounded-lg border p-4', phone.online ? 'border-border bg-white' : 'border-red-200 bg-red-50/30')}
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg', phone.online ? 'bg-primary/[0.07] text-primary' : 'bg-muted text-text-muted')}>
+                          <Smartphone className="h-5 w-5" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-text-main">{phone.account?.name ?? 'Not signed in yet'}</p>
+                          <p className="truncate text-xs text-text-muted">
+                            {phone.model}
+                            {phone.os ? ` · ${phone.os}` : ''}
+                          </p>
+                        </div>
+                        <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', style.pill)}>
+                          <span className={cn('h-1.5 w-1.5 rounded-full', style.dot, phone.online && 'animate-pulse')} />
+                          {style.label}
+                        </span>
+                      </div>
+
+                      <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-md bg-muted/60 px-2.5 py-2">
+                          <dt className="text-text-muted">{phone.online ? 'Connected since' : 'Last seen'}</dt>
+                          <dd className="mt-0.5 font-semibold tabular-nums text-text-main">{clockOf(phone.online ? phone.connectedAt : phone.lastSeen)}</dd>
+                        </div>
+                        <div className="rounded-md bg-muted/60 px-2.5 py-2">
+                          <dt className="text-text-muted">Agenda</dt>
+                          <dd className={cn('mt-0.5 font-semibold', phone.online ? 'text-green-700' : 'text-text-muted')}>{phone.online ? 'Live' : '—'}</dd>
+                        </div>
+                      </dl>
+
+                      <div className="mt-3 flex items-center justify-between gap-2 text-xs">
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/[0.07] px-2 py-0.5 font-semibold text-primary">
+                          {phone.platform === 'app' ? 'Android app' : 'Browser'}
+                        </span>
+                        <span className="truncate text-text-muted">{phone.account ? phone.account.detail : 'Waiting for sign-in'}</span>
+                      </div>
+                    </article>
+                  );
+                })
+            )}
+
+            <p className="flex items-center gap-2 pt-2 text-[11px] font-bold uppercase tracking-wide text-text-muted md:col-span-2">
+              <Tablet className="h-3.5 w-3.5" />
+              Session hall devices
+            </p>
             {devices.map((device) => {
               const style = STATUS_STYLE[device.status];
               const isConnected = device.status === 'Connected';
@@ -418,7 +545,7 @@ export function SessionPlatformPanel() {
           <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
             <header className="border-b border-border px-5 py-4">
               <h2 className="text-base font-semibold text-text-main">Live Updates</h2>
-              <p className="text-xs text-text-muted">Push a notice to every connected device</p>
+              <p className="text-xs text-text-muted">Push a notice to every connected device, phones included</p>
             </header>
             <form onSubmit={pushNotice} className="flex gap-2 border-b border-border p-4">
               <label htmlFor="platform-notice" className="sr-only">
