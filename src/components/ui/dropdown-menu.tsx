@@ -15,7 +15,7 @@ function useDropdownContext() {
   return context;
 }
 
-function DropdownMenu({ children }: { children: React.ReactNode }) {
+function DropdownMenu({ children, className }: { children: React.ReactNode; className?: string }) {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement>(null);
 
@@ -37,7 +37,7 @@ function DropdownMenu({ children }: { children: React.ReactNode }) {
 
   return (
     <DropdownMenuContext.Provider value={{ open, setOpen }}>
-      <div ref={rootRef} className="relative inline-block">
+      <div ref={rootRef} className={cn("relative inline-block", className)}>
         {children}
       </div>
     </DropdownMenuContext.Provider>

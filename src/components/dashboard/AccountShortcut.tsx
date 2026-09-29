@@ -1,9 +1,10 @@
-import { ShieldCheck, UserCog } from 'lucide-react';
+import { Check, ChevronDown, ShieldCheck, UserCog } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { logActivity } from '@/lib/activity-log';
 import { setCurrentUser, useAccess, useRoles, useUsers } from '@/lib/access-store';
 import { cn } from '@/lib/utils';
 
-/** Dashboard row of role tabs: picking one signs in as that role's sample account, so each role's view can be shown. */
+/** Dashboard role switcher (tabs, or a dropdown on phones): picking one signs in as that role's sample account, so each role's view can be shown. */
 export function AccountShortcut() {
   const { user } = useAccess();
   const roles = useRoles();
@@ -23,27 +24,60 @@ export function AccountShortcut() {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-1 lg:justify-end" role="group" aria-label="Switch role">
-      {accounts.map(({ role, account }) => {
-        const active = role.name === user.role;
-        const Icon = active ? ShieldCheck : UserCog;
-        return (
+    <>
+      <DropdownMenu className="w-full md:hidden">
+        <DropdownMenuTrigger asChild>
           <button
-            key={role.name}
             type="button"
-            onClick={() => switchTo(account!.id)}
-            aria-pressed={active}
-            title={`${account!.name} · ${account!.username}`}
-            className={cn(
-              'inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold uppercase tracking-wide transition-colors',
-              active ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:bg-primary/5 hover:text-primary'
-            )}
+            className="flex h-10 w-full items-center gap-2 rounded-md border border-border bg-white px-3 text-left text-sm shadow-sm"
+            aria-label="Switch role"
           >
-            <Icon className="h-4 w-4 shrink-0" />
-            {role.name}
+            <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
+            <span className="text-xs font-medium text-text-muted">Viewing as</span>
+            <span className="min-w-0 flex-1 truncate font-semibold text-primary">{user.role}</span>
+            <ChevronDown className="h-4 w-4 shrink-0 text-text-muted" />
           </button>
-        );
-      })}
-    </div>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="w-full">
+          {accounts.map(({ role, account }) => {
+            const active = role.name === user.role;
+            return (
+              <DropdownMenuItem
+                key={role.name}
+                onClick={() => switchTo(account!.id)}
+                className={cn('gap-2 py-2', active && 'font-semibold text-primary')}
+              >
+                <UserCog className="h-4 w-4 shrink-0 text-text-muted" />
+                <span className="flex-1">{role.name}</span>
+                {active ? <Check className="h-4 w-4 shrink-0" /> : null}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <div className="hidden flex-wrap items-center gap-1 md:flex lg:justify-end" role="group" aria-label="Switch role">
+        {accounts.map(({ role, account }) => {
+          const active = role.name === user.role;
+          const Icon = active ? ShieldCheck : UserCog;
+          return (
+            <button
+              key={role.name}
+              type="button"
+              onClick={() => switchTo(account!.id)}
+              aria-pressed={active}
+              title={`${account!.name} · ${account!.username}`}
+              className={cn(
+                'inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-xs font-semibold uppercase tracking-wide transition-colors',
+                active ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:bg-primary/5 hover:text-primary'
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              {role.name}
+            </button>
+          );
+        })}
+      </div>
+    </>
   );
 }

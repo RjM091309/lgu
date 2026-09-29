@@ -43,7 +43,7 @@ const toneStyles: Record<ToastTone, { icon: typeof Info; className: string }> = 
 export function Toaster() {
   const items = useSyncExternalStore(subscribe, () => toasts);
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-[70] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
+    <div className="pointer-events-none fixed bottom-20 right-4 z-[70] lg:bottom-4 flex w-[min(360px,calc(100vw-2rem))] flex-col gap-2" aria-live="polite">
       {items.map((item) => {
         const { icon: Icon, className } = toneStyles[item.tone];
         return (

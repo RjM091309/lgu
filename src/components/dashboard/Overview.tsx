@@ -544,11 +544,17 @@ export function Overview({ onNavigate }: OverviewProps) {
         <div className="flex flex-col gap-3 lg:items-end">
           <AccountShortcut />
           {actions.length > 0 ? (
-            <div className="flex flex-wrap gap-2 lg:justify-end">
+            // Phones: two buttons per row, with the primary button full width when it would sit alone.
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap lg:justify-end">
               {actions.map((action, index) => {
                 const primary = index === actions.length - 1;
                 return (
-                  <Button key={action.tab} variant={primary ? 'default' : 'outline'} onClick={() => onNavigate(action.tab)}>
+                  <Button
+                    key={action.tab}
+                    variant={primary ? 'default' : 'outline'}
+                    className={cn(primary && actions.length % 2 === 1 && 'col-span-2')}
+                    onClick={() => onNavigate(action.tab)}
+                  >
                     {primary ? <action.icon className="mr-2 h-4 w-4" /> : null}
                     {action.label}
                   </Button>
