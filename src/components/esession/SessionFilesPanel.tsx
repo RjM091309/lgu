@@ -99,8 +99,14 @@ const AMEND_ACCEPT = (['pdf', 'image', 'other'] as FileKind[]).flatMap((kind) =>
 
 const matchesKind = (file: SessionFile, filter: KindFilter) => filter === 'all' || file.kind === filter;
 
+type CategoryFilter = 'all' | FileCategory;
+const matchesCategory = (file: SessionFile, filter: CategoryFilter) => filter === 'all' || file.category === filter;
+
 // The upload dialog takes one file type at a time; each type lists only the categories that fit it.
 const DOCUMENT_CATEGORIES = FILE_CATEGORIES.filter((category) => category !== 'Audio Recording' && category !== 'Video Recording');
+// Resolutions are the most looked-up documents, so the filter lists them first. Recordings are left out
+// because the Audio and Video tabs already filter them.
+const FILTER_CATEGORIES: FileCategory[] = ['Resolution', ...DOCUMENT_CATEGORIES.filter((category) => category !== 'Resolution')];
 const UPLOAD_KINDS: { value: FileKind; label: string; hint: string; one: string; many: string; categories: FileCategory[] }[] = [
   { value: 'pdf', label: 'PDF', hint: 'Agendas, minutes, ordinances', one: 'a PDF', many: 'PDF files', categories: DOCUMENT_CATEGORIES },
   { value: 'audio', label: 'Audio', hint: 'Session and hearing audio', one: 'an audio file', many: 'audio files', categories: ['Audio Recording'] },
@@ -164,6 +170,7 @@ export function SessionFilesPanel() {
   // Each session is its own tab so files from different sessions never share one list.
   const [activeSession, setActiveSession] = useState(mockSessions[0]?.id ?? OTHER_TAB);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [sort, setSort] = useState<SortKey>('type');
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState(false);
@@ -206,10 +213,10 @@ export function SessionFilesPanel() {
   const filtered = useMemo(() => {
     const q = keyword.trim().toLowerCase();
     return sortFiles(
-      sessionFiles.filter((file) => matchesKind(file, kindFilter) && (!q || [file.name, file.category, file.uploadedBy, file.changeNote ?? ''].some((value) => value.toLowerCase().includes(q)))),
+      sessionFiles.filter((file) => matchesKind(file, kindFilter) && matchesCategory(file, categoryFilter) && (!q || [file.name, file.category, file.uploadedBy, file.changeNote ?? ''].some((value) => value.toLowerCase().includes(q)))),
       sort
     );
-  }, [sessionFiles, keyword, kindFilter, sort]);
+  }, [sessionFiles, keyword, kindFilter, categoryFilter, sort]);
 
   const previewFile = files.find((file) => file.id === previewId) ?? null;
   const previewUrl = previewFile ? fileUrl(previewFile) : null;
@@ -663,6 +670,7 @@ export function SessionFilesPanel() {
                     onClick={() => {
                       setActiveSession(tab.id);
                       setKindFilter('all');
+                      setCategoryFilter('all');
                     }}
                     title={tab.title}
                     className={cn(
@@ -712,9 +720,24 @@ export function SessionFilesPanel() {
                   <p className="mt-0.5 text-xs text-text-muted">Files whose session is no longer listed</p>
                 )}
               </div>
-              <div className="relative sm:w-56">
-                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
-                <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search this session" aria-label="Search this session's files" className="h-9 pl-8 text-sm" />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <select
+                  value={categoryFilter}
+                  onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)}
+                  aria-label="Filter by category"
+                  className={cn(selectClass, 'sm:w-52', categoryFilter !== 'all' && 'border-primary font-semibold text-primary')}
+                >
+                  <option value="all">All categories</option>
+                  {FILTER_CATEGORIES.map((category) => (
+                    <option key={category} value={category}>
+                      {category} ({sessionFiles.filter((file) => file.category === category && matchesKind(file, kindFilter)).length})
+                    </option>
+                  ))}
+                </select>
+                <div className="relative sm:w-56">
+                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
+                  <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search this session" aria-label="Search this session's files" className="h-9 pl-8 text-sm" />
+                </div>
               </div>
             </div>
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -722,7 +745,7 @@ export function SessionFilesPanel() {
               <div className="inline-flex gap-1 rounded-lg bg-muted p-1" role="tablist" aria-label="File type">
                 {KIND_TABS.map((tab) => {
                   const active = kindFilter === tab.value;
-                  const count = sessionFiles.filter((file) => matchesKind(file, tab.value)).length;
+                  const count = sessionFiles.filter((file) => matchesKind(file, tab.value) && matchesCategory(file, categoryFilter)).length;
                   const TabIcon = tab.value === 'all' ? FolderOpen : KIND_ICONS[tab.value];
                   return (
                     <button
@@ -772,7 +795,7 @@ export function SessionFilesPanel() {
                 <FolderOpen className="h-6 w-6" />
               </span>
               <p className="text-sm font-semibold text-text-main">{sessionFiles.length === 0 ? 'No files in this session yet' : 'No files found'}</p>
-              <p className="text-xs text-text-muted">{sessionFiles.length === 0 ? 'Upload the agenda, minutes or recordings for this session.' : 'Try another search or file type, or upload a new file.'}</p>
+              <p className="text-xs text-text-muted">{sessionFiles.length === 0 ? 'Upload the agenda, minutes or recordings for this session.' : 'Try another search, file type or category, or upload a new file.'}</p>
               {sessionFiles.length === 0 && currentSession ? (
                 <Button size="sm" className="mt-2" onClick={() => openUpload(currentSession.id)}>
                   <Upload className="mr-1.5 h-4 w-4" />
