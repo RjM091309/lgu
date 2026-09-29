@@ -15,6 +15,7 @@ import { ActivityLog } from '@/components/activity/ActivityLog';
 import { logActivity } from '@/lib/activity-log';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { motion, AnimatePresence } from 'motion/react';
+import { setStaffArea } from '@/lib/theme';
 import { LandingPage } from '@/components/public/LandingPage';
 import { Toaster, toast } from '@/components/ui/toast';
 import { setCurrentUser, useAccess } from '@/lib/access-store';
@@ -68,6 +69,8 @@ const writeSidebarCollapsed = (collapsed: boolean) => {
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(readSession);
   const [isBooting, setIsBooting] = useState(true);
+  // Set before paint so a signed-in refresh doesn't flash the light theme.
+  setStaffArea(isLoggedIn);
   // `${tab}|${userId}` of the view whose skeleton has finished.
   const [loadedView, setLoadedView] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);

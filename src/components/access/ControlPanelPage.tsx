@@ -452,7 +452,7 @@ export function ControlPanelPage({ onNavigate }: { onNavigate: (tab: string) => 
             <Button variant="outline" size="sm" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={() => setDraft(saved)}>
               Discard
             </Button>
-            <Button size="sm" className="bg-white text-primary hover:bg-white/90" onClick={save}>
+            <Button size="sm" className="bg-[#e8c766] text-black hover:bg-[#f0d17a]" onClick={save}>
               Save settings
             </Button>
           </span>

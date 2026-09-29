@@ -140,7 +140,7 @@ export function CompositionChart({
   const line = 'bg-[#c9ced8]';
 
   return (
-    <div className="bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_0)] [background-size:18px_18px] px-4 py-6 sm:px-5">
+    <div className="bg-[radial-gradient(circle_at_1px_1px,var(--color-border)_1px,transparent_0)] [background-size:18px_18px] px-4 py-6 sm:px-5">
       <div className="mx-auto w-full max-w-[230px]">
         {presiding.map((member) => (
           <MemberNode key={member.id} member={member} chairs={chairsOf(member.id)} labels={labels} onOpen={open(member.id)} variant="featured" />

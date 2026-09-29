@@ -248,7 +248,7 @@ export function RolesPage() {
                           const granted = locked || pagesOf(role).includes(page.id);
                           const changed = !locked && granted !== role.pages.includes(page.id);
                           return (
-                            <td key={role.name} className={cn('px-3 py-2.5 text-center', changed && 'bg-amber-50')}>
+                            <td key={role.name} className={cn('px-3 py-2.5 text-center', changed && 'bg-amber-50 matrix-changed')}>
                               <AccessBox checked={granted} locked={locked} label={`${role.name}: ${page.label}`} onClick={() => setPages(role, [page.id], !granted)} small />
                             </td>
                           );
@@ -273,7 +273,7 @@ export function RolesPage() {
             <Button variant="outline" size="sm" className="border-white/30 bg-transparent text-white hover:bg-white/10 hover:text-white" onClick={() => setDraft({})}>
               Discard
             </Button>
-            <Button size="sm" className="bg-white text-primary hover:bg-white/90" onClick={saveChanges}>
+            <Button size="sm" className="bg-[#e8c766] text-black hover:bg-[#f0d17a]" onClick={saveChanges}>
               Save changes
             </Button>
           </span>

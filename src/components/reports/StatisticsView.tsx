@@ -10,7 +10,7 @@ type YearRow = (typeof mockYearlyActivity)[number];
 const CURRENT_YEAR = '2026';
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep'];
 // Sequential single-hue ramp for the heatmap, light (few) to dark (many).
-const HEAT = ['#f3f4f7', '#dbe7f8', '#b3cdf1', '#7eaae6', '#3f82d8', '#1d5bb0'];
+const HEAT = ['var(--heat-0)', 'var(--heat-1)', 'var(--heat-2)', 'var(--heat-3)', 'var(--heat-4)', 'var(--heat-5)'];
 
 const pct = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 100) : 0);
 const approvalRate = (row: YearRow) => pct(row.approved, row.filed);

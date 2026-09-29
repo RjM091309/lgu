@@ -25,9 +25,11 @@ import {
   LogOut,
   Mail,
   Menu,
+  Moon,
   PenLine,
   Search,
   Settings,
+  Sun,
   User,
   UserPlus,
   X,
@@ -39,6 +41,7 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity } from '@/lib/activity-log';
 import { ADMIN_ROLE, ALL_PAGES, canOpenPage, initials, useAccess } from '@/lib/access-store';
+import { useTheme } from '@/lib/theme';
 
 interface NavbarProps {
   activeTab: string;
@@ -111,6 +114,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
 ];
 
 export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarProps) {
+  const { theme, toggle: toggleTheme } = useTheme();
   const [searchKeyword, setSearchKeyword] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
@@ -436,6 +440,17 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
 
         <Button variant="ghost" size="icon" className="hidden hover:bg-white/10 sm:inline-flex" onClick={() => setDialog('help')} aria-label="Help" title="Help">
           <CircleHelp className="h-5 w-5 text-white/70" />
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="shrink-0 hover:bg-white/10"
+          onClick={toggleTheme}
+          aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+          title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+        >
+          {theme === 'dark' ? <Sun className="h-5 w-5 text-[#e8c766]" /> : <Moon className="h-5 w-5 text-white/70" />}
         </Button>
 
         <DropdownMenu>

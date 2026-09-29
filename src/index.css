@@ -310,3 +310,193 @@
     transform: scaleX(1);
   }
 }
+
+/* Dark theme: toggled by the moon/sun button in the navbar (src/lib/theme.ts adds .dark to <html>).
+   The semantic tokens are swapped here; components that use Tailwind's stock slate/tint palettes
+   are covered by remapping those scales, and the few hard-coded surfaces are patched below.
+   The navy sidebar and navbar are already dark and keep their own gradients. */
+.dark {
+  color-scheme: dark;
+  --color-primary: #7b8cff;
+  --color-primary-light: #9aa7ff;
+  --color-secondary: #7b8cff;
+  --color-background: #0b1020;
+  --color-surface: #131a2e;
+  --color-text-main: #e5e7eb;
+  --color-text-muted: #9aa4b8;
+  --color-border: #263049;
+  --color-ring: #7b8cff;
+  --color-input: #263049;
+  --color-accent: #1b2540;
+  --color-accent-foreground: #c7ceff;
+  --color-muted: #1b2540;
+  --color-muted-foreground: #9aa4b8;
+  --color-popover: #131a2e;
+  --color-popover-foreground: #e5e7eb;
+  --color-card: #131a2e;
+  --color-card-foreground: #e5e7eb;
+  --color-slate-50: #131a2e;
+  --color-slate-100: #1b2540;
+  --color-slate-200: #263049;
+  --color-slate-300: #34405e;
+  --color-slate-400: #7f8aa3;
+  --color-slate-500: #98a2b8;
+  --color-slate-600: #b3bbcc;
+  --color-slate-700: #cbd2df;
+  --color-slate-800: #e2e6ee;
+  --color-slate-900: #f1f3f8;
+  --color-slate-950: #f8f9fc;
+  --color-red-50: #3b1219;
+  --color-red-100: #4c1720;
+  --color-red-200: #7f1d1d;
+  --color-red-300: #7f1d1d;
+  --color-red-700: #fca5a5;
+  --color-red-800: #fecaca;
+  --color-red-900: #fecaca;
+  --color-red-950: #e2e6ee;
+  --color-amber-50: #33240a;
+  --color-amber-100: #43300c;
+  --color-amber-200: #78530f;
+  --color-amber-300: #78530f;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fde68a;
+  --color-amber-950: #e2e6ee;
+  --color-blue-50: #0f2547;
+  --color-blue-100: #12305c;
+  --color-blue-200: #1e40af;
+  --color-blue-300: #1e40af;
+  --color-blue-700: #93c5fd;
+  --color-blue-800: #bfdbfe;
+  --color-blue-900: #bfdbfe;
+  --color-blue-950: #e2e6ee;
+  --color-emerald-50: #0a2e24;
+  --color-emerald-100: #0d3d30;
+  --color-emerald-200: #065f46;
+  --color-emerald-300: #065f46;
+  --color-emerald-700: #6ee7b7;
+  --color-emerald-800: #a7f3d0;
+  --color-emerald-900: #a7f3d0;
+  --color-emerald-950: #e2e6ee;
+  --color-green-50: #0d2e1a;
+  --color-green-100: #123d23;
+  --color-green-200: #166534;
+  --color-green-300: #166534;
+  --color-green-700: #86efac;
+  --color-green-800: #bbf7d0;
+  --color-green-900: #bbf7d0;
+  --color-green-950: #e2e6ee;
+  --color-indigo-50: #1b1f4a;
+  --color-indigo-100: #242a63;
+  --color-indigo-200: #3730a3;
+  --color-indigo-300: #3730a3;
+  --color-indigo-700: #a5b4fc;
+  --color-indigo-800: #c7d2fe;
+  --color-indigo-900: #c7d2fe;
+  --color-indigo-950: #e2e6ee;
+  --color-orange-50: #3a1c0a;
+  --color-orange-100: #4a250d;
+  --color-orange-200: #7c2d12;
+  --color-orange-300: #7c2d12;
+  --color-orange-700: #fdba74;
+  --color-orange-800: #fed7aa;
+  --color-orange-900: #fed7aa;
+  --color-orange-950: #e2e6ee;
+  --color-rose-50: #3d1220;
+  --color-rose-100: #4f1729;
+  --color-rose-200: #881337;
+  --color-rose-300: #881337;
+  --color-rose-700: #fda4af;
+  --color-rose-800: #fecdd3;
+  --color-rose-900: #fecdd3;
+  --color-rose-950: #e2e6ee;
+  --color-sky-50: #0a2b40;
+  --color-sky-100: #0c3a56;
+  --color-sky-200: #075985;
+  --color-sky-300: #075985;
+  --color-sky-700: #7dd3fc;
+  --color-sky-800: #bae6fd;
+  --color-sky-900: #bae6fd;
+  --color-sky-950: #e2e6ee;
+  --color-teal-50: #0a2e2e;
+  --color-teal-100: #0d3d3d;
+  --color-teal-200: #115e59;
+  --color-teal-300: #115e59;
+  --color-teal-700: #5eead4;
+  --color-teal-800: #99f6e4;
+  --color-teal-900: #99f6e4;
+  --color-teal-950: #e2e6ee;
+  --color-violet-50: #241a4a;
+  --color-violet-100: #2f2262;
+  --color-violet-200: #5b21b6;
+  --color-violet-300: #5b21b6;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+  --color-violet-900: #ddd6fe;
+  --color-violet-950: #e2e6ee;
+  --color-yellow-50: #332a08;
+  --color-yellow-100: #433a0a;
+  --color-yellow-200: #713f12;
+  --color-yellow-300: #713f12;
+  --color-yellow-700: #fde047;
+  --color-yellow-800: #fef08a;
+  --color-yellow-900: #fef08a;
+  --color-yellow-950: #e2e6ee;
+}
+.dark .bg-white { background-color: #131a2e; }
+.dark .bg-white\/95 { background-color: rgb(19 26 46 / 0.95); }
+.dark .hover\:bg-white:hover { background-color: #1b2540; }
+.dark .bg-\[\#1a237e\] { background-color: #4a5adf; }
+.dark .text-\[\#1a237e\] { color: #9aa7ff; }
+.dark .bg-\[\#fafafa\] { background-color: #131a2e; }
+.dark .bg-\[\#f3f4f7\] { background-color: #1b2540; }
+.dark .bg-\[\#eef0f4\] { background-color: #1b2540; }
+.dark .bg-\[\#eef2fb\] { background-color: #1a2748; }
+.dark .bg-\[\#e5e7eb\] { background-color: #2a3550; }
+.dark .bg-\[\#d5d9e2\] { background-color: #2f3a57; }
+.dark .bg-\[\#fdf6e3\] { background-color: #33290f; }
+.dark .bg-\[\#ffebee\] { background-color: #3b1219; }
+.dark .bg-\[\#fef2f2\] { background-color: #3b1219; }
+.dark .bg-\[\#fde0e0\] { background-color: #4c1720; }
+.dark .border-\[\#c9ced8\] { border-color: #34405e; }
+.dark .border-\[\#ef9a9a\] { border-color: #7f1d1d; }
+.dark .text-\[\#c62828\], .dark .text-\[\#b91c1c\], .dark .text-\[\#b71c1c\], .dark .text-\[\#8e1c1c\] { color: #fca5a5; }
+.dark .text-\[\#8a6a12\], .dark .text-\[\#8a4b08\], .dark .text-\[\#3e2c00\] { color: #fcd34d; }
+.dark .text-\[\#1b5e20\] { color: #86efac; }
+.dark .text-\[\#0a0f3d\] { color: #e5e7eb; }
+.dark table.table-cards > tbody > tr,
+.dark table.table-cards > tfoot > tr,
+.dark .grid-table > .grid-table-row { background: var(--color-surface); }
+.dark table.table-cards > tbody > tr > td,
+.dark table.table-cards > tfoot > tr > td,
+.dark .grid-table > .grid-table-row > * { border-top-color: var(--color-border); }
+.dark svg line[stroke="#ececec"] { stroke: #263049; }
+.dark svg circle[stroke="#fff"] { stroke: #131a2e; }
+.dark svg circle[stroke="#f3f4f7"] { stroke: #1b2540; }
+
+/* Heatmap ramp: light-to-dark in the light theme, dim-to-bright in the dark one. */
+:root {
+  --heat-0: #f3f4f7; --heat-1: #dbe7f8; --heat-2: #b3cdf1; --heat-3: #7eaae6; --heat-4: #3f82d8; --heat-5: #1d5bb0;
+}
+.dark {
+  --heat-0: #1b2540; --heat-1: #1c3560; --heat-2: #1f4a86; --heat-3: #2a63b0; --heat-4: #3f82d8; --heat-5: #6aa3ee;
+}
+.dark [class*="bg-blue-50/"], .dark [class*="bg-amber-50/"] { background-color: rgb(30 64 175 / 0.18); }
+.dark [class*="bg-amber-50"].border-amber-200 { background-color: #33240a; }
+.dark .bg-white\/70 { background-color: rgb(19 26 46 / 0.7); }
+.dark .bg-\[\#f9fbfd\], .dark .bg-\[\#f4f5f7\], .dark .bg-\[\#f0f1f4\] { background-color: #131a2e; }
+.dark .bg-\[\#e3e6f7\] { background-color: #232c5a; }
+.dark .bg-\[\#dcf1dd\] { background-color: #0d2e1a; }
+.dark .bg-\[\#fff3e0\] { background-color: #33240a; }
+.dark .hover\:bg-\[\#ffebee\]:hover, .dark .hover\:bg-\[\#fef2f2\]:hover { background-color: #3b1219; }
+.dark .bg-\[\#fafafa\] { background-color: #10172a; }
+
+/* Gradient stops that fade to white/near-white surfaces. */
+.dark .from-white { --tw-gradient-from: #131a2e; }
+.dark .via-white { --tw-gradient-via: #131a2e; }
+.dark .to-white { --tw-gradient-to: #131a2e; }
+.dark .to-\[\#f7f8fb\] { --tw-gradient-to: #10172a; }
+
+.dark .matrix-changed { background-color: rgb(123 140 255 / 0.12); }
+
+.dark .bg-\[\#fbfcfe\] { background-color: #131a2e; }

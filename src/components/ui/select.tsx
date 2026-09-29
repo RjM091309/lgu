@@ -31,18 +31,20 @@ export function Select({
       placeholder={placeholder}
       aria-label={ariaLabel ?? placeholder}
       classNamePrefix="lgu-select"
+      // Fixed positioning lets the menu escape cards with overflow-hidden instead of being cut off.
+      menuPosition="fixed"
       styles={{
         control: (base, state) => ({
           ...base,
           minHeight: 40,
           borderRadius: 6,
           borderWidth: 1,
-          borderColor: state.isFocused ? 'rgba(27, 36, 142, 0.4)' : 'rgb(228 228 231)',
+          borderColor: state.isFocused ? 'var(--color-primary)' : 'var(--color-border)',
           boxShadow: state.isFocused ? '0 0 0 1px rgba(27, 36, 142, 0.12)' : 'none',
           '&:hover': {
-            borderColor: state.isFocused ? 'rgba(27, 36, 142, 0.4)' : 'rgb(228 228 231)',
+            borderColor: state.isFocused ? 'var(--color-primary)' : 'var(--color-border)',
           },
-          backgroundColor: 'hsl(var(--background))',
+          backgroundColor: 'var(--color-surface)',
         }),
         valueContainer: (base) => ({
           ...base,
@@ -53,20 +55,25 @@ export function Select({
           ...base,
           margin: 0,
           padding: 0,
+          color: 'var(--color-text-main)',
         }),
+        singleValue: (base) => ({ ...base, color: 'var(--color-text-main)' }),
+        placeholder: (base) => ({ ...base, color: 'var(--color-text-muted)' }),
         menu: (base) => ({
           ...base,
           zIndex: 60,
+          backgroundColor: 'var(--color-popover)',
+          border: '1px solid var(--color-border)',
         }),
         option: (base, state) => ({
           ...base,
           fontSize: 13,
           backgroundColor: state.isSelected
-            ? 'rgba(27, 36, 142, 0.12)'
+            ? 'color-mix(in srgb, var(--color-primary) 22%, transparent)'
             : state.isFocused
-              ? 'rgba(27, 36, 142, 0.06)'
-              : base.backgroundColor,
-          color: 'inherit',
+              ? 'color-mix(in srgb, var(--color-primary) 10%, transparent)'
+              : 'transparent',
+          color: 'var(--color-text-main)',
         }),
       }}
     />
