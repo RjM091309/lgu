@@ -11,8 +11,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { type Bill, mockBills, mockMembers } from '@/lib/mock-data';
-import { Search, Plus, FileDown, FileText, MoreHorizontal, Trash2 } from 'lucide-react';
+import { type Bill, mockBills, mockMembers, mockPublications } from '@/lib/mock-data';
+import { Ban, BadgeCheck, Search, Plus, FileDown, FileText, ListChecks, MoreHorizontal, Printer, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DataTable } from '@/components/ui/DataTable';
 import { Select, type SelectOption } from '@/components/ui/select';
@@ -29,6 +29,9 @@ import { confirmAction } from '@/components/ui/confirm';
 import { gridTableCardsRef, gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
 import { LEGISLATIVE_STAGES, StageProgress, StatusBadge, stageProgress } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
+import { openPrintWindow } from '@/lib/files';
+import { todayInManila } from '@/lib/session-files';
+import { EFFECTIVITY_DAYS, POSTING_DEADLINE_DAYS, PUBLICATION_TONE, addDays, publicationStatus, type PublicationStatus } from '@/lib/publication';
 
 type LifecycleStatus = Bill['status'] | 'Disapproved';
 type WorkflowRoute = 'Agenda' | 'Committee Referral' | 'Hearing' | 'Report Workflow';
@@ -53,6 +56,32 @@ interface TrackingRecord extends Bill {
   lifecycleStatus: LifecycleStatus;
   attachments: AttachmentRef[];
   history: StatusHistoryEntry[];
+  /** Set when the record is moved to Enacted here; sample records take the date from their posting record. */
+  enactedOn?: string;
+}
+
+/**
+ * The list is split by where a measure stands: still moving through the Sanggunian, enacted (a permanent
+ * record, followed through posting and effectivity), or stopped by a veto or disapproval.
+ */
+type TrackingTab = 'process' | 'enacted' | 'closed';
+const CLOSED_STATUSES: LifecycleStatus[] = ['Vetoed', 'Disapproved'];
+const tabOf = (status: LifecycleStatus): TrackingTab => (status === 'Enacted' ? 'enacted' : CLOSED_STATUSES.includes(status) ? 'closed' : 'process');
+
+type Classification = NonNullable<Bill['classification']>;
+const classificationOf = (bill: Bill): Classification => bill.classification ?? (/\bRes\b/i.test(bill.number) ? 'Resolution' : 'Ordinance');
+
+const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+const escapeHtml = (value: string) =>
+  value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
+
+interface EnactedDetails {
+  type: Classification;
+  enactedOn: string;
+  /** Posting stage of an ordinance; null for resolutions and for ordinances without a posting record. */
+  publication: PublicationStatus | null;
+  note: string;
 }
 
 /** Shared table badge shell: same height, padding, and pill shape so ROUTE/CATEGORY/STAGE align. */
@@ -92,6 +121,8 @@ export function LegislativeTrackingList() {
   );
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<LifecycleStatus | 'All'>('All');
+  const [tab, setTab] = useState<TrackingTab>('process');
+  const [typeFilter, setTypeFilter] = useState<Classification | 'All'>('All');
   const [repositoryKeyword, setRepositoryKeyword] = useState('');
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
@@ -141,6 +172,13 @@ export function LegislativeTrackingList() {
     value: stage,
     label: stage,
   }));
+  // The stage filter only applies to measures still in process.
+  const processStageOptions = stageOptions.filter((option) => tabOf(option.value as LifecycleStatus) === 'process');
+  const typeOptions: SelectOption[] = [
+    { value: 'All', label: 'All Types' },
+    { value: 'Ordinance', label: 'Ordinances' },
+    { value: 'Resolution', label: 'Resolutions' },
+  ];
   // Authors are SB members, listed by position.
   const authorOptions: SelectOption[] = mockMembers.map((member) => ({ value: member.name, label: `${member.name} · ${member.role}` }));
   const directionOptions: SelectOption[] = [
@@ -149,20 +187,57 @@ export function LegislativeTrackingList() {
   ];
   const routeOptions: SelectOption[] = routeCycle.map((route) => ({ value: route, label: route }));
 
-  const filteredRecords = useMemo(() => {
-    return records.filter((bill) => {
-      const matchesKeyword =
-        keyword.trim().length === 0 ||
-        bill.title.toLowerCase().includes(keyword.toLowerCase()) ||
-        bill.number.toLowerCase().includes(keyword.toLowerCase()) ||
-        bill.author.toLowerCase().includes(keyword.toLowerCase()) ||
-        (bill.coAuthor ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
-        (bill.committee ?? '').toLowerCase().includes(keyword.toLowerCase()) ||
-        bill.route.toLowerCase().includes(keyword.toLowerCase());
-      const matchesStatus = statusFilter === 'All' || bill.lifecycleStatus === statusFilter;
-      return matchesKeyword && matchesStatus;
-    });
-  }, [records, keyword, statusFilter]);
+  // The search applies to every tab, so each tab's count shows where the matches are.
+  const keywordMatches = useMemo(() => {
+    const q = keyword.trim().toLowerCase();
+    return records.filter(
+      (bill) =>
+        q.length === 0 ||
+        bill.title.toLowerCase().includes(q) ||
+        bill.number.toLowerCase().includes(q) ||
+        bill.author.toLowerCase().includes(q) ||
+        (bill.coAuthor ?? '').toLowerCase().includes(q) ||
+        (bill.committee ?? '').toLowerCase().includes(q) ||
+        bill.route.toLowerCase().includes(q)
+    );
+  }, [records, keyword]);
+
+  const tabCounts: Record<TrackingTab, number> = {
+    process: keywordMatches.filter((bill) => tabOf(bill.lifecycleStatus) === 'process').length,
+    enacted: keywordMatches.filter((bill) => tabOf(bill.lifecycleStatus) === 'enacted').length,
+    closed: keywordMatches.filter((bill) => tabOf(bill.lifecycleStatus) === 'closed').length,
+  };
+
+  const filteredRecords = useMemo(
+    () =>
+      keywordMatches.filter(
+        (bill) =>
+          tabOf(bill.lifecycleStatus) === tab &&
+          (tab !== 'process' || statusFilter === 'All' || bill.lifecycleStatus === statusFilter) &&
+          (tab !== 'enacted' || typeFilter === 'All' || classificationOf(bill) === typeFilter)
+      ),
+    [keywordMatches, tab, statusFilter, typeFilter]
+  );
+
+  const today = todayInManila();
+  const enactedDetails = (bill: TrackingRecord): EnactedDetails => {
+    const type = classificationOf(bill);
+    // A measure enacted here starts its own posting clock; sample records use their posting record.
+    const posting = bill.enactedOn ? undefined : mockPublications.find((entry) => entry.number === bill.number);
+    const enactedOn = bill.enactedOn ?? posting?.approvedOn ?? bill.history.find((entry) => entry.status === 'Enacted')?.date ?? bill.dateFiled;
+    // Resolutions take effect on approval; only ordinances are posted.
+    if (type === 'Resolution') return { type, enactedOn, publication: null, note: 'Effective upon approval' };
+    const record = posting ?? (bill.enactedOn ? { approvedOn: bill.enactedOn, postedOn: null } : null);
+    if (!record) return { type, enactedOn, publication: null, note: 'No posting record' };
+    const publication = publicationStatus(record, today);
+    const deadline = addDays(record.approvedOn, POSTING_DEADLINE_DAYS);
+    const note = record.postedOn
+      ? `Posted ${shortDate(record.postedOn)} · effective ${shortDate(addDays(record.postedOn, EFFECTIVITY_DAYS))}`
+      : publication === 'Posting overdue'
+        ? `Overdue since ${shortDate(deadline)}`
+        : `Post by ${shortDate(deadline)}`;
+    return { type, enactedOn, publication, note };
+  };
 
   const totalPages = Math.max(1, Math.ceil(filteredRecords.length / pageSize));
   const paginatedRecords = useMemo(() => {
@@ -226,7 +301,13 @@ export function LegislativeTrackingList() {
       confirmLabel: 'Move stage',
     });
     if (!confirmed) return;
-    toast('Stage updated', `${target.number} moved to ${progressionFlow[targetIndex + 1]}.`);
+    const becomesEnacted = progressionFlow[targetIndex + 1] === 'Enacted';
+    toast(
+      becomesEnacted ? 'Measure enacted' : 'Stage updated',
+      becomesEnacted
+        ? `${target.number} is now enacted and has moved to the Enacted tab for posting.`
+        : `${target.number} moved to ${progressionFlow[targetIndex + 1]}.`
+    );
     logActivity({ module: 'Legislative Tracking', action: 'Updated', summary: `Moved ${target.number} to ${progressionFlow[targetIndex + 1]}`, detail: target.title });
     setRecords((prev) =>
       prev.map((bill) => {
@@ -239,7 +320,13 @@ export function LegislativeTrackingList() {
           date: defaultDate,
           note: `Stage advanced from ${bill.lifecycleStatus} to ${nextStatus}`,
         };
-        return { ...bill, status: nextStatus as Bill['status'], lifecycleStatus: nextStatus, history: [nextHistory, ...bill.history] };
+        return {
+          ...bill,
+          status: nextStatus as Bill['status'],
+          lifecycleStatus: nextStatus,
+          history: [nextHistory, ...bill.history],
+          ...(nextStatus === 'Enacted' ? { enactedOn: defaultDate } : {}),
+        };
       })
     );
   };
@@ -425,6 +512,37 @@ export function LegislativeTrackingList() {
     setCurrentPage(1);
   };
 
+  const changeTab = (next: TrackingTab) => {
+    setTab(next);
+    setStatusFilter('All');
+    setTypeFilter('All');
+    setCurrentPage(1);
+  };
+
+  const printEnactedRecord = (bill: TrackingRecord) => {
+    const details = enactedDetails(bill);
+    const history = bill.history
+      .map((entry) => `<tr><td>${escapeHtml(entry.date)}</td><td>${escapeHtml(entry.status)}</td><td>${escapeHtml(entry.note)}</td></tr>`)
+      .join('');
+    const ok = openPrintWindow(
+      `${bill.number} - Enacted`,
+      `<div class="card">
+         <div class="title">${escapeHtml(bill.number)}</div>
+         <div class="rows">
+           <div><b>Title</b>: ${escapeHtml(bill.title)}</div>
+           <div><b>Type</b>: ${details.type}</div>
+           <div><b>Author</b>: ${escapeHtml(bill.author)}${bill.coAuthor ? ` · Co-author: ${escapeHtml(bill.coAuthor)}` : ''}</div>
+           ${bill.committee ? `<div><b>Committee</b>: ${escapeHtml(bill.committee)}</div>` : ''}
+           <div><b>Enacted</b>: ${longDate(details.enactedOn)}</div>
+           <div><b>Publication</b>: ${details.publication ?? '—'} (${escapeHtml(details.note)})</div>
+         </div>
+         <table><thead><tr><th>Date</th><th>Stage</th><th>Note</th></tr></thead><tbody>${history}</tbody></table>
+       </div>`
+    );
+    if (!ok) toast('Record not opened', 'Your browser blocked the print window. Allow pop-ups for this site and try again.', 'error');
+    else logActivity({ module: 'Legislative Tracking', action: 'Exported', summary: `Printed the record of ${bill.number}`, detail: bill.title });
+  };
+
   const repositoryEntries = useMemo(() => {
     const q = repositoryKeyword.trim().toLowerCase();
     return records
@@ -448,14 +566,23 @@ export function LegislativeTrackingList() {
 
   const exportTrackingList = () => {
     if (filteredRecords.length === 0) {
-      toast('Nothing to export', 'No records match the current search and stage filter.', 'error');
+      toast('Nothing to export', 'No records match the current tab, search, and filter.', 'error');
       return;
     }
 
-    const headers = ['Record No', 'Title', 'Direction', 'Route', 'Author', 'Category', 'Stage', 'Progress', 'Tracking Date'];
     const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
-    const rows = filteredRecords.map((bill) =>
-      [
+    const enacted = tab === 'enacted';
+    const headers = enacted
+      ? ['Record No', 'Title', 'Type', 'Author', 'Category', 'Enacted', 'Publication', 'Publication Note']
+      : ['Record No', 'Title', 'Direction', 'Route', 'Author', 'Category', 'Stage', 'Progress', 'Tracking Date'];
+    const rows = filteredRecords.map((bill) => {
+      if (enacted) {
+        const details = enactedDetails(bill);
+        return [bill.number, bill.title, details.type, bill.author, bill.category, details.enactedOn, details.publication ?? '', details.note]
+          .map((cell) => escapeCsv(String(cell)))
+          .join(',');
+      }
+      return [
         bill.number,
         bill.title,
         bill.direction,
@@ -468,15 +595,16 @@ export function LegislativeTrackingList() {
           return step < 0 ? '' : `${stageProgress(step)}%`;
         })(),
         bill.trackingDate,
-      ].map((cell) => escapeCsv(String(cell))).join(',')
-    );
+      ].map((cell) => escapeCsv(String(cell))).join(',');
+    });
 
     const csvContent = [headers.join(','), ...rows].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `legislative-tracking-${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileTag = { process: 'in-process', enacted: 'enacted', closed: 'vetoed-disapproved' }[tab];
+    link.download = `legislative-${fileTag}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -513,6 +641,33 @@ export function LegislativeTrackingList() {
       </div>
 
       <div className="bg-white rounded-lg border border-border shadow-sm overflow-hidden flex flex-col">
+        <div className="flex gap-1 overflow-x-auto border-b border-border px-2" role="tablist" aria-label="Legislative records by status">
+          {(
+            [
+              { id: 'process', label: 'In Process', icon: ListChecks },
+              { id: 'enacted', label: 'Enacted', icon: BadgeCheck },
+              { id: 'closed', label: 'Vetoed / Disapproved', icon: Ban },
+            ] as const
+          ).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={tab === item.id}
+              onClick={() => changeTab(item.id)}
+              className={cn(
+                '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-semibold transition-colors sm:px-4',
+                tab === item.id ? 'border-primary text-primary' : 'border-transparent text-text-muted hover:text-text-main'
+              )}
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              {item.label}
+              <span className={cn('rounded-full px-1.5 py-px text-[10px] tabular-nums', tab === item.id ? 'bg-primary text-white' : 'bg-muted text-text-muted')}>
+                {tabCounts[item.id]}
+              </span>
+            </button>
+          ))}
+        </div>
         <div className="px-4 py-3 border-b border-border flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4 bg-[#fafafa]">
           <div className="relative w-full sm:flex-1 sm:max-w-md">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
@@ -523,21 +678,28 @@ export function LegislativeTrackingList() {
               onChange={(e) => onKeywordChange(e.target.value)}
             />
           </div>
-          <div className="w-full sm:ml-auto sm:w-[180px]">
-            <Select
-              options={[
-                { value: 'All', label: 'All Stages' },
-                ...stageOptions,
-              ]}
-              value={
-                statusFilter === 'All'
-                  ? { value: 'All', label: 'All Stages' }
-                  : stageOptions.find((opt) => opt.value === statusFilter) ?? null
-              }
-              onChange={(option) => onStatusFilterChange((option?.value as Bill['status'] | 'All') ?? 'All')}
-              placeholder="Filter stage"
-            />
-          </div>
+          {tab === 'process' ? (
+            <div className="w-full sm:ml-auto sm:w-[180px]">
+              <Select
+                options={[{ value: 'All', label: 'All Stages' }, ...processStageOptions]}
+                value={statusFilter === 'All' ? { value: 'All', label: 'All Stages' } : processStageOptions.find((opt) => opt.value === statusFilter) ?? null}
+                onChange={(option) => onStatusFilterChange((option?.value as Bill['status'] | 'All') ?? 'All')}
+                placeholder="Filter stage"
+              />
+            </div>
+          ) : tab === 'enacted' ? (
+            <div className="w-full sm:ml-auto sm:w-[180px]">
+              <Select
+                options={typeOptions}
+                value={typeOptions.find((opt) => opt.value === typeFilter) ?? typeOptions[0]}
+                onChange={(option) => {
+                  setTypeFilter((option?.value as Classification | 'All') ?? 'All');
+                  setCurrentPage(1);
+                }}
+                placeholder="Filter type"
+              />
+            </div>
+          ) : null}
         </div>
         
         <DataTable
@@ -549,6 +711,102 @@ export function LegislativeTrackingList() {
           onPreviousPage={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
           onNextPage={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
         >
+          {tab === 'enacted' ? (
+          <Table className="table-fixed w-full min-w-[1320px]">
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[215px]">RECORD NO.</TableHead>
+                <TableHead>TITLE</TableHead>
+                <TableHead className="w-[120px]">TYPE</TableHead>
+                <TableHead className="w-[240px]">AUTHOR</TableHead>
+                <TableHead className="w-[140px]">CATEGORY</TableHead>
+                <TableHead className="w-[130px]">ENACTED</TableHead>
+                <TableHead className="w-[220px]">PUBLICATION</TableHead>
+                <TableHead className="w-[72px]" data-action>ACTION</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {paginatedRecords.map((bill) => {
+                const details = enactedDetails(bill);
+                return (
+                  <TableRow key={bill.id}>
+                    <TableCell className="whitespace-nowrap">{bill.number}</TableCell>
+                    <TableCell>
+                      <div className="font-medium text-[13px] leading-snug line-clamp-2 whitespace-normal" title={bill.title}>{bill.title}</div>
+                      <div className="text-[11px] text-text-muted">Filed: {bill.dateFiled}</div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          trackingTableBadgeBase,
+                          details.type === 'Ordinance' ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-violet-200 bg-violet-50 text-violet-800'
+                        )}
+                      >
+                        {details.type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="mx-auto flex max-w-[240px] items-center gap-2.5 text-left">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary" aria-hidden>
+                          {mockMembers.find((member) => member.name === bill.author)?.abbr ?? bill.author.slice(0, 2).toUpperCase()}
+                        </span>
+                        <div className="min-w-0 leading-snug">
+                          <div className="font-medium text-text-main">{bill.author}</div>
+                          {bill.committee ? (
+                            <div className="truncate text-[11px] text-text-muted" title={bill.committee}>
+                              {bill.committee.replace('Committee on ', 'Comm. on ')}
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className={cn(trackingTableBadgeBase, 'border-border bg-white font-normal text-text-muted')}>
+                        {bill.category}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap tabular-nums">{longDate(details.enactedOn)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-center gap-1">
+                        <Badge
+                          variant="outline"
+                          className={cn(trackingTableBadgeBase, details.publication ? PUBLICATION_TONE[details.publication] : 'border-border bg-white font-normal text-text-muted')}
+                        >
+                          {details.publication ?? (details.type === 'Resolution' ? 'Not required' : 'Not tracked')}
+                        </Badge>
+                        <span className="text-[11px] text-text-muted">{details.note}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex justify-center">
+                        <Button
+                          type="button"
+                          data-legislative-action-trigger
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 border-0 text-text-muted hover:bg-muted hover:text-text-main"
+                          onClick={(e) => openActionMenuFromEvent(bill, e.currentTarget)}
+                          aria-label="Open actions menu"
+                          aria-expanded={actionMenu?.bill.id === bill.id}
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+              {paginatedRecords.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center text-sm text-text-muted py-8">
+                    {keyword.trim() || typeFilter !== 'All' ? 'No enacted measures match the search.' : 'No enacted measures yet. A measure appears here once it moves past Passed.'}
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+          ) : (
           <Table className="table-fixed w-full min-w-[1440px]">
             <TableHeader>
               <TableRow>
@@ -635,12 +893,13 @@ export function LegislativeTrackingList() {
               {paginatedRecords.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={9} className="text-center text-sm text-text-muted py-8">
-                    No matching legislative records.
+                    {tab === 'closed' && !keyword.trim() ? 'No vetoed or disapproved measures.' : 'No matching legislative records.'}
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
+          )}
         </DataTable>
       </div>
 
@@ -902,6 +1161,21 @@ export function LegislativeTrackingList() {
             >
               View Flow
             </button>
+            {actionMenu.bill.lifecycleStatus === 'Enacted' ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center px-3 py-2 text-left text-xs hover:bg-muted"
+                onClick={() => {
+                  printEnactedRecord(actionMenu.bill);
+                  setActionMenu(null);
+                }}
+              >
+                <Printer className="mr-2 h-3.5 w-3.5" />
+                Print record
+              </button>
+            ) : (
+            <>
             <button
               type="button"
               role="menuitem"
@@ -910,9 +1184,7 @@ export function LegislativeTrackingList() {
                 moveToNextStage(actionMenu.bill.id);
                 setActionMenu(null);
               }}
-              disabled={
-                actionMenu.bill.lifecycleStatus === 'Enacted' || actionMenu.bill.lifecycleStatus === 'Disapproved'
-              }
+              disabled={tabOf(actionMenu.bill.lifecycleStatus) === 'closed'}
             >
               Next Stage
             </button>
@@ -935,7 +1207,7 @@ export function LegislativeTrackingList() {
                 markDisapproved(actionMenu.bill.id);
                 setActionMenu(null);
               }}
-              disabled={actionMenu.bill.lifecycleStatus === 'Disapproved'}
+              disabled={tabOf(actionMenu.bill.lifecycleStatus) === 'closed'}
             >
               Disapprove
             </button>
@@ -952,6 +1224,8 @@ export function LegislativeTrackingList() {
               <Trash2 className="mr-2 h-3.5 w-3.5" />
               Delete
             </button>
+            </>
+            )}
           </div>,
           document.body
         )}

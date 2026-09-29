@@ -1,33 +1,22 @@
 import { useMemo, useState } from 'react';
 import { AlertTriangle, Check, ClipboardCheck, Clock, Info, Megaphone, Newspaper, Printer, X } from 'lucide-react';
 import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockAttendanceMarks, mockAttendanceSessions, mockMembers, mockPublications, type AttendanceMark, type PublicationRecord } from '@/lib/mock-data';
+import { mockAttendanceMarks, mockAttendanceSessions, mockMembers, mockPublications, type AttendanceMark } from '@/lib/mock-data';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
+import { EFFECTIVITY_DAYS, POSTING_DEADLINE_DAYS, PUBLICATION_TONE, addDays, publicationStatus } from '@/lib/publication';
 
 // Quorum is a majority of all members of the Sanggunian.
 const QUORUM = Math.floor(mockMembers.length / 2) + 1;
-// Posting rules applied by the tracker: post within 5 days of approval; effective 10 days after posting.
-const POSTING_DEADLINE_DAYS = 5;
-const EFFECTIVITY_DAYS = 10;
+// Posting rules (deadline, effectivity) live in src/lib/publication.ts.
 const POSTING_PLACES = 3;
 
-const DAY = 86_400_000;
 const toDay = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number);
   return Date.UTC(y, m - 1, d);
 };
-const addDays = (iso: string, days: number) => new Date(toDay(iso) + days * DAY).toISOString().slice(0, 10);
 const shortDate = (iso: string) => new Date(toDay(iso)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
-type PublicationStatus = 'Effective' | 'Awaiting effectivity' | 'For posting' | 'Posting overdue';
-
-const PUBLICATION_TONE: Record<PublicationStatus, string> = {
-  Effective: 'border-green-200 bg-green-50 text-green-800',
-  'Awaiting effectivity': 'border-blue-200 bg-blue-50 text-blue-800',
-  'For posting': 'border-amber-200 bg-amber-50 text-amber-800',
-  'Posting overdue': 'border-red-200 bg-red-50 text-red-800',
-};
 
 function Callout({ children, tone = 'info' }: { children: React.ReactNode; tone?: 'info' | 'warning' }) {
   return (
@@ -181,11 +170,6 @@ function AttendancePanel() {
 }
 
 /* ------------------------------------------------------------ Publication */
-
-function publicationStatus(record: PublicationRecord, today: string): PublicationStatus {
-  if (!record.postedOn) return today > addDays(record.approvedOn, POSTING_DEADLINE_DAYS) ? 'Posting overdue' : 'For posting';
-  return today >= addDays(record.postedOn, EFFECTIVITY_DAYS) ? 'Effective' : 'Awaiting effectivity';
-}
 
 function PublicationPanel() {
   const today = todayInManila();
