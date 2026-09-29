@@ -104,9 +104,9 @@ const matchesCategory = (file: SessionFile, filter: CategoryFilter) => filter ==
 
 // The upload dialog takes one file type at a time; each type lists only the categories that fit it.
 const DOCUMENT_CATEGORIES = FILE_CATEGORIES.filter((category) => category !== 'Audio Recording' && category !== 'Video Recording');
-// Resolutions are the most looked-up documents, so the filter lists them first. Recordings are left out
-// because the Audio and Video tabs already filter them.
-const FILTER_CATEGORIES: FileCategory[] = ['Resolution', ...DOCUMENT_CATEGORIES.filter((category) => category !== 'Resolution')];
+// Resolutions are the most looked-up documents, so the filter lists them first. Recordings and supporting
+// documents are left out because the file-type tabs already cover them.
+const FILTER_CATEGORIES: FileCategory[] = ['Resolution', ...DOCUMENT_CATEGORIES.filter((category) => category !== 'Resolution' && category !== 'Supporting Document')];
 const UPLOAD_KINDS: { value: FileKind; label: string; hint: string; one: string; many: string; categories: FileCategory[] }[] = [
   { value: 'pdf', label: 'PDF', hint: 'Agendas, minutes, ordinances', one: 'a PDF', many: 'PDF files', categories: DOCUMENT_CATEGORIES },
   { value: 'audio', label: 'Audio', hint: 'Session and hearing audio', one: 'an audio file', many: 'audio files', categories: ['Audio Recording'] },
