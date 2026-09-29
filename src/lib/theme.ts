@@ -31,7 +31,13 @@ export function setStaffArea(active: boolean) {
 
 export function setTheme(theme: Theme) {
   current = theme;
+  // Cards with `transition-all` would fade their colours while everything else flips at once, which reads as
+  // flicker. Suspend transitions for the switch, force a style flush, then restore them.
+  const root = document.documentElement;
+  root.classList.add('theme-switching');
   apply(theme);
+  void root.offsetHeight;
+  window.setTimeout(() => root.classList.remove('theme-switching'), 60);
   try {
     localStorage.setItem(THEME_KEY, theme);
   } catch {

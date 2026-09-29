@@ -317,7 +317,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   return (
     // A floating navy panel that matches the sidebar: same gradient, rounded edge, inner ring and layered shadow.
     <header className="sticky top-0 z-40 w-full bg-background px-2 pt-2 sm:px-3 sm:pt-3 lg:pl-0 lg:pr-4 lg:pt-4">
-      <div className="relative flex h-16 items-center gap-1.5 rounded-2xl bg-gradient-to-r from-[#18237f] via-[#0f1650] to-[#0a0f3d] px-3 ring-1 ring-inset ring-white/10 shadow-[0_1px_2px_rgba(10,15,61,0.30),0_6px_12px_-2px_rgba(10,15,61,0.22),0_18px_36px_-8px_rgba(10,15,61,0.35)] sm:gap-3 sm:px-4 md:px-6">
+      <div className="theme-chrome relative flex h-16 items-center gap-1.5 rounded-2xl bg-gradient-to-r from-[#18237f] via-[#0f1650] to-[#0a0f3d] px-3 ring-1 ring-inset ring-white/10 shadow-[0_1px_2px_rgba(10,15,61,0.30),0_6px_12px_-2px_rgba(10,15,61,0.22),0_18px_36px_-8px_rgba(10,15,61,0.35)] sm:gap-3 sm:px-4 md:px-6">
         {/* Hairline highlight on the top edge and the sidebar's gold accent along the edge that meets the content. */}
         <span className="pointer-events-none absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/40 to-transparent" aria-hidden />
         <span className="pointer-events-none absolute inset-x-8 bottom-0 h-[2px] bg-gradient-to-r from-transparent via-[#d4a72c]/80 to-transparent" aria-hidden />
