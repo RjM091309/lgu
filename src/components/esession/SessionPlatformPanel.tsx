@@ -368,75 +368,8 @@ export function SessionPlatformPanel() {
             </div>
           </header>
           <div className="grid gap-3 p-4 md:grid-cols-2">
-            {devices.map((device) => {
-              const style = STATUS_STYLE[device.status];
-              const isConnected = device.status === 'Connected';
-              return (
-                <article
-                  key={device.name}
-                  className={cn('flex flex-col rounded-lg border p-4', device.status === 'Disconnected' ? 'border-red-200 bg-red-50/30' : 'border-border bg-white')}
-                >
-                  <div className="flex items-start gap-3">
-                    <span
-                      className={cn(
-                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-                        isConnected ? 'bg-primary/[0.07] text-primary' : 'bg-muted text-text-muted'
-                      )}
-                    >
-                      <DeviceIcon type={device.type} className="h-5 w-5" />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-text-main">{device.name}</p>
-                      <p className="text-xs text-text-muted">{device.type}</p>
-                    </div>
-                    <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', style.pill)}>
-                      <span className={cn('h-1.5 w-1.5 rounded-full', style.dot)} />
-                      {style.label}
-                    </span>
-                  </div>
-
-                  <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-md bg-muted/60 px-2.5 py-2">
-                      <dt className="text-text-muted">Last sync</dt>
-                      <dd className="mt-0.5 font-semibold tabular-nums text-text-main">{device.lastSync}</dd>
-                    </div>
-                    <div className="rounded-md bg-muted/60 px-2.5 py-2">
-                      <dt className="text-text-muted">Agenda</dt>
-                      <dd className={cn('mt-0.5 font-semibold', isConnected && device.agendaSynced ? 'text-green-700' : isConnected ? 'text-amber-700' : 'text-text-muted')}>
-                        {isConnected ? (device.agendaSynced ? 'Up to date' : 'Needs sync') : '—'}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <div className="mt-3 flex justify-end">
-                    {device.status === 'Pending' ? (
-                      <Button size="sm" className="h-8" onClick={() => connectDevice(device)}>
-                        <Check className="mr-1.5 h-4 w-4" />
-                        Approve device
-                      </Button>
-                    ) : device.status === 'Disconnected' ? (
-                      <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => connectDevice(device)}>
-                        <WifiOff className="mr-1.5 h-4 w-4" />
-                        Reconnect
-                      </Button>
-                    ) : device.agendaSynced ? (
-                      <span className="inline-flex h-8 items-center gap-1.5 text-xs font-semibold text-green-700">
-                        <Check className="h-4 w-4" />
-                        Ready
-                      </span>
-                    ) : (
-                      <Button size="sm" variant="outline" className="h-8" onClick={() => syncDevice(device)}>
-                        <RefreshCw className="mr-1.5 h-4 w-4" />
-                        Sync agenda
-                      </Button>
-                    )}
-                  </div>
-                </article>
-              );
-            })}
-
             {/* Phones running LIMS Mobile */}
-            <p className="flex items-center gap-2 pt-2 text-[11px] font-bold uppercase tracking-wide text-text-muted md:col-span-2">
+            <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-text-muted md:col-span-2">
               <Smartphone className="h-3.5 w-3.5" />
               Phones · LIMS Mobile
               <span className="font-semibold normal-case tracking-normal">
@@ -503,6 +436,77 @@ export function SessionPlatformPanel() {
                   );
                 })
             )}
+
+            <p className="flex items-center gap-2 pt-2 text-[11px] font-bold uppercase tracking-wide text-text-muted md:col-span-2">
+              <Tablet className="h-3.5 w-3.5" />
+              Session hall devices
+            </p>
+            {devices.map((device) => {
+              const style = STATUS_STYLE[device.status];
+              const isConnected = device.status === 'Connected';
+              return (
+                <article
+                  key={device.name}
+                  className={cn('flex flex-col rounded-lg border p-4', device.status === 'Disconnected' ? 'border-red-200 bg-red-50/30' : 'border-border bg-white')}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
+                        isConnected ? 'bg-primary/[0.07] text-primary' : 'bg-muted text-text-muted'
+                      )}
+                    >
+                      <DeviceIcon type={device.type} className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-text-main">{device.name}</p>
+                      <p className="text-xs text-text-muted">{device.type}</p>
+                    </div>
+                    <span className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset', style.pill)}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', style.dot)} />
+                      {style.label}
+                    </span>
+                  </div>
+
+                  <dl className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-md bg-muted/60 px-2.5 py-2">
+                      <dt className="text-text-muted">Last sync</dt>
+                      <dd className="mt-0.5 font-semibold tabular-nums text-text-main">{device.lastSync}</dd>
+                    </div>
+                    <div className="rounded-md bg-muted/60 px-2.5 py-2">
+                      <dt className="text-text-muted">Agenda</dt>
+                      <dd className={cn('mt-0.5 font-semibold', isConnected && device.agendaSynced ? 'text-green-700' : isConnected ? 'text-amber-700' : 'text-text-muted')}>
+                        {isConnected ? (device.agendaSynced ? 'Up to date' : 'Needs sync') : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  <div className="mt-3 flex justify-end">
+                    {device.status === 'Pending' ? (
+                      <Button size="sm" className="h-8" onClick={() => connectDevice(device)}>
+                        <Check className="mr-1.5 h-4 w-4" />
+                        Approve device
+                      </Button>
+                    ) : device.status === 'Disconnected' ? (
+                      <Button size="sm" variant="outline" className="h-8 bg-white" onClick={() => connectDevice(device)}>
+                        <WifiOff className="mr-1.5 h-4 w-4" />
+                        Reconnect
+                      </Button>
+                    ) : device.agendaSynced ? (
+                      <span className="inline-flex h-8 items-center gap-1.5 text-xs font-semibold text-green-700">
+                        <Check className="h-4 w-4" />
+                        Ready
+                      </span>
+                    ) : (
+                      <Button size="sm" variant="outline" className="h-8" onClick={() => syncDevice(device)}>
+                        <RefreshCw className="mr-1.5 h-4 w-4" />
+                        Sync agenda
+                      </Button>
+                    )}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </section>
 
