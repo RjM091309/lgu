@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import {
   CalendarDays,
@@ -29,10 +29,11 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { mockSessions } from '@/lib/mock-data';
 import { downloadUrl, openPrintWindow, printPdfUrl } from '@/lib/files';
 import {
   FILE_CATEGORIES,
+  DEFAULT_FILE_SESSION_ID,
+  FILE_SESSIONS,
   MAX_UPLOAD_BYTES,
   addSessionFiles,
   detectKind,
@@ -104,9 +105,9 @@ const matchesCategory = (file: SessionFile, filter: CategoryFilter) => filter ==
 
 // The upload dialog takes one file type at a time; each type lists only the categories that fit it.
 const DOCUMENT_CATEGORIES = FILE_CATEGORIES.filter((category) => category !== 'Audio Recording' && category !== 'Video Recording');
-// Resolutions are the most looked-up documents, so the filter lists them first. Recordings are left out
-// because the Audio and Video tabs already filter them.
-const FILTER_CATEGORIES: FileCategory[] = ['Resolution', ...DOCUMENT_CATEGORIES.filter((category) => category !== 'Resolution')];
+// Resolutions are the most looked-up documents, so the filter lists them first. Recordings and supporting
+// documents are left out because the file-type tabs already cover them.
+const FILTER_CATEGORIES: FileCategory[] = ['Resolution', ...DOCUMENT_CATEGORIES.filter((category) => category !== 'Resolution' && category !== 'Supporting Document')];
 const UPLOAD_KINDS: { value: FileKind; label: string; hint: string; one: string; many: string; categories: FileCategory[] }[] = [
   { value: 'pdf', label: 'PDF', hint: 'Agendas, minutes, ordinances', one: 'a PDF', many: 'PDF files', categories: DOCUMENT_CATEGORIES },
   { value: 'audio', label: 'Audio', hint: 'Session and hearing audio', one: 'an audio file', many: 'audio files', categories: ['Audio Recording'] },
@@ -116,7 +117,7 @@ const UPLOAD_KINDS: { value: FileKind; label: string; hint: string; one: string;
 ];
 const uploadKindOf = (kind: FileKind) => UPLOAD_KINDS.find((entry) => entry.value === kind) ?? UPLOAD_KINDS[0];
 
-const sessionTitle = (id: string) => mockSessions.find((session) => session.id === id)?.title ?? 'Unassigned session';
+const sessionTitle = (id: string) => FILE_SESSIONS.find((session) => session.id === id)?.title ?? 'Unassigned session';
 
 const RECORDING_ACCEPT = 'audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.webm,.mov,.m4v';
 
@@ -168,7 +169,7 @@ export function SessionFilesPanel() {
   };
   const [keyword, setKeyword] = useState('');
   // Each session is its own tab so files from different sessions never share one list.
-  const [activeSession, setActiveSession] = useState(mockSessions[0]?.id ?? OTHER_TAB);
+  const [activeSession, setActiveSession] = useState(DEFAULT_FILE_SESSION_ID || OTHER_TAB);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [sort, setSort] = useState<SortKey>('type');
@@ -178,7 +179,7 @@ export function SessionFilesPanel() {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [pending, setPending] = useState<PendingUpload[]>([]);
-  const [uploadSession, setUploadSession] = useState(mockSessions[0]?.id ?? '');
+  const [uploadSession, setUploadSession] = useState(DEFAULT_FILE_SESSION_ID);
   const [uploadKind, setUploadKind] = useState<FileKind>('pdf');
   const [isDragging, setIsDragging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -190,6 +191,14 @@ export function SessionFilesPanel() {
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const attachInputRef = useRef<HTMLInputElement>(null);
   const amendInputRef = useRef<HTMLInputElement>(null);
+  const sessionTabsRef = useRef<HTMLDivElement>(null);
+
+  // Later sessions come first, so the next session's tab may start out of view: scroll the strip to it once.
+  useEffect(() => {
+    const strip = sessionTabsRef.current;
+    const tab = strip?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (strip && tab) strip.scrollLeft = tab.offsetLeft - strip.offsetLeft - 8;
+  }, []);
 
   // Lists, counts and the checklist show only the current version of each document; older ones are in its history.
   const currentFiles = useMemo(() => latestVersions(files), [files]);
@@ -202,11 +211,11 @@ export function SessionFilesPanel() {
   const showsVersion = (file: SessionFile) => (versionCounts.get(versionGroupOf(file)) ?? 1) > 1 || VERSIONED_CATEGORIES.includes(file.category);
 
   const inSession = (file: SessionFile, tab: string) =>
-    tab === OTHER_TAB ? !mockSessions.some((session) => session.id === file.sessionId) : file.sessionId === tab;
+    tab === OTHER_TAB ? !FILE_SESSIONS.some((session) => session.id === file.sessionId) : file.sessionId === tab;
   const sessionFiles = useMemo(() => currentFiles.filter((file) => inSession(file, activeSession)), [currentFiles, activeSession]);
   const otherCount = currentFiles.filter((file) => inSession(file, OTHER_TAB)).length;
   const sessionTabs = [
-    ...mockSessions.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}`, count: currentFiles.filter((file) => file.sessionId === session.id).length })),
+    ...FILE_SESSIONS.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}${session.date < todayInManila() ? ' · Held' : ''}`, count: currentFiles.filter((file) => file.sessionId === session.id).length })),
     ...(otherCount > 0 ? [{ id: OTHER_TAB, title: 'Other files', meta: 'No listed session', count: otherCount }] : []),
   ];
 
@@ -279,7 +288,7 @@ export function SessionFilesPanel() {
     setPending([]);
     // Start on the file type the list is showing, so the Audio tab's upload expects audio.
     setUploadKind(kind ?? (kindFilter !== 'all' ? kindFilter : 'pdf'));
-    setUploadSession(sessionId ?? (activeSession !== OTHER_TAB ? activeSession : mockSessions[0]?.id ?? ''));
+    setUploadSession(sessionId ?? (activeSession !== OTHER_TAB ? activeSession : DEFAULT_FILE_SESSION_ID));
     setUploadOpen(true);
   };
 
@@ -288,7 +297,7 @@ export function SessionFilesPanel() {
     setIsDragging(false);
     if (event.dataTransfer.files.length === 0) return;
     setPending([]);
-    setUploadSession(activeSession !== OTHER_TAB ? activeSession : mockSessions[0]?.id ?? '');
+    setUploadSession(activeSession !== OTHER_TAB ? activeSession : DEFAULT_FILE_SESSION_ID);
     // Files dropped on the list take the type of the first supported file.
     const kind = Array.from(event.dataTransfer.files).map(detectKind).find((entry): entry is FileKind => entry !== null) ?? 'pdf';
     setUploadKind(kind);
@@ -511,13 +520,13 @@ export function SessionFilesPanel() {
       icon: FileVideo,
       hint: awaitingRecordings ? `${awaitingRecordings} awaiting upload` : 'Audio and video',
     },
-    { label: 'Sessions covered', value: `${sessionsCovered}/${mockSessions.length}`, icon: CalendarDays, hint: 'Sessions with at least one file' },
+    { label: 'Sessions covered', value: `${sessionsCovered}/${FILE_SESSIONS.length}`, icon: CalendarDays, hint: 'Sessions with at least one file' },
   ];
 
-  const currentSession = mockSessions.find((session) => session.id === activeSession);
+  const currentSession = FILE_SESSIONS.find((session) => session.id === activeSession);
 
-  const checklistSessionId = currentSession?.id ?? mockSessions[0]?.id ?? '';
-  const checklistSession = mockSessions.find((session) => session.id === checklistSessionId);
+  const checklistSessionId = currentSession?.id ?? DEFAULT_FILE_SESSION_ID;
+  const checklistSession = FILE_SESSIONS.find((session) => session.id === checklistSessionId);
   const checklist = CHECKLIST_CATEGORIES.map((category) => {
     const matches = currentFiles.filter((file) => file.sessionId === checklistSessionId && file.category === category);
     const ready = matches.some((file) => file.blob || file.src);
@@ -657,7 +666,7 @@ export function SessionFilesPanel() {
           }}
           onDrop={handlePanelDrop}
         >
-          <div className="overflow-x-auto border-b border-border bg-muted/40 p-2.5">
+          <div ref={sessionTabsRef} className="overflow-x-auto border-b border-border bg-muted/40 p-2.5">
             <div className="flex min-w-max gap-2" role="tablist" aria-label="Sessions">
               {sessionTabs.map((tab) => {
                 const active = tab.id === activeSession;
@@ -965,7 +974,7 @@ export function SessionFilesPanel() {
           <label className="block text-xs font-semibold text-text-muted">
             Session
             <select value={uploadSession} onChange={(e) => setUploadSession(e.target.value)} className={cn(selectClass, 'mt-1 w-full')}>
-              {mockSessions.map((session) => (
+              {FILE_SESSIONS.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.title} ({session.date})
                 </option>
