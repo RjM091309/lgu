@@ -17,6 +17,7 @@ import {
   Square,
   Tablet,
   Users,
+  Video,
   Wifi,
   WifiOff,
 } from 'lucide-react';
@@ -251,10 +252,17 @@ export function SessionPlatformPanel() {
           <h1 className="text-2xl font-bold tracking-tight text-primary">Session Platform</h1>
           <p className="text-sm text-text-muted">Connect session devices, sync the order of business, and push live updates to participants.</p>
         </div>
-        <Button variant="outline" onClick={syncAll} className="bg-white">
-          <RefreshCw className="mr-2 h-4 w-4" />
-          Sync agenda to all
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={syncAll} className="bg-white">
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Sync agenda to all
+          </Button>
+          {/* Live video sittings run in their own app (/es), signed in separately. */}
+          <a href="/es" target="_blank" rel="noopener" className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-white hover:opacity-90">
+            <Video className="mr-2 h-4 w-4" />
+            Open E-Session
+          </a>
+        </div>
       </div>
 
       {/* Current session */}

@@ -45,7 +45,10 @@ import {
   SlidersHorizontal,
   RotateCcw,
   Megaphone,
+  LayoutDashboard,
+  Video,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { CompositionChart, committeeRolesOf, shortCommitteeName } from '@/components/members/CompositionChart';
 import { cn } from '@/lib/utils';
@@ -53,7 +56,8 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
-import { DEMO_PASSWORD, findLoginAccount } from '@/lib/access-store';
+import { DEMO_PASSWORD, findLoginAccount, useUsers } from '@/lib/access-store';
+import { signInESession, writeESessionAccount } from '@/lib/esession-room';
 import { EgovAiChat } from '@/components/public/EgovAiChat';
 import { LANDING_COPY, type Lang } from '@/components/public/landing-copy';
 import { HeroSlider, type HeroSlide } from '@/components/public/HeroSlider';
@@ -159,6 +163,10 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   const [heroActive, setHeroActive] = useState(-1);
 
   const [loginOpen, setLoginOpen] = useState(false);
+  // Staff Login opens either the Staff Portal or E-Session (live video sittings, at /es).
+  const [loginTarget, setLoginTarget] = useState<'portal' | 'esession'>('portal');
+  const users = useUsers();
+  const navigate = useNavigate();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -271,6 +279,22 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     if (!username.trim() || !password) {
       setLoginError(t.loginMissing);
       toast(t.signInFailed, t.loginMissing, 'error');
+      return;
+    }
+    if (loginTarget === 'esession') {
+      // Members of the body (by position) and session staff; same accounts as LIMS Mobile.
+      const result = signInESession(users, username, password);
+      if ('error' in result) {
+        const message = result.error === 'inactive' ? t.loginDeactivated : result.error === 'no-sessions' ? t.eSessionNoSessions(result.role) : t.loginInvalid;
+        setLoginError(message);
+        toast(t.signInFailed, message, 'error');
+        return;
+      }
+      writeESessionAccount(result.account.inviteeId, rememberMe);
+      logActivity({ user: result.account.username, module: 'Authentication', action: 'Signed in', summary: 'Signed in to E-Session' });
+      toast(t.signedIn, t.eSessionWelcome(result.account.name));
+      setLoginOpen(false);
+      navigate('/es');
       return;
     }
     // Every sample account shares the demo password; each signs in with its own role.
@@ -2119,11 +2143,39 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
         <DialogContent className="relative max-w-md">
           <DialogHeader>
-            <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Lock className="h-6 w-6" />
+            <div className="mb-2 flex items-center gap-3 pr-8">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                {loginTarget === 'esession' ? <Video className="h-6 w-6" /> : <Lock className="h-6 w-6" />}
+              </div>
+              <div role="radiogroup" aria-label={t.loginDestination} className="grid min-w-0 flex-1 grid-cols-2 gap-1 rounded-xl bg-muted p-1">
+                {(
+                  [
+                    { id: 'portal', label: t.staffPortal, icon: LayoutDashboard },
+                    { id: 'esession', label: t.eSession, icon: Video },
+                  ] as const
+                ).map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={loginTarget === option.id}
+                    onClick={() => {
+                      setLoginTarget(option.id);
+                      setLoginError('');
+                    }}
+                    className={cn(
+                      'flex h-10 min-w-0 items-center justify-center gap-1.5 rounded-lg px-2 text-sm font-semibold transition-colors',
+                      loginTarget === option.id ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:bg-white hover:text-text-main'
+                    )}
+                  >
+                    <option.icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{option.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
             <DialogTitle className="text-xl text-primary">{t.staffLogin}</DialogTitle>
-            <DialogDescription>{t.loginText}</DialogDescription>
+            <DialogDescription>{loginTarget === 'esession' ? t.eSessionLoginText : t.loginText}</DialogDescription>
           </DialogHeader>
           <form onSubmit={handlePortalLogin} className="mt-5 space-y-4">
             <div className="space-y-1.5">
@@ -2169,16 +2221,28 @@ export function LandingPage({ onLogin }: LandingPageProps) {
               </p>
             ) : null}
             <Button type="submit" className="h-11 w-full text-base font-bold">
-              <LogIn className="mr-2 h-4 w-4" />
-              {t.signIn}
+              {loginTarget === 'esession' ? <Video className="mr-2 h-4 w-4" /> : <LogIn className="mr-2 h-4 w-4" />}
+              {loginTarget === 'esession' ? t.eSessionSignIn : t.signIn}
             </Button>
-            <p className="text-center text-[11px] text-text-muted">
-              {t.demoAccess} <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
-              <span className="font-mono font-semibold text-text-main">{DEMO_PASSWORD}</span>
-              <br />
-              {t.otherRoles} <span className="font-mono">records</span>, <span className="font-mono">committee</span>, <span className="font-mono">encoder</span>,{' '}
-              <span className="font-mono">infodesk</span> {t.samePassword}
-            </p>
+            {loginTarget === 'esession' ? (
+              <p className="text-center text-[11px] text-text-muted">
+                {t.demoAccess} <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
+                <span className="font-mono font-semibold text-text-main">{DEMO_PASSWORD}</span>
+                <br />
+                {t.eSessionMembers} <span className="font-mono">vicemayor</span>, <span className="font-mono">councilor1</span>–<span className="font-mono">councilor8</span>,{' '}
+                <span className="font-mono">ipmr</span>, <span className="font-mono">abc</span>, <span className="font-mono">sk</span>
+                <br />
+                {t.eSessionStaff} <span className="font-mono">secretary</span>, <span className="font-mono">records</span>, <span className="font-mono">committee</span> {t.samePassword}
+              </p>
+            ) : (
+              <p className="text-center text-[11px] text-text-muted">
+                {t.demoAccess} <span className="font-mono font-semibold text-text-main">admin</span> /{' '}
+                <span className="font-mono font-semibold text-text-main">{DEMO_PASSWORD}</span>
+                <br />
+                {t.otherRoles} <span className="font-mono">records</span>, <span className="font-mono">committee</span>, <span className="font-mono">encoder</span>,{' '}
+                <span className="font-mono">infodesk</span> {t.samePassword}
+              </p>
+            )}
           </form>
         </DialogContent>
       </Dialog>

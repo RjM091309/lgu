@@ -9,6 +9,8 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - '2510:2510'
+      # E-Session over https (camera and microphone need it)
+      - '2511:2511'
     volumes:
       - .:/app
       - web_node_modules:/app/node_modules

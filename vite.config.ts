@@ -4,6 +4,8 @@ import path from 'path';
 import {defineConfig, loadEnv, type Plugin} from 'vite';
 import {createEgovAiHandler} from './server/egovai-proxy.mjs';
 import {createESessionSyncHandler} from './server/esession-sync.mjs';
+import {createESessionRoomsHandler} from './server/esession-rooms.mjs';
+import {startHttpsServer} from './server/https.mjs';
 
 // Mounts the eGovAI proxy on the dev and preview servers so credentials stay server-side.
 const egovAiProxy = (env: Record<string, string>): Plugin => ({
@@ -27,11 +29,25 @@ const eSessionSync = (): Plugin => ({
   },
 });
 
+// Live E-Session rooms (/es), plus a second, https port so tablets on the network can use their
+// camera and microphone (see server/https.mjs). Both ports share the same middleware and state.
+const eSessionRooms = (env: Record<string, string>): Plugin => ({
+  name: 'esession-rooms',
+  configureServer(server) {
+    server.middlewares.use(createESessionRoomsHandler(env));
+    server.httpServer?.once('listening', () => void startHttpsServer(server.middlewares, env, server.httpServer));
+  },
+  configurePreviewServer(server) {
+    server.middlewares.use(createESessionRoomsHandler(env));
+    server.httpServer.once('listening', () => void startHttpsServer(server.middlewares, env, server.httpServer));
+  },
+});
+
 export default defineConfig(({mode}) => {
   // '' prefix loads EGOVAI_* too; they are only passed to the proxy, never exposed to client code.
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    plugins: [react(), tailwindcss(), egovAiProxy(env), eSessionSync()],
+    plugins: [react(), tailwindcss(), egovAiProxy(env), eSessionSync(), eSessionRooms(env)],
     resolve: {
       alias: {
         '@': path.resolve(__dirname, './src'),

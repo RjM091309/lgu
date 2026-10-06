@@ -1,0 +1,19 @@
+{
+  "name": "LIMS E-Session",
+  "short_name": "E-Session",
+  "description": "Live video sittings of the Sanggunian for members and staff",
+  "start_url": "/es",
+  "scope": "/es",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#1a237e",
+  "theme_color": "#1a237e",
+  "icons": [
+    {
+      "src": "/lims-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
