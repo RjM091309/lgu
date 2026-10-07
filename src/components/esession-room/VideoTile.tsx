@@ -78,6 +78,7 @@ export function VideoTile({
   roleLabel,
   actions,
   large = false,
+  presenter,
   className,
 }: {
   participant: Participant;
@@ -90,6 +91,8 @@ export function VideoTile({
   roleLabel: string | null;
   actions?: TileActions;
   large?: boolean;
+  /** Set on my own tile while I share: a small preview and a stop button instead of my screen at full size. */
+  presenter?: { onStop: () => void };
   className?: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -101,12 +104,28 @@ export function VideoTile({
   return (
     <div
       className={cn(
-        'group relative overflow-hidden rounded-xl bg-[#141c3d] ring-1 ring-white/10 transition-shadow',
+        'group @container relative overflow-hidden rounded-xl bg-[#141c3d] ring-1 ring-white/10 transition-shadow',
         hasFloor ? 'ring-[3px] ring-[#d4a72c]' : speaking ? 'ring-[3px] ring-green-400' : '',
         className
       )}
     >
-      {showVideo ? (
+      {presenter ? (
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#1b2453] to-[#0e1433] px-3 pb-11 pt-3 text-center">
+          <div className="hidden aspect-video max-h-[55%] min-h-0 w-full max-w-md overflow-hidden rounded-lg bg-black ring-1 ring-white/15 @[260px]:block">
+            <VideoView stream={stream} contain />
+          </div>
+          <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-white @[260px]:text-sm">
+            <MonitorUp className="h-4 w-4 shrink-0 text-[#9fa8ff]" />
+            <span>
+              You are sharing<span className="hidden @[260px]:inline"> your screen</span>
+            </span>
+          </p>
+          <p className="hidden text-xs text-white/60 @[360px]:block">Everyone else sees it full screen.</p>
+          <button type="button" onClick={presenter.onStop} className="inline-flex h-8 items-center rounded-lg bg-red-600 px-3 text-xs font-bold text-white hover:bg-red-500 @[260px]:h-9">
+            Stop sharing
+          </button>
+        </div>
+      ) : showVideo ? (
         <VideoView stream={stream} mirrored={isSelf && !participant.screen} contain={participant.screen} />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-[#1b2453] to-[#0e1433]">
@@ -150,7 +169,7 @@ export function VideoTile({
             Hand raised
           </span>
         ) : null}
-        {participant.screen ? (
+        {participant.screen && !presenter ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-[#3949ab] px-2 py-0.5 text-[11px] font-bold text-white">
             <MonitorUp className="h-3 w-3" />
             Sharing screen

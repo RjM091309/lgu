@@ -34,6 +34,7 @@ import type { LocalMedia } from '@/components/esession-room/use-local-media';
 import { RemoteAudio, VideoTile, type TileActions } from '@/components/esession-room/VideoTile';
 import { AgendaPanel, ChatPanel, PeoplePanel } from '@/components/esession-room/CallPanels';
 import { useNow } from '@/components/esession-room/es-ui';
+import { PeopleFloat, ShareStage, useAutoHide } from '@/components/esession-room/PresentationStage';
 import type { Fullscreen, FullscreenNotice } from '@/components/esession-room/use-fullscreen';
 
 export type Panel = 'people' | 'chat' | 'agenda';
@@ -53,6 +54,20 @@ function useElementSize<T extends HTMLElement>() {
     return () => observer.disconnect();
   }, []);
   return { ref, ...size };
+}
+
+/**
+ * `value`, but only once it has held for `onMs` (to turn on) or `offMs` (to turn off), so a signal that flickers
+ * around a threshold doesn't make the screen flicker with it.
+ */
+function useSteady(value: boolean, onMs: number, offMs: number) {
+  const [steady, setSteady] = useState(value);
+  useEffect(() => {
+    if (value === steady) return;
+    const timer = window.setTimeout(() => setSteady(value), value ? onMs : offMs);
+    return () => window.clearTimeout(timer);
+  }, [value, steady, onMs, offMs]);
+  return steady;
 }
 
 function useMediaQuery(query: string) {
@@ -120,6 +135,8 @@ export function CallStage(props: CallStageProps) {
   // Pinned by account, so the pin survives that person reconnecting (which gives them a new pid).
   const [pinned, setPinned] = useState<string | null>(null);
   const area = useElementSize<HTMLDivElement>();
+  const topBars = useElementSize<HTMLDivElement>();
+  const bottomBar = useElementSize<HTMLDivElement>();
   const moderator = selfRole !== 'participant';
   const isHost = selfRole === 'host';
 
@@ -160,6 +177,16 @@ export function CallStage(props: CallStageProps) {
   // Pinned first, then the screen share and the floor, then everyone in joining order.
   const rank = (p: Participant) => (p === pinnedPerson ? 0 : p === sharer ? 1 : p === floorHolder ? 2 : 3);
   const ordered = [...participants].sort((a, b) => rank(a) - rank(b));
+
+  // Presentation layout: someone else's screen share is on my stage, so it fills the screen, the others float in a
+  // corner, and the bars hide while idle. The presenter keeps the normal layout with a "you are sharing" tile.
+  const presenting = mode === 'speaker' && !!main && main.screen && main.pid !== selfPid;
+  const floatPeople = presenting ? ordered.filter((p) => p.pid !== main.pid) : [];
+  const floatFocus =
+    floatPeople.find((p) => p.pid === room?.floor) ??
+    floatPeople.find((p) => p.pid === lastSpeaker.current) ??
+    floatPeople.find((p) => p.role === 'presiding' && p.pid !== selfPid) ??
+    floatPeople.find((p) => p.pid !== selfPid);
 
   const roleLabelOf = (p: Participant) => (p.role === 'participant' ? null : session ? roleLabelFor(p.role, session) : p.role === 'host' ? 'Host' : 'Presiding Officer');
   const streamOf = (p: Participant) => (p.pid === selfPid ? (props.screenStream ?? media.stream) : (peers.get(p.pid)?.stream ?? null));
@@ -210,6 +237,7 @@ export function CallStage(props: CallStageProps) {
           roleLabel={roleLabelOf(p)}
           actions={actionsFor(p)}
           large={large}
+          presenter={p.pid === selfPid && p.screen ? { onStop: props.onToggleShare } : undefined}
           className="h-full w-full"
         />
       </div>
@@ -227,6 +255,22 @@ export function CallStage(props: CallStageProps) {
   const othersPoor = [...peers.values()].filter((peer) => peer.quality === 'poor').length;
   const poorConnection = peers.size > 0 && othersPoor >= Math.max(1, Math.ceil(peers.size / 2));
 
+  // Connection warnings wait out brief dips: unstable after 5 s of poor quality (clear after 10 s of good), and
+  // reconnecting after 2 s. A dismissed warning stays away until the connection has recovered.
+  const unstable = useSteady(poorConnection, 5000, 10_000);
+  const [unstableDismissed, setUnstableDismissed] = useState(false);
+  useEffect(() => {
+    if (!unstable) setUnstableDismissed(false);
+  }, [unstable]);
+  const reconnecting = useSteady(props.streamReconnecting, 2000, 0);
+  // Only an open panel keeps the bars up; banners show on their own, over the share if the bars are hidden.
+  const bars = useAutoHide(presenting, !!panel);
+  // While presenting the bars float over the share, so things placed on the stage keep clear of them.
+  const insetTop = presenting && bars.visible ? topBars.height : 0;
+  const insetBottom = presenting && bars.visible ? bottomBar.height : 0;
+  const barSlide = (edge: 'top' | 'bottom') =>
+    presenting ? cn('absolute inset-x-0 z-30 transition-transform duration-300', edge === 'top' ? 'top-0' : 'bottom-0', !bars.visible && (edge === 'top' ? '-translate-y-full' : 'translate-y-full')) : undefined;
+
   const panelBody =
     room && panel ? (
       panel === 'people' ? (
@@ -239,7 +283,8 @@ export function CallStage(props: CallStageProps) {
     ) : null;
 
   return (
-    <div data-fixed-dark className="fixed inset-0 z-40 flex flex-col bg-[#070b1f] text-white">
+    <div data-fixed-dark className={cn('fixed inset-0 z-40 flex flex-col text-white', presenting ? 'bg-black' : 'bg-[#070b1f]')}>
+      <div ref={topBars.ref} className={barSlide('top')} {...(presenting ? bars.barProps : {})}>
       <TopBar {...props} membersPresent={participants.filter((p) => p.group === 'member').length} mode={mode} onToggleLayout={() => setLayout(mode === 'gallery' ? 'speaker' : 'gallery')} />
 
       {room && room.agenda.length ? (
@@ -255,12 +300,13 @@ export function CallStage(props: CallStageProps) {
           </span>
         </button>
       ) : null}
+      </div>
 
-      <div className="flex min-h-0 flex-1">
-        <main className="relative flex min-w-0 flex-1 flex-col p-2 sm:p-3">
+      <div className="relative flex min-h-0 flex-1">
+        <main className={cn('relative flex min-w-0 flex-1 flex-col', presenting ? 'p-0' : 'p-2 sm:p-3')}>
           {/* Banners */}
-          <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex flex-col items-center gap-2 sm:inset-x-3 sm:top-3">
-            {props.streamReconnecting ? <Banner tone="danger">Reconnecting to LIMS… audio and video keep going meanwhile.</Banner> : null}
+          <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex flex-col items-center gap-2 transition-[margin] duration-300 sm:inset-x-3 sm:top-3" style={{ marginTop: insetTop }}>
+            {reconnecting ? <Banner tone="danger">Reconnecting to LIMS… audio and video keep going meanwhile.</Banner> : null}
             {props.floorPrompt ? (
               <Banner tone="gold" onClose={props.onDismissFloorPrompt}>
                 <span className="font-semibold">You have the floor.</span>
@@ -314,8 +360,8 @@ export function CallStage(props: CallStageProps) {
                 </button>
               </Banner>
             ) : null}
-            {poorConnection ? (
-              <Banner tone="warning">
+            {unstable && !unstableDismissed ? (
+              <Banner tone="warning" onClose={() => setUnstableDismissed(true)}>
                 Your connection is unstable.
                 {media.camOn ? (
                   <button type="button" onClick={() => media.setCamOn(false)} className="pointer-events-auto ml-2 inline-flex h-9 items-center rounded-lg bg-white/15 px-3 text-xs font-bold text-white">
@@ -332,6 +378,11 @@ export function CallStage(props: CallStageProps) {
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 Connecting to the e-session…
               </div>
+            ) : presenting ? (
+              <>
+                <ShareStage key={main.pid} sharer={main} stream={streamOf(main)} chrome={bars.visible} insetTop={insetTop} insetBottom={insetBottom} />
+                <PeopleFloat people={floatPeople} focus={floatFocus} renderTile={(p, className, style) => tile(p, className, style)} insetTop={insetTop} insetBottom={insetBottom} />
+              </>
             ) : mode === 'gallery' ? (
               <div className={cn('flex flex-wrap justify-center gap-2', scrollGallery ? 'content-start' : 'h-full content-center')}>
                 {ordered.map((p) => tile(p, 'shrink-0', scrollGallery ? scrollTile : { width: grid.width, height: grid.height }))}
@@ -350,14 +401,19 @@ export function CallStage(props: CallStageProps) {
         </main>
 
         {panel && isWide ? (
-          <aside className="flex w-[360px] shrink-0 flex-col border-l border-white/10 bg-[#0c1230]">
+          <aside
+            className={cn('flex w-[360px] shrink-0 flex-col border-l border-white/10 bg-[#0c1230]', presenting && 'absolute right-0 z-20 shadow-2xl')}
+            style={presenting ? { top: insetTop, bottom: insetBottom } : undefined}
+          >
             <PanelHeader panel={panel} setPanel={setPanel} people={participants.length} unread={props.unread} waiting={waitingCount} />
             <div className="min-h-0 flex-1 overflow-y-auto">{panelBody}</div>
           </aside>
         ) : null}
       </div>
 
-      <ControlBar {...props} waitingCount={waitingCount} me={me} mode={mode} onLayout={(next) => setLayout(next)} />
+      <div ref={bottomBar.ref} className={barSlide('bottom')} {...(presenting ? bars.barProps : {})}>
+        <ControlBar {...props} waitingCount={waitingCount} me={me} mode={mode} onLayout={(next) => setLayout(next)} />
+      </div>
 
       {panel && !isWide ? (
         <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -394,6 +450,7 @@ function Banner({ tone, children, onClose }: { tone: 'info' | 'gold' | 'warning'
         tone === 'gold' ? 'bg-[#d4a72c] text-[#141b66] ring-[#e8c766]' : tone === 'danger' ? 'bg-red-700 text-white ring-red-400/50' : tone === 'warning' ? 'bg-[#5c4300] text-[#fde68a] ring-amber-400/40' : 'bg-[#1b2453] text-white ring-white/15'
       )}
       role="status"
+      data-no-wake
     >
       {children}
       {onClose ? (
