@@ -194,7 +194,7 @@ export const attendanceRecordPdf = (audit: RoomAudit, invitees: Invitee[] = []) 
     { text: room.title, size: 12, bold: true },
     { text: `${formatLongDate(room.date)} · scheduled ${room.time} · ${room.type} session`, size: 10 },
     {
-      text: `Held online (LIMS E-Session). Started ${dateTime(room.startedAt)} by ${room.startedBy.name}; ${room.endedAt ? `ended ${dateTime(room.endedAt)}${room.endedBy ? ` by ${room.endedBy.name}` : ''}` : 'still in progress'}. Duration: ${durationText(end - room.startedAt)}.`,
+      text: `Held online (LIMS E-Session). Started ${dateTime(room.startedAt)} by ${room.startedBy.name}; ${room.endedAt ? `ended ${dateTime(room.endedAt)}${room.endedBy ? ` by ${room.endedBy.name}` : ''}` : 'still in progress'}. Duration: ${durationText(end - (room.liveSince ?? room.startedAt))}.`,
       size: 10,
     },
     {

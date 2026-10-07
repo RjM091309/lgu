@@ -22,7 +22,9 @@ const KEEPALIVE_MS = 20_000;
 // A device whose connection drops has this long to come back before it is counted as having left.
 const DROP_GRACE_MS = 60_000;
 // A live room nobody is in ends on its own after this long.
-const EMPTY_ROOM_END_MS = 30 * 60_000;
+const EMPTY_ROOM_END_MS = 15 * 60_000;
+// A room nobody ever entered (the host's join failed right after starting it) is dropped without a record.
+const NEVER_ENTERED_DISCARD_MS = 2 * 60_000;
 const MAX_PARTICIPANTS = 24;
 const MAX_ENDED_ROOMS = 100;
 const MAX_EVENTS = 5_000;
@@ -204,6 +206,10 @@ export function createESessionRoomsHandler(env = {}) {
       startedBy: room.startedBy,
       endedAt: room.endedAt,
       endedBy: room.endedBy,
+      // When the first person entered: the LIVE clock and the duration count from here.
+      liveSince: room.liveSince,
+      // Live but nobody in the call: shown as on hold, and members wait for a host or the presiding officer.
+      onHold: room.status === 'live' && joined(room).length === 0,
       locked: room.locked,
       // So the lobby can say "Join now" instead of "Ask to join" when nobody needs admitting.
       autoAdmit: room.autoAdmit,
@@ -322,6 +328,7 @@ export function createESessionRoomsHandler(env = {}) {
     p.state = 'joined';
     p.joinedAt = Date.now();
     room.emptySince = null;
+    room.liveSince ??= p.joinedAt;
     openStint(room, p);
     if (by) audit(room, 'admitted', { actor: by, target: p.account });
     audit(room, 'joined', { actor: p.account, detail: p.device });
@@ -340,7 +347,10 @@ export function createESessionRoomsHandler(env = {}) {
           removeParticipant(room, p, p.everConnected ? 'Connection lost' : 'Never connected');
         }
       });
-      if (room.status === 'live' && room.emptySince !== null && now - room.emptySince > EMPTY_ROOM_END_MS) endRoom(room, null);
+      if (room.status === 'live' && room.liveSince === null && room.participants.size === 0 && now - room.startedAt > NEVER_ENTERED_DISCARD_MS) {
+        rooms.delete(room.roomId);
+        broadcastLobby();
+      } else if (room.status === 'live' && room.emptySince !== null && now - room.emptySince > EMPTY_ROOM_END_MS) endRoom(room, null);
     });
     joinsByAddress.forEach((times, address) => {
       const recent = times.filter((time) => now - time < 60_000);
@@ -422,6 +432,7 @@ export function createESessionRoomsHandler(env = {}) {
       rollCalls: [],
       attendance: new Map(),
       emptySince: Date.now(),
+      liveSince: null,
       queued: false,
     };
     rooms.set(room.roomId, room);
@@ -444,6 +455,8 @@ export function createESessionRoomsHandler(env = {}) {
     const earlier = [...room.participants.values()].find((p) => p.account.inviteeId === account.inviteeId);
     const returning = room.dropped.has(account.inviteeId) || earlier?.state === 'joined';
     if (room.locked && role === 'participant' && !returning) return sendJson(res, 423, { error: 'locked' });
+    // On hold (nobody in the call): members wait until a host or the presiding officer is back.
+    if (role === 'participant' && joined(room).length === 0) return sendJson(res, 409, { error: 'on_hold' });
 
     // One device per person: joining again (another tablet, a reloaded tab) takes over from the earlier one.
     if (earlier) removeParticipant(room, earlier, 'Joined again from another device', { state: 'replaced' });

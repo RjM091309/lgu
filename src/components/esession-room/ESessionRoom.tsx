@@ -62,7 +62,7 @@ type Phase =
   | { name: 'joining' }
   | { name: 'waiting' }
   | { name: 'in-call' }
-  | { name: 'rejoining'; since: number; roomId: string }
+  | { name: 'rejoining'; since: number; roomId: string; waitingForHost?: boolean }
   | { name: 'outcome'; kind: Outcome; by?: string | null; roomId: string };
 
 // After the server lets go of a dropped device, it keeps trying to get back in for this long, a little less often
@@ -305,6 +305,8 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
           teardown();
           self.current = null;
           const code = error instanceof RoomError ? error.code : '';
+          // Everyone dropped and no host is back yet: keep trying, and say so.
+          if (code === 'on_hold' && !run.cancelled) setPhase({ name: 'rejoining', since, roomId, waitingForHost: true });
           // These answers will not change by trying again.
           const final: Outcome | null = code === 'ended' ? 'ended' : code === 'removed' ? 'removed' : code === 'not_found' || code === 'not_invited' || code === 'locked' ? 'lost' : null;
           if (final) {
@@ -571,7 +573,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     );
   }
 
-  if (phase.name === 'rejoining') return <RejoiningScreen since={phase.since} onLeave={() => cancelRejoin(phase.roomId)} />;
+  if (phase.name === 'rejoining') return <RejoiningScreen since={phase.since} waitingForHost={!!phase.waitingForHost} onLeave={() => cancelRejoin(phase.roomId)} />;
   if (phase.name === 'outcome') return <OutcomeScreen phase={phase} canRejoin={!!liveRoom && phase.kind !== 'removed' && phase.kind !== 'denied'} onRejoin={() => setPhase({ name: 'prejoin' })} />;
 
   const settingsDialog = (
@@ -697,7 +699,7 @@ const OUTCOME_TEXT: Record<Outcome, (by?: string | null) => { title: string; bod
   lost: () => ({ title: 'Connection to the e-session was lost', body: 'This device was away too long or the LIMS server restarted. Rejoin to continue.' }),
 };
 
-function RejoiningScreen({ since, onLeave }: { since: number; onLeave: () => void }) {
+function RejoiningScreen({ since, waitingForHost, onLeave }: { since: number; waitingForHost: boolean; onLeave: () => void }) {
   const now = useNow(1000);
   const online = useOnline();
   return (
@@ -705,7 +707,12 @@ function RejoiningScreen({ since, onLeave }: { since: number; onLeave: () => voi
       <Loader2 className="h-12 w-12 animate-spin text-[#e8c766] motion-reduce:animate-none" />
       <h1 className="mt-5 text-2xl font-bold">Reconnecting to the e-session…</h1>
       <p className="mt-2 max-w-md text-sm text-white/75">
-        {online ? 'Getting you back in.' : 'This device is offline. You will be back in as soon as the connection returns.'} There is no need to ask to join again.
+        {!online
+          ? 'This device is offline. You will be back in as soon as the connection returns.'
+          : waitingForHost
+            ? 'The e-session is on hold until the host or presiding officer is back. You will be let in then.'
+            : 'Getting you back in.'}{' '}
+        There is no need to ask to join again.
       </p>
       <p className="mt-3 font-mono text-xs tabular-nums text-white/55">Trying for {elapsedClock(now - since)}</p>
       <button type="button" onClick={onLeave} className="mt-8 inline-flex h-12 items-center gap-2 rounded-lg bg-white/15 px-6 text-sm font-bold text-white hover:bg-white/25">
@@ -796,6 +803,14 @@ function PreJoin({
         Stop waiting
       </Button>
     );
+  } else if (liveRoom?.onHold && role === 'participant') {
+    // Nobody is in the call: members wait for a host or the presiding officer (the button comes alive by itself).
+    action = (
+      <Button disabled className="h-14 w-full text-base font-bold">
+        <Hourglass className="mr-2 h-5 w-5" />
+        Waiting for the host to open it
+      </Button>
+    );
   } else if (liveRoom) {
     action = (
       <Button onClick={() => onJoin(false)} disabled={joining} className="h-14 w-full bg-red-600 text-base font-bold hover:bg-red-700 hover:opacity-100">
@@ -869,7 +884,7 @@ function PreJoin({
         <aside className="space-y-4">
           <section className="rounded-2xl border border-border bg-white p-5 shadow-sm md:p-6">
             <div className="flex flex-wrap items-center gap-1.5">
-              {liveRoom ? <LiveBadge since={liveRoom.startedAt} /> : null}
+              {liveRoom ? <LiveBadge since={liveRoom.liveSince} onHold={liveRoom.onHold} /> : null}
               <TypeBadge type={session.type} />
               <RoleBadge role={role} label={role === 'participant' ? (account.group === 'member' ? 'Member' : 'Staff') : roleLabel} />
             </div>
@@ -894,13 +909,20 @@ function PreJoin({
                 </p>
               ) : liveRoom ? (
                 <ul className="space-y-1.5 text-text-muted">
-                  <li>
-                    <span className="font-semibold text-text-main">{liveRoom.participantCount}</span> in the e-session, started by {liveRoom.startedBy.name}
-                  </li>
+                  {liveRoom.onHold ? (
+                    <li>
+                      <span className="font-semibold text-text-main">On hold:</span> nobody is in the e-session yet (started by {liveRoom.startedBy.name}).
+                      {role === 'participant' ? ' You can join once the host or presiding officer is in.' : ''}
+                    </li>
+                  ) : (
+                    <li>
+                      <span className="font-semibold text-text-main">{liveRoom.participantCount}</span> in the e-session, started by {liveRoom.startedBy.name}
+                    </li>
+                  )}
                   {liveRoom.recording ? <li className="font-semibold text-red-700">This e-session is being recorded.</li> : null}
                   {liveRoom.locked && role === 'participant' ? <li className="font-semibold text-amber-800">The host has locked the e-session.</li> : null}
-                  {willWait && !liveRoom.locked ? <li>A host admits you after you ask to join.</li> : null}
-                  {role === 'participant' && liveRoom.autoAdmit && !liveRoom.locked ? <li>The host admits invitees automatically, so you join straight away.</li> : null}
+                  {willWait && !liveRoom.locked && !liveRoom.onHold ? <li>A host admits you after you ask to join.</li> : null}
+                  {role === 'participant' && liveRoom.autoAdmit && !liveRoom.locked && !liveRoom.onHold ? <li>The host admits invitees automatically, so you join straight away.</li> : null}
                 </ul>
               ) : (
                 <p className="text-text-muted">

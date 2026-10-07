@@ -25,8 +25,17 @@ export function TypeBadge({ type, className }: { type: Session['type']; classNam
   return <span className={cn('inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold', SESSION_TONE[type], className)}>{type}</span>;
 }
 
-export function LiveBadge({ since, className }: { since?: number; className?: string }) {
-  const now = useNow(since ? 1000 : null);
+/** LIVE (with how long, when `since` is given), or "On hold" while nobody is in the call. */
+export function LiveBadge({ since, onHold = false, className }: { since?: number | null; onHold?: boolean; className?: string }) {
+  const now = useNow(since && !onHold ? 1000 : null);
+  if (onHold) {
+    return (
+      <span className={cn('inline-flex items-center gap-1.5 rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-amber-800 ring-1 ring-inset ring-amber-300', className)}>
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500" aria-hidden />
+        On hold
+      </span>
+    );
+  }
   return (
     <span className={cn('inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white', className)}>
       <span className="relative flex h-1.5 w-1.5">

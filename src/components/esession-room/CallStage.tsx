@@ -538,7 +538,7 @@ function TopBar({
       <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide">
         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white motion-reduce:animate-none" aria-hidden />
         Live
-        <span className="font-mono tabular-nums">{room ? elapsedClock(now - room.startedAt) : '--:--'}</span>
+        <span className="font-mono tabular-nums">{room ? elapsedClock(now - (room.liveSince ?? room.startedAt)) : '--:--'}</span>
       </span>
       {room?.recordingBy ? (
         <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-red-300 ring-1 ring-inset ring-red-400/40" title={`Recorded by ${room.recordingBy.name}`}>

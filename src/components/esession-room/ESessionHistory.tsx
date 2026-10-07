@@ -49,13 +49,13 @@ export function ESessionHistory({ account, onSignOut }: { account: MobileAccount
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-1.5">
-                      {room.status === 'live' ? <LiveBadge /> : null}
+                      {room.status === 'live' ? <LiveBadge onHold={room.onHold} /> : null}
                       <TypeBadge type={room.type} />
                     </span>
                     <span className="mt-1 block truncate font-semibold text-text-main">{room.title}</span>
                     <span className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-text-muted">
                       <span>{dateTime(room.startedAt)}</span>
-                      <span>{durationText((room.endedAt ?? now) - room.startedAt)}</span>
+                      <span>{durationText((room.endedAt ?? now) - (room.liveSince ?? room.startedAt))}</span>
                       <span>
                         {room.attendeeCount} attendee{room.attendeeCount === 1 ? '' : 's'}
                       </span>
@@ -122,7 +122,7 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
   };
 
   const stats = [
-    { label: 'Duration', value: durationText(end - room.startedAt), icon: Timer },
+    { label: 'Duration', value: durationText(end - (room.liveSince ?? room.startedAt)), icon: Timer },
     { label: 'Members present', value: `${membersPresent}/${audit.memberTotal}`, icon: Users, hint: membersPresent >= audit.quorum ? 'Quorum reached' : `Quorum is ${audit.quorum}` },
     { label: 'Roll calls', value: String(audit.rollCalls.length), icon: ClipboardList },
     { label: 'Chat messages', value: String(audit.chat.length), icon: MessageSquare },
@@ -139,7 +139,7 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
         <section className="flex flex-col gap-4 rounded-xl border border-border bg-white p-5 shadow-sm md:flex-row md:items-start md:justify-between md:p-6">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-1.5">
-              {isLive ? <LiveBadge since={room.startedAt} /> : <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">Ended</span>}
+              {isLive ? <LiveBadge since={room.liveSince} onHold={room.onHold} /> : <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-text-muted">Ended</span>}
               <TypeBadge type={room.type} />
             </div>
             <h1 className="mt-2 text-xl font-bold text-text-main">{room.title}</h1>

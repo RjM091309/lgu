@@ -34,6 +34,10 @@ export interface RoomSummary {
   startedBy: Person;
   endedAt: number | null;
   endedBy: Person | null;
+  /** When the first person entered (epoch ms), or null if nobody has yet. */
+  liveSince: number | null;
+  /** Live but nobody in the call; members wait for a host or the presiding officer. */
+  onHold: boolean;
   locked: boolean;
   /** Invitees join without waiting to be admitted. */
   autoAdmit: boolean;
@@ -280,6 +284,8 @@ export const roomErrorMessage = (error: unknown) => {
       return 'You are not on the invitation list for this session.';
     case 'removed':
       return 'A host removed you from this e-session.';
+    case 'on_hold':
+      return 'Nobody is in the e-session yet. You can join once the host or presiding officer is in.';
     case 'locked':
       return 'The host has locked this e-session. Ask the Secretariat to unlock it.';
     case 'ended':

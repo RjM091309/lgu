@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, Clock, Headphones, Lock, MapPin, Play, ShieldCheck, Users, Video, Wifi, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { useUsers } from '@/lib/access-store';
 import { logActivity } from '@/lib/activity-log';
@@ -13,7 +12,7 @@ import type { Session } from '@/lib/mock-data';
 import { formatLongDate } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
-import { roleIn, roleLabelFor, roomErrorMessage, startRoom, useLobby, type RoomSummary } from '@/lib/esession-room';
+import { roleIn, roleLabelFor, useLobby, type RoomSummary } from '@/lib/esession-room';
 import { EsHeader, InsecureNotice, LiveBadge, PersonAvatar, RoleBadge, TypeBadge } from '@/components/esession-room/es-ui';
 
 const UPCOMING_LIMIT = 8;
@@ -34,7 +33,6 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
   const { live, status } = useLobby();
   const rsvps = useAttendance();
   const navigate = useNavigate();
-  const [starting, setStarting] = useState<string | null>(null);
   const today = todayInManila();
 
   // Hosts see every session; everyone else the ones they are invited to.
@@ -48,21 +46,14 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
     if (session.date !== today) {
       const confirmed = await confirmAction({
         title: 'Start this e-session early?',
-        description: `${session.title} is scheduled for ${formatLongDate(session.date)}, ${session.time}. Invitees can join as soon as it starts.`,
-        confirmLabel: 'Start e-session',
+        description: `${session.title} is scheduled for ${formatLongDate(session.date)}, ${session.time}. It starts when you join from the camera and microphone check, and invitees can join from then on.`,
+        confirmLabel: 'Continue',
       });
       if (!confirmed) return;
     }
-    setStarting(session.id);
-    try {
-      await startRoom(account, session, users);
-      logActivity({ user: account.username, module: 'E-Session', action: 'Updated', summary: `Started the e-session: ${session.title}` });
-      navigate(`/es/session/${encodeURIComponent(session.id)}`);
-    } catch (error) {
-      toast('Could not start the e-session', roomErrorMessage(error), 'error');
-    } finally {
-      setStarting(null);
-    }
+    // The e-session starts from the camera and microphone check, as the host goes in, so it never shows as live
+    // while nobody is in it yet.
+    navigate(`/es/session/${encodeURIComponent(session.id)}`);
   };
 
   const open = (session: Session) => navigate(`/es/session/${encodeURIComponent(session.id)}`);
@@ -120,7 +111,6 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
                   account={account}
                   room={liveBySession.get(session.id)}
                   rsvp={rsvpOf(rsvps, session.id, account.inviteeId)?.status}
-                  starting={starting === session.id}
                   onStart={() => void start(session)}
                   onOpen={() => open(session)}
                 />
@@ -168,7 +158,6 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
                   account={account}
                   room={liveBySession.get(session.id)}
                   rsvp={rsvpOf(rsvps, session.id, account.inviteeId)?.status}
-                  starting={starting === session.id}
                   onStart={() => void start(session)}
                   onOpen={() => open(session)}
                 />
@@ -187,7 +176,7 @@ function LiveCard({ room, role, onJoin }: { room: RoomSummary; role: string | nu
   return (
     <article className="relative overflow-hidden rounded-2xl border border-red-200 bg-gradient-to-br from-white to-red-50/60 p-5 shadow-sm">
       <div className="flex flex-wrap items-center gap-2">
-        <LiveBadge since={room.startedAt} />
+        <LiveBadge since={room.liveSince} onHold={room.onHold} />
         <TypeBadge type={room.type} />
         {room.recording ? <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-inset ring-red-200">Recording</span> : null}
         {room.locked ? (
@@ -198,7 +187,7 @@ function LiveCard({ room, role, onJoin }: { room: RoomSummary; role: string | nu
         ) : null}
       </div>
       <h3 className="mt-3 text-lg font-bold text-text-main">{room.title}</h3>
-      <p className="mt-1 text-sm text-text-muted">Started by {room.startedBy.name}</p>
+      <p className="mt-1 text-sm text-text-muted">{room.onHold ? `On hold, waiting for the host · started by ${room.startedBy.name}` : `Started by ${room.startedBy.name}`}</p>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex -space-x-2">
@@ -206,7 +195,7 @@ function LiveCard({ room, role, onJoin }: { room: RoomSummary; role: string | nu
               <PersonAvatar key={person.inviteeId} abbr={person.abbr} group={person.group} className="h-9 w-9 text-[10px] ring-2 ring-white" />
             ))}
           </div>
-          <span className="text-sm font-semibold text-text-main">{room.participantCount} in the room</span>
+          <span className="text-sm font-semibold text-text-main">{room.onHold ? 'Nobody in the room yet' : `${room.participantCount} in the room`}</span>
         </div>
         <Button onClick={onJoin} className="h-12 min-w-36 bg-red-600 px-6 text-base font-bold hover:bg-red-700 hover:opacity-100">
           <Video className="mr-2 h-5 w-5" />
@@ -222,7 +211,6 @@ function SessionCard({
   account,
   room,
   rsvp,
-  starting,
   compact = false,
   onStart,
   onOpen,
@@ -231,7 +219,6 @@ function SessionCard({
   account: MobileAccount;
   room: RoomSummary | undefined;
   rsvp: 'attending' | 'declined' | undefined;
-  starting: boolean;
   compact?: boolean;
   onStart: () => void;
   onOpen: () => void;
@@ -249,7 +236,7 @@ function SessionCard({
         <div className="flex flex-wrap items-center gap-1.5">
           <TypeBadge type={session.type} />
           {role !== 'participant' ? <RoleBadge role={role} label={roleLabelFor(role, session)} /> : null}
-          {room ? <LiveBadge /> : null}
+          {room ? <LiveBadge onHold={room.onHold} /> : null}
         </div>
         <h3 className={cn('mt-1.5 font-semibold text-text-main', compact ? 'text-sm' : 'text-base')}>{session.title}</h3>
         <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
@@ -272,12 +259,12 @@ function SessionCard({
           {room ? (
             <Button onClick={onOpen} className="h-11 bg-red-600 px-5 font-semibold hover:bg-red-700 hover:opacity-100">
               <Video className="mr-2 h-4 w-4" />
-              Join · {room.participantCount} in the room
+              {room.onHold ? 'Open · on hold' : `Join · ${room.participantCount} in the room`}
             </Button>
           ) : account.canManage ? (
-            <Button onClick={onStart} disabled={starting} variant={compact ? 'outline' : 'default'} className={cn('h-11 px-5 font-semibold', compact && 'bg-white')}>
+            <Button onClick={onStart} variant={compact ? 'outline' : 'default'} className={cn('h-11 px-5 font-semibold', compact && 'bg-white')}>
               <Play className="mr-2 h-4 w-4 fill-current" />
-              {starting ? 'Starting…' : compact ? 'Start early' : 'Start e-session'}
+              {compact ? 'Start early' : 'Start e-session'}
             </Button>
           ) : (
             <>
