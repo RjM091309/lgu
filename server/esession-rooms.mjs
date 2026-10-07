@@ -20,7 +20,7 @@ import { getHttpsPort } from './https.mjs';
 const MAX_BODY_BYTES = 96 * 1024;
 const KEEPALIVE_MS = 20_000;
 // A device whose connection drops has this long to come back before it is counted as having left.
-const DROP_GRACE_MS = 20_000;
+const DROP_GRACE_MS = 60_000;
 // A live room nobody is in ends on its own after this long.
 const EMPTY_ROOM_END_MS = 30 * 60_000;
 const MAX_PARTICIPANTS = 24;
@@ -334,6 +334,7 @@ export function createESessionRoomsHandler(env = {}) {
     rooms.forEach((room) => {
       room.participants.forEach((p) => {
         if (!p.connected && p.droppedAt !== null && now - p.droppedAt > DROP_GRACE_MS) {
+          if (p.state === 'joined' && p.everConnected) room.dropped.add(p.account.inviteeId);
           removeParticipant(room, p, p.everConnected ? 'Connection lost' : 'Never connected');
         }
       });
@@ -411,6 +412,8 @@ export function createESessionRoomsHandler(env = {}) {
       recording: null,
       participants: new Map(),
       removed: new Set(),
+      // People whose connection dropped while they were in the room: they come back without the waiting room.
+      dropped: new Set(),
       seq: 0,
       events: [],
       chat: [],
@@ -434,10 +437,13 @@ export function createESessionRoomsHandler(env = {}) {
     if (room.removed.has(account.inviteeId)) return sendJson(res, 403, { error: 'removed' });
 
     const role = account.canManage ? 'host' : account.inviteeId === room.presidingId ? 'presiding' : 'participant';
-    if (room.locked && role === 'participant') return sendJson(res, 423, { error: 'locked' });
+    // Someone already admitted who lost their connection (or reloaded the page) is let straight back in, even
+    // into a locked room. Pressing Leave ends that: coming back after it means asking again.
+    const earlier = [...room.participants.values()].find((p) => p.account.inviteeId === account.inviteeId);
+    const returning = room.dropped.has(account.inviteeId) || earlier?.state === 'joined';
+    if (room.locked && role === 'participant' && !returning) return sendJson(res, 423, { error: 'locked' });
 
     // One device per person: joining again (another tablet, a reloaded tab) takes over from the earlier one.
-    const earlier = [...room.participants.values()].find((p) => p.account.inviteeId === account.inviteeId);
     if (earlier) removeParticipant(room, earlier, 'Joined again from another device', { state: 'replaced' });
 
     if (room.participants.size >= MAX_PARTICIPANTS) return sendJson(res, 503, { error: 'room_full' });
@@ -465,9 +471,11 @@ export function createESessionRoomsHandler(env = {}) {
       limits: {},
     };
     room.participants.set(p.pid, p);
+    room.dropped.delete(account.inviteeId);
 
-    // Hosts and the presiding officer go straight in; others wait for a host unless the room admits invitees automatically.
-    if (role !== 'participant' || room.autoAdmit) admit(room, p, null);
+    // Hosts and the presiding officer go straight in, and so does anyone returning after a dropped connection;
+    // others wait for a host unless the room admits invitees automatically.
+    if (role !== 'participant' || room.autoAdmit || returning) admit(room, p, null);
     else {
       audit(room, 'join-request', { actor: p.account, detail: p.device });
       broadcastRoom(room);
@@ -517,7 +525,11 @@ export function createESessionRoomsHandler(env = {}) {
 
     const type = body.type;
     if (type === 'leave') {
-      removeParticipant(room, p, p.state === 'joined' ? 'Left the e-session' : 'Stopped waiting');
+      // A closed or reloaded page is not the person choosing to leave, so they may come straight back like after a
+      // dropped connection; only the Leave button means asking to join again.
+      const pageClosed = body.reason === 'page-closed' && p.state === 'joined';
+      if (pageClosed) room.dropped.add(p.account.inviteeId);
+      removeParticipant(room, p, p.state === 'joined' ? (pageClosed ? 'Closed the page' : 'Left the e-session') : 'Stopped waiting');
       return sendJson(res, 200, { ok: true });
     }
     if (p.state !== 'joined') return sendJson(res, 403, { error: 'not_admitted' });

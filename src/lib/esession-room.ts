@@ -468,7 +468,7 @@ export class RoomConnection {
     try {
       navigator.sendBeacon(
         `/api/es/rooms/${encodeURIComponent(this.roomId)}/action`,
-        new Blob([JSON.stringify({ pid: this.pid, token: this.token, type: 'leave' })], { type: 'application/json' })
+        new Blob([JSON.stringify({ pid: this.pid, token: this.token, type: 'leave', reason: 'page-closed' })], { type: 'application/json' })
       );
     } catch {
       // The server counts the device as gone once its connection stops.

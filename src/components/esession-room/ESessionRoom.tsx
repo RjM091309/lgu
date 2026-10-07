@@ -14,6 +14,7 @@ import { formatLongDate } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import {
   RoomConnection,
+  RoomError,
   elapsedClock,
   fetchAudit,
   fetchServerInfo,
@@ -48,14 +49,29 @@ import { DeviceSelects, MicMeter } from '@/components/esession-room/DeviceContro
 import { CallStage, type Panel } from '@/components/esession-room/CallStage';
 import { useFullscreen } from '@/components/esession-room/use-fullscreen';
 import { VideoView } from '@/components/esession-room/VideoTile';
-import { InsecureNotice, LiveBadge, RoleBadge, TypeBadge } from '@/components/esession-room/es-ui';
+import { InsecureNotice, LiveBadge, RoleBadge, TypeBadge, useNow } from '@/components/esession-room/es-ui';
 
 // One e-session, from the device check to leaving: before joining (camera, microphone, devices), the
 // waiting room, the call itself, and what happened at the end. The connections to the other devices
 // live here so they survive switching layouts and panels.
 
 type Outcome = 'left' | 'ended' | 'removed' | 'denied' | 'replaced' | 'lost';
-type Phase = { name: 'prejoin' } | { name: 'joining' } | { name: 'waiting' } | { name: 'in-call' } | { name: 'outcome'; kind: Outcome; by?: string | null; roomId: string };
+type Phase =
+  | { name: 'prejoin' }
+  | { name: 'joining' }
+  | { name: 'waiting' }
+  | { name: 'in-call' }
+  | { name: 'rejoining'; since: number; roomId: string }
+  | { name: 'outcome'; kind: Outcome; by?: string | null; roomId: string };
+
+// After the server lets go of a dropped device, it keeps trying to get back in for this long, a little less often
+// each time, before showing "connection lost".
+const REJOIN_FOR_MS = 3 * 60_000;
+const REJOIN_FIRST_DELAY_MS = 1000;
+const REJOIN_MAX_DELAY_MS = 8000;
+// The server lets go of a silent device after 60 s (DROP_GRACE_MS in server/esession-rooms.mjs). An offline device
+// cannot hear that, so after a little longer than that it switches to rejoining by itself.
+const ASSUME_DROPPED_AFTER_MS = 65_000;
 
 // A level (root mean square) above this counts as speaking; it stays lit a moment after the voice stops.
 const SPEAKING_LEVEL = 0.025;
@@ -106,7 +122,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
   const { arrived: fullscreenArrived, release: releaseFullscreen } = fullscreen;
   useEffect(() => {
     if (phase.name === 'in-call') fullscreenArrived(askedToJoin.current);
-    else if (phase.name !== 'joining') releaseFullscreen();
+    else if (phase.name !== 'joining' && phase.name !== 'rejoining') releaseFullscreen();
   }, [phase.name, fullscreenArrived, releaseFullscreen]);
   useEffect(() => releaseFullscreen, [releaseFullscreen]);
 
@@ -189,7 +205,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     control: (_control: { type: 'mute' | 'floor'; by: string }) => {},
     lost: () => {},
   });
-  handlers.current.lost = () => finish('lost');
+  handlers.current.lost = () => (phaseRef.current === 'in-call' ? startRejoin() : finish('lost'));
   handlers.current.status = (status) => {
     if (status.state === 'joined') setPhase({ name: 'in-call' });
     else if (status.state === 'waiting') setPhase({ name: 'waiting' });
@@ -205,6 +221,45 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     }
   };
 
+  const phaseRef = useRef(phase.name);
+  phaseRef.current = phase.name;
+
+  /** Joins room `roomId` and opens its connections; throws (a RoomError) when the server says no. */
+  const enterRoom = async (roomId: string) => {
+    const info = await fetchServerInfo();
+    const result = await joinRoom(roomId, account, { device: describeDevice(), audio: media.micOn && !!media.audioTrack, video: media.camOn });
+    self.current = { pid: result.pid, seq: result.seq, role: result.role, roomId };
+    levels.current = new AudioLevels();
+    const call = new MeshCall({
+      selfSeq: result.seq,
+      iceServers: info.iceServers,
+      send: (to, data) => void conn.current?.send('signal', { target: to, data }),
+      onChange: () => setPeers(call.snapshot()),
+    });
+    mesh.current = call;
+    const connection = new RoomConnection(roomId, result.pid, result.token, {
+      onStatus: (status) => handlers.current.status(status),
+      onRoom: (view) => {
+        setRoom(view);
+        call.sync(view.participantsList.filter((p) => p.pid !== result.pid));
+      },
+      onSignal: (from, data) => void call.handleSignal(from, data),
+      onChat: (message) => {
+        setChat((list) => [...list, message].slice(-500));
+        if (panelRef.current !== 'chat' && message.from.pid !== result.pid) setUnread((count) => count + 1);
+      },
+      onChatHistory: (messages) => setChat(messages),
+      onControl: (control) => handlers.current.control(control),
+      onReconnecting: setStreamReconnecting,
+      onLost: () => handlers.current.lost(),
+    });
+    conn.current = connection;
+    connection.open();
+    setChat([]);
+    setUnread(0);
+    setPhase(result.state === 'joined' ? { name: 'in-call' } : { name: 'waiting' });
+  };
+
   const join = async (startFirst: boolean) => {
     if (!session) return;
     // Created inside the tap so iPads let the sound play.
@@ -218,38 +273,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
         roomId = (await startRoom(account, session, users)).roomId;
         if (startFirst) logActivity({ user: account.username, module: 'E-Session', action: 'Updated', summary: `Started the e-session: ${session.title}` });
       }
-      const info = await fetchServerInfo();
-      const result = await joinRoom(roomId, account, { device: describeDevice(), audio: media.micOn && !!media.audioTrack, video: media.camOn });
-      self.current = { pid: result.pid, seq: result.seq, role: result.role, roomId };
-      levels.current = new AudioLevels();
-      const call = new MeshCall({
-        selfSeq: result.seq,
-        iceServers: info.iceServers,
-        send: (to, data) => void conn.current?.send('signal', { target: to, data }),
-        onChange: () => setPeers(call.snapshot()),
-      });
-      mesh.current = call;
-      const connection = new RoomConnection(roomId, result.pid, result.token, {
-        onStatus: (status) => handlers.current.status(status),
-        onRoom: (view) => {
-          setRoom(view);
-          call.sync(view.participantsList.filter((p) => p.pid !== result.pid));
-        },
-        onSignal: (from, data) => void call.handleSignal(from, data),
-        onChat: (message) => {
-          setChat((list) => [...list, message].slice(-500));
-          if (panelRef.current !== 'chat' && message.from.pid !== result.pid) setUnread((count) => count + 1);
-        },
-        onChatHistory: (messages) => setChat(messages),
-        onControl: (control) => handlers.current.control(control),
-        onReconnecting: setStreamReconnecting,
-        onLost: () => handlers.current.lost(),
-      });
-      conn.current = connection;
-      connection.open();
-      setChat([]);
-      setUnread(0);
-      setPhase(result.state === 'joined' ? { name: 'in-call' } : { name: 'waiting' });
+      await enterRoom(roomId);
     } catch (error) {
       teardown();
       self.current = null;
@@ -258,9 +282,79 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     }
   };
 
+  // The server let go of this device after its connection dropped for too long. Get back in by ourselves: the
+  // server lets a dropped person straight back (no waiting room), so this only needs the connection to return.
+  const rejoinRun = useRef<{ cancelled: boolean } | null>(null);
+  const startRejoin = () => {
+    if (!self.current) return;
+    const roomId = self.current.roomId;
+    void stopRecording(false);
+    teardown();
+    self.current = null;
+    setRoom(null);
+    const since = Date.now();
+    setPhase({ name: 'rejoining', since, roomId });
+    const run = { cancelled: false };
+    rejoinRun.current = run;
+    void (async () => {
+      let delay = REJOIN_FIRST_DELAY_MS;
+      while (!run.cancelled && Date.now() - since < REJOIN_FOR_MS) {
+        try {
+          await enterRoom(roomId);
+          if (!run.cancelled) toast('Back in the e-session', 'Your connection returned and you rejoined.', 'success');
+          return;
+        } catch (error) {
+          teardown();
+          self.current = null;
+          const code = error instanceof RoomError ? error.code : '';
+          // These answers will not change by trying again.
+          const final: Outcome | null = code === 'ended' ? 'ended' : code === 'removed' ? 'removed' : code === 'not_found' || code === 'not_invited' || code === 'locked' ? 'lost' : null;
+          if (final) {
+            if (!run.cancelled) setPhase({ name: 'outcome', kind: final, roomId });
+            return;
+          }
+        }
+        // Wait before the next try, but go at once when the browser says the network is back.
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            window.clearTimeout(timer);
+            window.removeEventListener('online', done);
+            resolve();
+          };
+          const timer = window.setTimeout(done, delay);
+          window.addEventListener('online', done);
+        });
+        delay = Math.min(delay * 2, REJOIN_MAX_DELAY_MS);
+      }
+      if (!run.cancelled) setPhase({ name: 'outcome', kind: 'lost', roomId });
+    })();
+  };
+  const cancelRejoin = (roomId: string) => {
+    if (rejoinRun.current) rejoinRun.current.cancelled = true;
+    rejoinRun.current = null;
+    teardown();
+    self.current = null;
+    setPhase({ name: 'outcome', kind: 'left', roomId });
+  };
+  useEffect(
+    () => () => {
+      if (rejoinRun.current) rejoinRun.current.cancelled = true;
+    },
+    []
+  );
+
   // ---- While connected --------------------------------------------------------------------------
 
   const inCall = phase.name === 'in-call';
+
+  // Offline for longer than the server waits: stop showing a frozen call and get back in once the network returns.
+  const startRejoinRef = useRef(startRejoin);
+  startRejoinRef.current = startRejoin;
+  useEffect(() => {
+    if (!inCall || !streamReconnecting) return;
+    const timer = window.setTimeout(() => startRejoinRef.current(), ASSUME_DROPPED_AFTER_MS);
+    return () => window.clearTimeout(timer);
+  }, [inCall, streamReconnecting]);
   const connected = phase.name === 'in-call' || phase.name === 'waiting';
 
   // What this device sends: its microphone, and its screen or camera.
@@ -479,6 +573,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     );
   }
 
+  if (phase.name === 'rejoining') return <RejoiningScreen since={phase.since} onLeave={() => cancelRejoin(phase.roomId)} />;
   if (phase.name === 'outcome') return <OutcomeScreen phase={phase} canRejoin={!!liveRoom && phase.kind !== 'removed' && phase.kind !== 'denied'} onRejoin={() => setPhase({ name: 'prejoin' })} />;
 
   const settingsDialog = (
@@ -603,6 +698,39 @@ const OUTCOME_TEXT: Record<Outcome, (by?: string | null) => { title: string; bod
   replaced: () => ({ title: 'You joined from another device', body: 'This device left the e-session because you joined it again somewhere else.' }),
   lost: () => ({ title: 'Connection to the e-session was lost', body: 'This device was away too long or the LIMS server restarted. Rejoin to continue.' }),
 };
+
+function RejoiningScreen({ since, onLeave }: { since: number; onLeave: () => void }) {
+  const now = useNow(1000);
+  const online = useOnline();
+  return (
+    <div data-fixed-dark className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-br from-[#0a0f3d] via-[#1a237e] to-[#283593] px-6 text-center text-white" role="status" aria-live="polite">
+      <Loader2 className="h-12 w-12 animate-spin text-[#e8c766] motion-reduce:animate-none" />
+      <h1 className="mt-5 text-2xl font-bold">Reconnecting to the e-session…</h1>
+      <p className="mt-2 max-w-md text-sm text-white/75">
+        {online ? 'Getting you back in.' : 'This device is offline. You will be back in as soon as the connection returns.'} There is no need to ask to join again.
+      </p>
+      <p className="mt-3 font-mono text-xs tabular-nums text-white/55">Trying for {elapsedClock(now - since)}</p>
+      <button type="button" onClick={onLeave} className="mt-8 inline-flex h-12 items-center gap-2 rounded-lg bg-white/15 px-6 text-sm font-bold text-white hover:bg-white/25">
+        Leave the e-session
+      </button>
+    </div>
+  );
+}
+
+/** Whether the browser thinks it has a network connection. */
+function useOnline() {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine);
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+  return online;
+}
 
 function OutcomeScreen({ phase, canRejoin, onRejoin }: { phase: Extract<Phase, { name: 'outcome' }>; canRejoin: boolean; onRejoin: () => void }) {
   const text = OUTCOME_TEXT[phase.kind](phase.by);
