@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { createPortal } from 'react-dom';
 import { Crown, Hand, Loader2, MicOff, MonitorUp, MoreVertical, Pin, PinOff, UserMinus, VolumeX, Mic as MicIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LinkQuality, PeerLink } from '@/lib/esession-rtc';
@@ -92,19 +93,10 @@ export function VideoTile({
   className?: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const showVideo = (participant.video || participant.screen) && !!stream?.getVideoTracks().some((track) => track.readyState === 'live' && !track.muted);
   const connecting = !isSelf && (link === 'connecting' || link === 'reconnecting' || link === 'failed' || !participant.connected);
   const hasMenu = actions && (actions.onMute || actions.onFloor || actions.onRemove || actions.onPin);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    const timer = setTimeout(() => document.addEventListener('click', close, { once: true }), 0);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('click', close);
-    };
-  }, [menuOpen]);
 
   return (
     <div
@@ -183,14 +175,13 @@ export function VideoTile({
           <SignalBars quality={isSelf ? null : quality} />
           {hasMenu ? (
             <button
+              ref={menuButton}
               type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setMenuOpen((open) => !open);
-              }}
+              onClick={() => setMenuOpen((open) => !open)}
               className="pointer-events-auto -m-1 flex h-8 w-8 items-center justify-center rounded-md text-white hover:bg-white/15"
               aria-label={`Actions for ${participant.name}`}
               aria-expanded={menuOpen}
+              aria-haspopup="menu"
             >
               <MoreVertical className="h-4 w-4" />
             </button>
@@ -199,16 +190,106 @@ export function VideoTile({
       </div>
 
       {menuOpen && actions ? (
-        <div className="absolute bottom-12 right-2 z-10 w-52 overflow-hidden rounded-lg bg-[#0e1533] py-1 text-sm text-white shadow-xl ring-1 ring-white/15" role="menu">
-          {actions.onPin ? (
-            <MenuButton icon={actions.pinned ? PinOff : Pin} label={actions.pinned ? 'Unpin' : 'Pin for me'} onClick={actions.onPin} />
-          ) : null}
-          {actions.onFloor ? <MenuButton icon={MicIcon} label={hasFloor ? 'Close the floor' : 'Give the floor'} onClick={actions.onFloor} /> : null}
-          {actions.onMute ? <MenuButton icon={VolumeX} label="Mute" onClick={actions.onMute} /> : null}
-          {actions.onRemove ? <MenuButton icon={UserMinus} label="Remove from e-session" onClick={actions.onRemove} danger /> : null}
-        </div>
+        <TileMenu anchor={menuButton} title={`${participant.name}${isSelf ? ' (You)' : ''}`} onClose={() => setMenuOpen(false)}>
+          {(close) => (
+            <>
+              {actions.onPin ? <MenuButton icon={actions.pinned ? PinOff : Pin} label={actions.pinned ? 'Unpin' : 'Pin for me'} onClick={close(actions.onPin)} /> : null}
+              {actions.onFloor ? <MenuButton icon={MicIcon} label={hasFloor ? 'Close the floor' : 'Give the floor'} onClick={close(actions.onFloor)} /> : null}
+              {actions.onMute ? <MenuButton icon={VolumeX} label="Mute" onClick={close(actions.onMute)} /> : null}
+              {actions.onRemove ? <MenuButton icon={UserMinus} label="Remove from e-session" onClick={close(actions.onRemove)} danger /> : null}
+            </>
+          )}
+        </TileMenu>
       ) : null}
     </div>
+  );
+}
+
+const MENU_MARGIN = 8;
+const MENU_GAP = 6;
+// Only one tile menu is open at a time: opening one tells the others to close.
+const MENU_OPENED = 'es-tile-menu-opened';
+
+/**
+ * A tile's actions, drawn over the whole page so a small tile cannot crop it. It opens above its button, lined up
+ * with the button's right edge; below when there is no room above; and slides sideways to stay on screen.
+ */
+function TileMenu({ anchor, title, onClose, children }: { anchor: RefObject<HTMLButtonElement | null>; title: string; onClose: () => void; children: (close: (action: () => void) => () => void) => ReactNode }) {
+  const id = useId();
+  const menu = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<{ top: number; left: number; maxHeight?: number } | null>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
+  // Follows the button on every render, so it stays put when tiles reorder.
+  useLayoutEffect(() => {
+    const button = anchor.current;
+    const element = menu.current;
+    if (!button || !element) return;
+    const b = button.getBoundingClientRect();
+    const { offsetWidth: w, scrollHeight: h } = element;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const above = b.top - MENU_GAP - MENU_MARGIN;
+    const below = vh - b.bottom - MENU_GAP - MENU_MARGIN;
+    const left = Math.min(Math.max(MENU_MARGIN, b.right - w), vw - w - MENU_MARGIN);
+    let next: { top: number; left: number; maxHeight?: number };
+    if (h <= above) next = { top: b.top - MENU_GAP - h, left };
+    else if (h <= below) next = { top: b.bottom + MENU_GAP, left };
+    else if (above >= below) next = { top: MENU_MARGIN, left, maxHeight: above };
+    else next = { top: b.bottom + MENU_GAP, left, maxHeight: below };
+    setPlace((prev) => (prev && prev.top === next.top && prev.left === next.left && prev.maxHeight === next.maxHeight ? prev : next));
+  });
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent(MENU_OPENED, { detail: id }));
+    const close = () => closeRef.current();
+    const onOtherOpened = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== id) close();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (!menu.current?.contains(target) && !anchor.current?.contains(target)) close();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      close();
+      anchor.current?.focus();
+    };
+    const onScroll = (event: Event) => {
+      if (!menu.current?.contains(event.target as Node)) close();
+    };
+    window.addEventListener(MENU_OPENED, onOtherOpened);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    window.addEventListener('scroll', onScroll, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener(MENU_OPENED, onOtherOpened);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [id, anchor]);
+
+  return createPortal(
+    <div
+      ref={menu}
+      role="menu"
+      aria-label={`Actions for ${title}`}
+      className="fixed z-[60] w-56 overflow-y-auto rounded-lg bg-[#0e1533] py-1 text-sm text-white shadow-xl ring-1 ring-white/15"
+      style={place ? { top: place.top, left: place.left, maxHeight: place.maxHeight } : { top: 0, left: 0, visibility: 'hidden' }}
+    >
+      <p className="truncate border-b border-white/10 px-3 pb-2 pt-1.5 text-xs font-semibold text-white/60" title={title}>
+        {title}
+      </p>
+      {children((action) => () => {
+        onClose();
+        action();
+      })}
+    </div>,
+    document.body
   );
 }
 
