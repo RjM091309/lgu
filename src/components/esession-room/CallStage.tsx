@@ -235,7 +235,7 @@ export function CallStage(props: CallStageProps) {
     ) : null;
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-[#070b1f] text-white">
+    <div data-fixed-dark className="fixed inset-0 z-40 flex flex-col bg-[#070b1f] text-white">
       <TopBar {...props} membersPresent={participants.filter((p) => p.group === 'member').length} mode={mode} onToggleLayout={() => setLayout(mode === 'gallery' ? 'speaker' : 'gallery')} />
 
       {room && room.agenda.length ? (

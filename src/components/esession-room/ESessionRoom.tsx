@@ -581,7 +581,7 @@ const OUTCOME_TEXT: Record<Outcome, (by?: string | null) => { title: string; bod
 function OutcomeScreen({ phase, canRejoin, onRejoin }: { phase: Extract<Phase, { name: 'outcome' }>; canRejoin: boolean; onRejoin: () => void }) {
   const text = OUTCOME_TEXT[phase.kind](phase.by);
   return (
-    <div className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-br from-[#0a0f3d] via-[#1a237e] to-[#283593] px-6 text-center text-white">
+    <div data-fixed-dark className="flex min-h-dvh flex-col items-center justify-center bg-gradient-to-br from-[#0a0f3d] via-[#1a237e] to-[#283593] px-6 text-center text-white">
       <img src="/lims-logo.svg" alt="" className="h-16 w-16" />
       <h1 className="mt-5 text-2xl font-bold">{text.title}</h1>
       <p className="mt-2 max-w-md text-sm text-white/75">{text.body}</p>

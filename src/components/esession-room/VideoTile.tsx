@@ -276,6 +276,7 @@ function TileMenu({ anchor, title, onClose, children }: { anchor: RefObject<HTML
   return createPortal(
     <div
       ref={menu}
+      data-fixed-dark
       role="menu"
       aria-label={`Actions for ${title}`}
       className="fixed z-[60] w-56 overflow-y-auto rounded-lg bg-[#0e1533] py-1 text-sm text-white shadow-xl ring-1 ring-white/15"
