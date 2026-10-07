@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, Clock, Headphones, Lock, MapPin, Play, ShieldCheck, Users, Video, Wifi, XCircle } from 'lucide-react';
+import { CalendarClock, CheckCircle2, Clock, EyeOff, Headphones, Lock, MapPin, Play, ShieldCheck, Users, Video, Wifi, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { confirmAction } from '@/components/ui/confirm';
 import { useUsers } from '@/lib/access-store';
 import { logActivity } from '@/lib/activity-log';
-import { rsvpOf, useAttendance } from '@/lib/attendance';
+import { committeeNameOf, rsvpOf, useAttendance } from '@/lib/attendance';
 import { useCalendarSessions } from '@/lib/esession-sync';
 import { isInvited, type MobileAccount } from '@/lib/mobile-accounts';
 import type { Session } from '@/lib/mock-data';
@@ -41,6 +41,11 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
   const liveBySession = new Map(liveRooms.map((room) => [room.sessionId, room]));
   const todays = mine.filter((session) => session.date === today);
   const upcoming = mine.filter((session) => session.date > today).slice(0, UPCOMING_LIMIT);
+  // Sessions of the body this person is not invited to (mostly other committees' hearings): shown so they know
+  // what is on, but without a way to join. Hosts already see everything above.
+  const others = account.canManage ? [] : sessions.filter((session) => session.date >= today && !isInvited(session, users, account.inviteeId)).slice(0, UPCOMING_LIMIT);
+  const othersToday = others.filter((session) => session.date === today).length;
+  const anyLiveBySession = new Map(live.map((room) => [room.sessionId, room]));
 
   const start = async (session: Session) => {
     if (session.date !== today) {
@@ -118,7 +123,8 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
             ) : (
               <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-white p-5 text-sm text-text-muted">
                 <CalendarClock className="h-8 w-8 shrink-0 text-primary/40" />
-                No sessions today. Upcoming sessions are listed {upcoming.length ? 'alongside' : 'here once they are scheduled'}.
+                {account.canManage ? 'No sessions today.' : 'No sessions you are invited to today.'}{' '}
+                {othersToday ? `${othersToday === 1 ? 'Another session is' : `${othersToday} other sessions are`} on today; see Other sessions below.` : upcoming.length ? 'Upcoming sessions are listed alongside.' : 'Upcoming sessions are listed here once they are scheduled.'}
               </div>
             )}
 
@@ -167,6 +173,22 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
             )}
           </section>
         </div>
+
+        {others.length ? (
+          <section aria-labelledby="others-heading" className="space-y-3">
+            <div>
+              <h2 id="others-heading" className="text-base font-semibold text-text-main">
+                Other sessions
+              </h2>
+              <p className="text-sm text-text-muted">Sessions of the Sanggunian you are not invited to. They are listed so you know what is on; only their invitees can join.</p>
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {others.map((session) => (
+                <OtherSessionCard key={session.id} session={session} room={anyLiveBySession.get(session.id)} today={session.date === today} />
+              ))}
+            </div>
+          </section>
+        ) : null}
       </main>
     </>
   );
@@ -276,6 +298,48 @@ function SessionCard({
             </>
           )}
         </div>
+      </div>
+    </article>
+  );
+}
+
+/** A session this person is not invited to: what, when and where, whether it is live, and no way in. */
+function OtherSessionCard({ session, room, today }: { session: Session; room: RoomSummary | undefined; today: boolean }) {
+  const { day, month, weekday } = dayParts(session.date);
+  const committee = committeeNameOf(session);
+  return (
+    <article className="flex gap-4 rounded-xl border border-dashed border-border bg-white/60 p-4">
+      <div className="flex h-16 w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-text-muted">
+        <span className="text-[10px] font-bold uppercase">{month}</span>
+        <span className="text-xl font-bold leading-none">{day}</span>
+        <span className="text-[10px] font-semibold uppercase">{weekday}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <TypeBadge type={session.type} />
+          {room ? <LiveBadge since={room.liveSince} onHold={room.onHold} /> : today ? <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">Today</span> : null}
+        </div>
+        <h3 className="mt-1.5 text-sm font-semibold text-text-main">{session.title}</h3>
+        <p className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-text-muted">
+          <span className="inline-flex items-center gap-1">
+            <Clock className="h-3.5 w-3.5" />
+            {session.time}
+          </span>
+          <span className="inline-flex min-w-0 items-center gap-1">
+            <MapPin className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">{session.location}</span>
+          </span>
+          {room && !room.onHold ? (
+            <span className="inline-flex items-center gap-1">
+              <Users className="h-3.5 w-3.5" />
+              {room.participantCount} in the room
+            </span>
+          ) : null}
+        </p>
+        <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-muted">
+          <EyeOff className="h-3.5 w-3.5 shrink-0" />
+          Not invited{committee ? ` · for ${committee} members` : ''}
+        </p>
       </div>
     </article>
   );
