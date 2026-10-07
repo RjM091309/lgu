@@ -498,9 +498,8 @@ export function CallStage(props: CallStageProps) {
 }
 
 const FULLSCREEN_NOTICE: Record<FullscreenNotice, { text: string; action: string }> = {
-  admitted: { text: 'You are in. Full screen hides the browser bars.', action: 'Go full screen' },
+  arrived: { text: 'Full screen hides the browser bars, so the call gets the whole screen.', action: 'Go full screen' },
   left: { text: 'You left full screen.', action: 'Return to full screen' },
-  off: { text: 'Full screen is off on this device.', action: 'Go full screen' },
 };
 
 function Banner({ tone, children, onClose }: { tone: 'info' | 'gold' | 'warning' | 'danger' | 'success'; children: ReactNode; onClose?: () => void }) {

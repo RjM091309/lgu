@@ -116,13 +116,12 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
   const invited = session ? account.canManage || isInvited(session, users, account.inviteeId) : false;
   const myRole = session ? roleIn(account, session) : 'participant';
 
-  // Full screen during the call: hosts and presiding officers go full screen with the join tap; invitees who
-  // ask to join are offered it once they are in, since being admitted is not a tap the browser accepts.
+  // Full screen during the call, only when the person asks for it: the call screen offers it on arrival, and the
+  // page leaves full screen by itself when the call ends (a reconnection keeps it).
   const fullscreen = useFullscreen(phase.name === 'in-call');
-  const askedToJoin = useRef(false);
   const { arrived: fullscreenArrived, release: releaseFullscreen } = fullscreen;
   useEffect(() => {
-    if (phase.name === 'in-call') fullscreenArrived(askedToJoin.current);
+    if (phase.name === 'in-call') fullscreenArrived();
     else if (phase.name !== 'joining' && phase.name !== 'rejoining') releaseFullscreen();
   }, [phase.name, fullscreenArrived, releaseFullscreen]);
   useEffect(() => releaseFullscreen, [releaseFullscreen]);
@@ -265,8 +264,6 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     if (!session) return;
     // Created inside the tap so iPads let the sound play.
     resumeAudio();
-    askedToJoin.current = !startFirst && myRole === 'participant' && !liveRoom?.autoAdmit;
-    if (!askedToJoin.current) fullscreen.autoEnter();
     setPhase({ name: 'joining' });
     try {
       let roomId = liveRoom?.roomId;
