@@ -265,7 +265,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     if (!session) return;
     // Created inside the tap so iPads let the sound play.
     resumeAudio();
-    askedToJoin.current = !startFirst && myRole === 'participant';
+    askedToJoin.current = !startFirst && myRole === 'participant' && !liveRoom?.autoAdmit;
     if (!askedToJoin.current) fullscreen.autoEnter();
     setPhase({ name: 'joining' });
     try {
@@ -789,7 +789,8 @@ function PreJoin({
   const waiting = phase.name === 'waiting';
   const joining = phase.name === 'joining';
   const roleLabel = roleLabelFor(role, session);
-  const willWait = role === 'participant';
+  // Invitees wait for a host, unless the host admits everyone automatically.
+  const willWait = role === 'participant' && !liveRoom?.autoAdmit;
 
   let action: ReactNode;
   if (waiting) {
@@ -900,8 +901,9 @@ function PreJoin({
                     <span className="font-semibold text-text-main">{liveRoom.participantCount}</span> in the e-session, started by {liveRoom.startedBy.name}
                   </li>
                   {liveRoom.recording ? <li className="font-semibold text-red-700">This e-session is being recorded.</li> : null}
-                  {liveRoom.locked && willWait ? <li className="font-semibold text-amber-800">The host has locked the e-session.</li> : null}
+                  {liveRoom.locked && role === 'participant' ? <li className="font-semibold text-amber-800">The host has locked the e-session.</li> : null}
                   {willWait && !liveRoom.locked ? <li>A host admits you after you ask to join.</li> : null}
+                  {role === 'participant' && liveRoom.autoAdmit && !liveRoom.locked ? <li>The host admits invitees automatically, so you join straight away.</li> : null}
                 </ul>
               ) : (
                 <p className="text-text-muted">

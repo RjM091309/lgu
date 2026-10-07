@@ -205,6 +205,8 @@ export function createESessionRoomsHandler(env = {}) {
       endedAt: room.endedAt,
       endedBy: room.endedBy,
       locked: room.locked,
+      // So the lobby can say "Join now" instead of "Ask to join" when nobody needs admitting.
+      autoAdmit: room.autoAdmit,
       recording: room.recording !== null,
       participantCount: inRoom.length,
       participants: inRoom.slice(0, 12).map((p) => ({ inviteeId: p.account.inviteeId, name: p.account.name, abbr: p.account.abbr, group: p.account.group })),

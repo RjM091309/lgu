@@ -35,6 +35,8 @@ export interface RoomSummary {
   endedAt: number | null;
   endedBy: Person | null;
   locked: boolean;
+  /** Invitees join without waiting to be admitted. */
+  autoAdmit: boolean;
   recording: boolean;
   participantCount: number;
   participants: (Person & { abbr: string; group: 'member' | 'staff' })[];
