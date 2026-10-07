@@ -36,8 +36,9 @@ export function LiveBadge({ since, onHold = false, className }: { since?: number
       </span>
     );
   }
+  // Always red with a white dot, in either theme (data-fixed-dark keeps dark mode from darkening the dot).
   return (
-    <span className={cn('inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white', className)}>
+    <span data-fixed-dark className={cn('inline-flex items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white', className)}>
       <span className="relative flex h-1.5 w-1.5">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75 motion-reduce:hidden" />
         <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />

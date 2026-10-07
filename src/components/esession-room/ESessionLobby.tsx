@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, Clock, EyeOff, Headphones, Lock, MapPin, Play, ShieldCheck, Users, Video, Wifi, XCircle } from 'lucide-react';
+import { CalendarClock, CheckCircle2, ChevronDown, Clock, EyeOff, Headphones, Lock, MapPin, Play, ShieldCheck, Users, Video, Wifi, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { confirmAction } from '@/components/ui/confirm';
 import { useUsers } from '@/lib/access-store';
@@ -79,6 +79,8 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
           </p>
         </div>
 
+        <BeforeYouJoin />
+
         <InsecureNotice />
 
         {status === 'offline' ? (
@@ -94,24 +96,36 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
               <span className="h-2 w-2 animate-pulse rounded-full bg-red-600" aria-hidden />
               Live now
             </h2>
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-3 lg:grid-cols-2">
               {liveRooms.map((room) => {
                 const session = sessions.find((entry) => entry.id === room.sessionId);
-                return <LiveCard key={room.roomId} room={room} role={session ? roleLabelFor(roleIn(account, session), session) : null} onJoin={() => navigate(`/es/session/${encodeURIComponent(room.sessionId)}`)} />;
+                const myRole = session ? roleIn(account, session) : 'participant';
+                // "Join as Presiding Officer" / "as Host" says something; "as Participant" does not.
+                return (
+                  <LiveCard
+                    key={room.roomId}
+                    room={room}
+                    role={session && myRole !== 'participant' ? roleLabelFor(myRole, session) : null}
+                    wide={liveRooms.length === 1}
+                    onJoin={() => navigate(`/es/session/${encodeURIComponent(room.sessionId)}`)}
+                  />
+                );
               })}
             </div>
           </section>
         ) : null}
 
-        <div className="grid items-start gap-6 lg:grid-cols-[1.35fr_1fr]">
-          <section aria-labelledby="today-heading" className="space-y-3">
-            <h2 id="today-heading" className="text-base font-semibold text-text-main">
-              Today
-            </h2>
+        {/* Today, Upcoming and Other sessions share one shape: full width, cards in two equal columns. */}
+        <section aria-labelledby="today-heading" className="space-y-3">
+          <h2 id="today-heading" className="text-base font-semibold text-text-main">
+            Today
+          </h2>
+          <div className="grid gap-3 lg:grid-cols-2">
             {todays.length ? (
               todays.map((session) => (
                 <SessionCard
                   key={session.id}
+                  wide={todays.length === 1}
                   session={session}
                   account={account}
                   room={liveBySession.get(session.id)}
@@ -121,45 +135,28 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
                 />
               ))
             ) : (
-              <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-white p-5 text-sm text-text-muted">
+              <div className="flex items-center gap-3 rounded-xl border border-dashed border-border bg-white p-5 text-sm text-text-muted lg:col-span-2">
                 <CalendarClock className="h-8 w-8 shrink-0 text-primary/40" />
-                {account.canManage ? 'No sessions today.' : 'No sessions you are invited to today.'}{' '}
-                {othersToday ? `${othersToday === 1 ? 'Another session is' : `${othersToday} other sessions are`} on today; see Other sessions below.` : upcoming.length ? 'Upcoming sessions are listed alongside.' : 'Upcoming sessions are listed here once they are scheduled.'}
+                <span>
+                  {account.canManage ? 'No sessions today.' : 'No sessions you are invited to today.'}{' '}
+                  {othersToday ? `${othersToday === 1 ? 'Another session is' : `${othersToday} other sessions are`} on today; see Other sessions below.` : upcoming.length ? 'Upcoming sessions are listed below.' : 'Upcoming sessions are listed here once they are scheduled.'}
+                </span>
               </div>
             )}
+          </div>
+        </section>
 
-            <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-              <h2 className="text-base font-semibold text-text-main">Before you join</h2>
-              <ul className="mt-3 grid gap-3 text-sm text-text-muted sm:grid-cols-2">
-                <li className="flex gap-3">
-                  <Headphones className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  Use earphones when others in the same hall are also on the e-session, to avoid echo.
-                </li>
-                <li className="flex gap-3">
-                  <Wifi className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  Stay on the Municipal Hall Wi-Fi. Turn off your camera if the sound breaks up.
-                </li>
-                <li className="flex gap-3">
-                  <Users className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  Raise your hand to ask for the floor; the Presiding Officer recognizes speakers.
-                </li>
-                <li className="flex gap-3">
-                  <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                  Audio and video are encrypted and go only to the devices in the e-session.
-                </li>
-              </ul>
-            </section>
-          </section>
-
-          <section aria-labelledby="upcoming-heading" className="space-y-3">
-            <h2 id="upcoming-heading" className="text-base font-semibold text-text-main">
-              Upcoming
-            </h2>
+        <section aria-labelledby="upcoming-heading" className="space-y-3">
+          <h2 id="upcoming-heading" className="text-base font-semibold text-text-main">
+            Upcoming
+          </h2>
+          <div className="grid gap-3 lg:grid-cols-2">
             {upcoming.length ? (
               upcoming.map((session) => (
                 <SessionCard
                   key={session.id}
                   compact
+                  wide={upcoming.length === 1}
                   session={session}
                   account={account}
                   room={liveBySession.get(session.id)}
@@ -169,10 +166,10 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
                 />
               ))
             ) : (
-              <p className="rounded-xl border border-dashed border-border bg-white p-5 text-sm text-text-muted">No upcoming sessions you are invited to.</p>
+              <p className="rounded-xl border border-dashed border-border bg-white p-5 text-sm text-text-muted lg:col-span-2">No upcoming sessions you are invited to.</p>
             )}
-          </section>
-        </div>
+          </div>
+        </section>
 
         {others.length ? (
           <section aria-labelledby="others-heading" className="space-y-3">
@@ -184,7 +181,7 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
             </div>
             <div className="grid gap-3 lg:grid-cols-2">
               {others.map((session) => (
-                <OtherSessionCard key={session.id} session={session} room={anyLiveBySession.get(session.id)} today={session.date === today} />
+                <OtherSessionCard key={session.id} session={session} room={anyLiveBySession.get(session.id)} today={session.date === today} wide={others.length === 1} />
               ))}
             </div>
           </section>
@@ -194,23 +191,26 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
   );
 }
 
-function LiveCard({ room, role, onJoin }: { room: RoomSummary; role: string | null; onJoin: () => void }) {
+/** A live e-session this person can join. `wide` (the only one live): spans both columns, with joining on the right. */
+function LiveCard({ room, role, wide = false, onJoin }: { room: RoomSummary; role: string | null; wide?: boolean; onJoin: () => void }) {
   return (
-    <article className="relative overflow-hidden rounded-2xl border border-red-200 bg-gradient-to-br from-white to-red-50/60 p-5 shadow-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <LiveBadge since={room.liveSince} onHold={room.onHold} />
-        <TypeBadge type={room.type} />
-        {room.recording ? <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-inset ring-red-200">Recording</span> : null}
-        {room.locked ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">
-            <Lock className="h-3 w-3" />
-            Locked
-          </span>
-        ) : null}
+    <article className={cn('relative overflow-hidden rounded-2xl border border-red-200 bg-gradient-to-br from-white to-red-50/60 p-5 shadow-sm', wide && 'lg:col-span-2 lg:flex lg:items-center lg:gap-8')}>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <LiveBadge since={room.liveSince} onHold={room.onHold} />
+          <TypeBadge type={room.type} />
+          {room.recording ? <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-[11px] font-semibold text-red-700 ring-1 ring-inset ring-red-200">Recording</span> : null}
+          {room.locked ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">
+              <Lock className="h-3 w-3" />
+              Locked
+            </span>
+          ) : null}
+        </div>
+        <h3 className="mt-3 text-lg font-bold text-text-main">{room.title}</h3>
+        <p className="mt-1 text-sm text-text-muted">{room.onHold ? `On hold, waiting for the host · started by ${room.startedBy.name}` : `Started by ${room.startedBy.name}`}</p>
       </div>
-      <h3 className="mt-3 text-lg font-bold text-text-main">{room.title}</h3>
-      <p className="mt-1 text-sm text-text-muted">{room.onHold ? `On hold, waiting for the host · started by ${room.startedBy.name}` : `Started by ${room.startedBy.name}`}</p>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-4">
+      <div className={cn('mt-4 flex flex-wrap items-center justify-between gap-4', wide && 'lg:mt-0 lg:shrink-0 lg:justify-end lg:gap-6')}>
         <div className="flex items-center gap-3">
           <div className="flex -space-x-2">
             {room.participants.slice(0, 6).map((person) => (
@@ -234,6 +234,7 @@ function SessionCard({
   room,
   rsvp,
   compact = false,
+  wide = false,
   onStart,
   onOpen,
 }: {
@@ -242,19 +243,22 @@ function SessionCard({
   room: RoomSummary | undefined;
   rsvp: 'attending' | 'declined' | undefined;
   compact?: boolean;
+  /** The only card in its section: spans both columns, with the action on the right. */
+  wide?: boolean;
   onStart: () => void;
   onOpen: () => void;
 }) {
   const role = roleIn(account, session);
   const { day, month, weekday } = dayParts(session.date);
   return (
-    <article className={cn('flex gap-4 rounded-xl border bg-white shadow-sm', compact ? 'p-4' : 'p-5', room ? 'border-red-200' : 'border-border')}>
+    <article className={cn('flex gap-4 rounded-xl border bg-white shadow-sm', compact ? 'p-4' : 'p-5', room ? 'border-red-200' : 'border-border', wide && 'lg:col-span-2')}>
       <div className="flex h-16 w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-primary/[0.07] text-primary">
         <span className="text-[10px] font-bold uppercase">{month}</span>
         <span className="text-xl font-bold leading-none">{day}</span>
         <span className="text-[10px] font-semibold uppercase text-text-muted">{weekday}</span>
       </div>
-      <div className="min-w-0 flex-1">
+      <div className={cn('min-w-0 flex-1', wide && 'lg:flex lg:items-center lg:gap-6')}>
+        <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <TypeBadge type={session.type} />
           {role !== 'participant' ? <RoleBadge role={role} label={roleLabelFor(role, session)} /> : null}
@@ -277,7 +281,8 @@ function SessionCard({
             </span>
           ) : null}
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        </div>
+        <div className={cn('mt-3 flex flex-wrap items-center gap-2', wide && 'lg:mt-0 lg:shrink-0 lg:flex-col lg:items-end lg:text-right')}>
           {room ? (
             <Button onClick={onOpen} className="h-11 bg-red-600 px-5 font-semibold hover:bg-red-700 hover:opacity-100">
               <Video className="mr-2 h-4 w-4" />
@@ -304,17 +309,18 @@ function SessionCard({
 }
 
 /** A session this person is not invited to: what, when and where, whether it is live, and no way in. */
-function OtherSessionCard({ session, room, today }: { session: Session; room: RoomSummary | undefined; today: boolean }) {
+function OtherSessionCard({ session, room, today, wide = false }: { session: Session; room: RoomSummary | undefined; today: boolean; wide?: boolean }) {
   const { day, month, weekday } = dayParts(session.date);
   const committee = committeeNameOf(session);
   return (
-    <article className="flex gap-4 rounded-xl border border-dashed border-border bg-white/60 p-4">
+    <article className={cn('flex gap-4 rounded-xl border border-dashed border-border bg-surface/60 p-4', wide && 'lg:col-span-2')}>
       <div className="flex h-16 w-14 shrink-0 flex-col items-center justify-center rounded-lg bg-muted text-text-muted">
         <span className="text-[10px] font-bold uppercase">{month}</span>
         <span className="text-xl font-bold leading-none">{day}</span>
         <span className="text-[10px] font-semibold uppercase">{weekday}</span>
       </div>
-      <div className="min-w-0 flex-1">
+      <div className={cn('min-w-0 flex-1', wide && 'lg:flex lg:items-center lg:gap-6')}>
+        <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <TypeBadge type={session.type} />
           {room ? <LiveBadge since={room.liveSince} onHold={room.onHold} /> : today ? <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-semibold text-text-muted">Today</span> : null}
@@ -336,11 +342,44 @@ function OtherSessionCard({ session, room, today }: { session: Session; room: Ro
             </span>
           ) : null}
         </p>
-        <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-muted">
+        </div>
+        <p className={cn('mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-text-muted', wide && 'lg:mt-0 lg:shrink-0')}>
           <EyeOff className="h-3.5 w-3.5 shrink-0" />
           Not invited{committee ? ` · for ${committee} members` : ''}
         </p>
       </div>
     </article>
+  );
+}
+
+const TIPS = [
+  { icon: Headphones, text: 'Use earphones when others in the same hall are also on the e-session, to avoid echo.' },
+  { icon: Wifi, text: 'Stay on the Municipal Hall Wi-Fi. Turn off your camera if the sound breaks up.' },
+  { icon: Users, text: 'Raise your hand to ask for the floor; the Presiding Officer recognizes speakers.' },
+  { icon: ShieldCheck, text: 'Audio and video are encrypted and go only to the devices in the e-session.' },
+];
+
+/** The joining tips: open at first, and folded into one line whenever the person closes them. */
+function BeforeYouJoin() {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className="rounded-xl border border-border bg-white shadow-sm">
+      <button type="button" onClick={() => setOpen((value) => !value)} className="flex min-h-12 w-full items-center justify-between gap-3 px-5 text-left" aria-expanded={open} aria-controls="es-tips">
+        <span className="text-sm font-semibold text-text-main">
+          Before you join <span className="font-normal text-text-muted">({TIPS.length} tips)</span>
+        </span>
+        <ChevronDown className={cn('h-4 w-4 shrink-0 text-text-muted transition-transform', open && 'rotate-180')} />
+      </button>
+      {open ? (
+        <ul id="es-tips" className="grid gap-3 border-t border-border px-5 pb-5 pt-4 text-sm text-text-muted sm:grid-cols-2 lg:grid-cols-4">
+          {TIPS.map((tip) => (
+            <li key={tip.text} className="flex gap-3">
+              <tip.icon className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+              {tip.text}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
