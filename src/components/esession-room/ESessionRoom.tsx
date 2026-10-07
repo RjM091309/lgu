@@ -14,6 +14,7 @@ import { formatLongDate } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
 import {
   RoomConnection,
+  elapsedClock,
   fetchAudit,
   fetchServerInfo,
   joinRoom,
@@ -381,7 +382,17 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
   }, [room, screenTrack]);
 
   const toggleRecording = useCallback(async () => {
-    if (recorder.current) return stopRecording(true);
+    if (recorder.current) {
+      // One tap on the bar stops it, so make sure that tap was meant.
+      const since = room?.recordingBy?.since;
+      const confirmed = await confirmAction({
+        title: 'Stop and save the recording?',
+        description: `${since ? `${elapsedClock(Date.now() - since)} recorded so far. ` : ''}The recording is saved to Session Files, and you can start a new one afterwards.`,
+        confirmLabel: 'Stop & save',
+      });
+      if (confirmed && recorder.current) await stopRecording(true);
+      return;
+    }
     if (room?.recordingBy) {
       const confirmed = await confirmAction({ title: 'Stop the recording?', description: `${room.recordingBy.name} is recording this e-session. Their device saves what was recorded so far.`, confirmLabel: 'Stop recording' });
       if (confirmed) void act('recording', { on: false });

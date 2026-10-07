@@ -1,5 +1,7 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import {
+  Check,
+  ChevronUp,
   Circle,
   ClipboardCheck,
   Hand,
@@ -28,8 +30,8 @@ import {
 import { cn } from '@/lib/utils';
 import { confirmAction } from '@/components/ui/confirm';
 import type { Session } from '@/lib/mock-data';
-import type { PeerInfo } from '@/lib/esession-rtc';
-import { elapsedClock, roleLabelFor, type ChatMessage, type Participant, type RoomRole, type RoomView } from '@/lib/esession-room';
+import { supportsSpeakerChoice, type PeerInfo } from '@/lib/esession-rtc';
+import { elapsedClock, roleLabelFor, type ChatMessage, type Participant, type RollCall, type RoomRole, type RoomView } from '@/lib/esession-room';
 import type { LocalMedia } from '@/components/esession-room/use-local-media';
 import { RemoteAudio, VideoTile, type TileActions } from '@/components/esession-room/VideoTile';
 import { AgendaPanel, ChatPanel, PeoplePanel } from '@/components/esession-room/CallPanels';
@@ -188,6 +190,41 @@ export function CallStage(props: CallStageProps) {
     floatPeople.find((p) => p.role === 'presiding' && p.pid !== selfPid) ??
     floatPeople.find((p) => p.pid !== selfPid);
 
+  // Calling the roll is one tap and is kept in the record for good, so it asks first.
+  const membersPresent = participants.filter((p) => p.group === 'member').length;
+  const callRoll = async () => {
+    const confirmed = await confirmAction({
+      title: 'Call the roll now?',
+      description: `${membersPresent} of ${room?.memberTotal ?? 0} members are in the e-session. The result is kept in the e-session's record and shown to everyone.`,
+      confirmLabel: 'Call the roll',
+    });
+    if (confirmed) void act('roll-call');
+  };
+
+  // Everyone hears about a new roll call for 20 seconds. Roll calls from before I joined stay in the People panel.
+  const latestCall = room?.rollCalls.at(-1) ?? null;
+  const seenCallAt = useRef<number | null>(null);
+  const [callNotice, setCallNotice] = useState<RollCall | null>(null);
+  useEffect(() => {
+    if (!room) return;
+    const at = latestCall?.at ?? 0;
+    if (seenCallAt.current === null) seenCallAt.current = at;
+    else if (latestCall && at > seenCallAt.current) {
+      seenCallAt.current = at;
+      setCallNotice(latestCall);
+    }
+  }, [room, latestCall]);
+  useEffect(() => {
+    if (!callNotice) return;
+    const timer = window.setTimeout(() => setCallNotice(null), 20_000);
+    return () => window.clearTimeout(timer);
+  }, [callNotice]);
+  const showRollCallDetails = () => {
+    setCallNotice(null);
+    setPanel('people');
+    window.setTimeout(() => document.getElementById('es-roll-call')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  };
+
   const roleLabelOf = (p: Participant) => (p.role === 'participant' ? null : session ? roleLabelFor(p.role, session) : p.role === 'host' ? 'Host' : 'Presiding Officer');
   const streamOf = (p: Participant) => (p.pid === selfPid ? (props.screenStream ?? media.stream) : (peers.get(p.pid)?.stream ?? null));
 
@@ -274,7 +311,7 @@ export function CallStage(props: CallStageProps) {
   const panelBody =
     room && panel ? (
       panel === 'people' ? (
-        <PeoplePanel room={room} selfPid={selfPid} selfRole={selfRole} qualities={new Map([...peers].map(([pid, peer]) => [pid, peer.quality]))} roleLabelOf={roleLabelOf} act={act} />
+        <PeoplePanel room={room} selfPid={selfPid} selfRole={selfRole} qualities={new Map([...peers].map(([pid, peer]) => [pid, peer.quality]))} roleLabelOf={roleLabelOf} act={act} onCallRoll={() => void callRoll()} />
       ) : panel === 'chat' ? (
         <ChatPanel messages={props.chat} selfPid={selfPid} onSend={props.onSendChat} />
       ) : (
@@ -285,7 +322,7 @@ export function CallStage(props: CallStageProps) {
   return (
     <div data-fixed-dark className={cn('fixed inset-0 z-40 flex flex-col text-white', presenting ? 'bg-black' : 'bg-[#070b1f]')}>
       <div ref={topBars.ref} className={barSlide('top')} {...(presenting ? bars.barProps : {})}>
-      <TopBar {...props} membersPresent={participants.filter((p) => p.group === 'member').length} mode={mode} onToggleLayout={() => setLayout(mode === 'gallery' ? 'speaker' : 'gallery')} />
+      <TopBar {...props} membersPresent={membersPresent} mode={mode} onToggleLayout={() => setLayout(mode === 'gallery' ? 'speaker' : 'gallery')} />
 
       {room && room.agenda.length ? (
         <button
@@ -323,6 +360,18 @@ export function CallStage(props: CallStageProps) {
                     Unmute to speak
                   </button>
                 )}
+              </Banner>
+            ) : null}
+            {callNotice ? (
+              <Banner tone={callNotice.hasQuorum ? 'success' : 'warning'} onClose={() => setCallNotice(null)}>
+                <ClipboardCheck className="mr-2 h-4 w-4 shrink-0" />
+                <span>
+                  <span className="font-semibold">{callNotice.by.inviteeId === me?.inviteeId ? 'You called the roll' : `Roll call by ${callNotice.by.name}`}:</span> {callNotice.presentCount} of {callNotice.memberTotal} members present.{' '}
+                  {callNotice.hasQuorum ? 'Quorum declared.' : `No quorum (${callNotice.quorum} needed).`}
+                </span>
+                <button type="button" onClick={showRollCallDetails} className="pointer-events-auto ml-2 inline-flex h-9 items-center rounded-lg bg-white/15 px-3 text-xs font-bold text-white hover:bg-white/25">
+                  Details
+                </button>
               </Banner>
             ) : null}
             {waitingCount ? (
@@ -412,7 +461,7 @@ export function CallStage(props: CallStageProps) {
       </div>
 
       <div ref={bottomBar.ref} className={barSlide('bottom')} {...(presenting ? bars.barProps : {})}>
-        <ControlBar {...props} waitingCount={waitingCount} me={me} mode={mode} onLayout={(next) => setLayout(next)} />
+        <ControlBar {...props} waitingCount={waitingCount} me={me} mode={mode} onLayout={(next) => setLayout(next)} onCallRoll={() => void callRoll()} />
       </div>
 
       {panel && !isWide ? (
@@ -442,12 +491,12 @@ const FULLSCREEN_NOTICE: Record<FullscreenNotice, { text: string; action: string
   off: { text: 'Full screen is off on this device.', action: 'Go full screen' },
 };
 
-function Banner({ tone, children, onClose }: { tone: 'info' | 'gold' | 'warning' | 'danger'; children: ReactNode; onClose?: () => void }) {
+function Banner({ tone, children, onClose }: { tone: 'info' | 'gold' | 'warning' | 'danger' | 'success'; children: ReactNode; onClose?: () => void }) {
   return (
     <div
       className={cn(
         'pointer-events-auto flex max-w-full flex-wrap items-center gap-y-1 rounded-xl px-4 py-2 text-sm shadow-xl ring-1',
-        tone === 'gold' ? 'bg-[#d4a72c] text-[#141b66] ring-[#e8c766]' : tone === 'danger' ? 'bg-red-700 text-white ring-red-400/50' : tone === 'warning' ? 'bg-[#5c4300] text-[#fde68a] ring-amber-400/40' : 'bg-[#1b2453] text-white ring-white/15'
+        tone === 'gold' ? 'bg-[#d4a72c] text-[#141b66] ring-[#e8c766]' : tone === 'success' ? 'bg-[#14532d] text-white ring-green-400/40' : tone === 'danger' ? 'bg-red-700 text-white ring-red-400/50' : tone === 'warning' ? 'bg-[#5c4300] text-[#fde68a] ring-amber-400/40' : 'bg-[#1b2453] text-white ring-white/15'
       )}
       role="status"
       data-no-wake
@@ -555,6 +604,13 @@ function PanelHeader({ panel, setPanel, people, unread, waiting }: { panel: Pane
   );
 }
 
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const SHORTCUTS = {
+  mic: IS_MAC ? '⌘D' : 'Ctrl+D',
+  cam: IS_MAC ? '⌘E' : 'Ctrl+E',
+  hand: IS_MAC ? '⌃⌘H' : 'Ctrl+Alt+H',
+};
+
 function ControlButton({
   icon: Icon,
   label,
@@ -564,29 +620,108 @@ function ControlButton({
   badge,
   className,
   pressed,
+  ariaLabel,
+  shortcut,
+  buttonRef,
 }: {
   icon: typeof Mic;
   label: string;
   onClick: () => void;
   active?: boolean;
-  tone?: 'default' | 'off' | 'hand';
+  tone?: 'default' | 'off' | 'hand' | 'record';
   badge?: number;
   className?: string;
   pressed?: boolean;
+  /** When the caption is not the full name (the recording timer). */
+  ariaLabel?: string;
+  shortcut?: string;
+  buttonRef?: Ref<HTMLButtonElement>;
 }) {
+  const name = ariaLabel ?? label;
   return (
-    <button type="button" onClick={onClick} aria-pressed={pressed} aria-label={label} title={label} className={cn('group flex w-11 shrink-0 flex-col items-center gap-1 min-[401px]:w-12 sm:w-16', className)}>
+    <button
+      ref={buttonRef}
+      type="button"
+      onClick={onClick}
+      aria-pressed={pressed}
+      aria-label={name}
+      aria-keyshortcuts={shortcut}
+      title={shortcut ? `${name} (${shortcut})` : name}
+      className={cn('group flex w-11 shrink-0 flex-col items-center gap-1 min-[480px]:w-12 sm:w-16', className)}
+    >
       <span
         className={cn(
-          'relative flex h-11 w-11 items-center justify-center rounded-full transition-colors min-[401px]:h-12 min-[401px]:w-12 sm:h-14 sm:w-14',
-          tone === 'off' ? 'bg-red-600 text-white hover:bg-red-500' : tone === 'hand' ? 'bg-amber-400 text-[#3d2a00]' : active ? 'bg-white text-[#141b66]' : 'bg-white/10 text-white group-hover:bg-white/20'
+          'relative flex h-11 w-11 items-center justify-center rounded-full transition-colors min-[480px]:h-12 min-[480px]:w-12 sm:h-14 sm:w-14',
+          tone === 'off'
+            ? 'bg-red-600 text-white hover:bg-red-500'
+            : tone === 'hand'
+              ? 'bg-amber-400 text-[#3d2a00]'
+              : tone === 'record'
+                ? 'bg-red-600 text-white ring-4 ring-red-500/30 hover:bg-red-500 motion-safe:animate-pulse'
+                : active
+                  ? 'bg-white text-[#141b66]'
+                  : 'bg-white/10 text-white group-hover:bg-white/20'
         )}
       >
         <Icon className="h-5 w-5 sm:h-6 sm:w-6" />
         {badge ? <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white ring-2 ring-[#070b1f]">{badge > 9 ? '9+' : badge}</span> : null}
       </span>
-      <span className="max-w-full truncate text-[11px] font-medium text-white/80 max-[400px]:hidden">{label}</span>
+      <span className={cn('max-w-full truncate text-[11px] font-medium text-white/80 max-[480px]:hidden', tone === 'record' && 'font-mono tabular-nums text-red-200')}>{label}</span>
     </button>
+  );
+}
+
+type BarMenu = 'more' | 'mic' | 'cam';
+/** A group separator: a 1px line with 4px margins either side (shown from the sm breakpoint). */
+const SEPARATOR_WIDTH = 9;
+type MenuItem = { key: string; icon: typeof Mic; label: string; onClick: () => void; small?: boolean; danger?: boolean; iconClass?: string };
+type BarItem = { key: string; group: 0 | 1 | 2; priority: number; node: ReactNode; menu: MenuItem };
+
+/** Quick device choice above the Mic or Camera button; the full settings stay one tap further. */
+function DevicePicker({ kind, media, onOpenSettings, onClose }: { kind: 'mic' | 'cam'; media: LocalMedia; onOpenSettings: () => void; onClose: () => void }) {
+  const sections =
+    kind === 'cam'
+      ? [{ title: 'Camera', list: media.devices.cams, value: media.camId, choose: media.chooseCam }]
+      : [
+          { title: 'Microphone', list: media.devices.mics, value: media.micId, choose: media.chooseMic },
+          ...(supportsSpeakerChoice() && media.devices.speakers.length ? [{ title: 'Speaker', list: media.devices.speakers, value: media.speakerId, choose: media.chooseSpeaker }] : []),
+        ];
+  return (
+    <div className="absolute bottom-full left-0 z-50 mb-2 w-72 overflow-hidden rounded-xl bg-[#121a3d] py-1 text-sm text-white shadow-2xl ring-1 ring-white/15" role="menu">
+      {sections.map((section) => (
+        <div key={section.title} className="border-b border-white/10 pb-1 last:border-0">
+          <p className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-white/50">{section.title}</p>
+          {[{ deviceId: '', label: 'Default' }, ...section.list.map((device, index) => ({ deviceId: device.deviceId, label: device.label || `${section.title} ${index + 1}` }))].map((device) => (
+            <button
+              key={device.deviceId || 'default'}
+              type="button"
+              role="menuitemradio"
+              aria-checked={section.value === device.deviceId}
+              onClick={() => {
+                section.choose(device.deviceId);
+                onClose();
+              }}
+              className="flex min-h-10 w-full items-center gap-3 px-4 text-left hover:bg-white/10"
+            >
+              <Check className={cn('h-4 w-4 shrink-0', section.value === device.deviceId ? 'text-[#e8c766]' : 'invisible')} />
+              <span className="min-w-0 flex-1 truncate">{device.label}</span>
+            </button>
+          ))}
+        </div>
+      ))}
+      <button
+        type="button"
+        role="menuitem"
+        onClick={() => {
+          onClose();
+          onOpenSettings();
+        }}
+        className="flex min-h-11 w-full items-center gap-3 border-t border-white/10 px-4 text-left hover:bg-white/10"
+      >
+        <Settings className="h-4 w-4" />
+        All settings
+      </button>
+    </div>
   );
 }
 
@@ -610,99 +745,263 @@ function ControlBar({
   onOpenSettings,
   onLeave,
   fullscreen,
-}: CallStageProps & { waitingCount: number; me: Participant | undefined; mode: 'gallery' | 'speaker'; onLayout: (layout: Layout) => void }) {
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef<HTMLDivElement>(null);
+  onCallRoll,
+}: CallStageProps & { waitingCount: number; me: Participant | undefined; mode: 'gallery' | 'speaker'; onLayout: (layout: Layout) => void; onCallRoll: () => void }) {
+  const [menu, setMenu] = useState<BarMenu | null>(null);
   const moderator = selfRole !== 'participant';
   const isHost = selfRole === 'host';
   const handUp = me?.hand !== null && me?.hand !== undefined;
   const sharing = screenStream !== null;
   const togglePanel = (next: Panel) => setPanel(panel === next ? null : next);
-  const someoneRecording = !!room?.recordingBy;
+  const recordingBy = room?.recordingBy ?? null;
+  const now = useNow(recordingBy ? 1000 : 60_000);
+  const isSm = useMediaQuery('(min-width: 640px)');
+  const toggleMenu = (next: BarMenu) => setMenu((open) => (open === next ? null : next));
+  const toggleHand = () => void act('hand', { raised: !handUp });
 
+  // An open menu closes on a tap outside it or on Escape.
   useEffect(() => {
-    if (!moreOpen) return;
+    if (!menu) return;
     const onDown = (event: PointerEvent) => {
-      if (!moreRef.current?.contains(event.target as Node)) setMoreOpen(false);
+      if (!(event.target as Element).closest?.(`[data-bar-menu="${menu}"]`)) setMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenu(null);
     };
     document.addEventListener('pointerdown', onDown);
-    return () => document.removeEventListener('pointerdown', onDown);
-  }, [moreOpen]);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menu]);
 
-  const moreItems = useMemo(
-    () =>
-      [
-        { key: 'layout', icon: mode === 'gallery' ? RectangleHorizontal : LayoutGrid, label: mode === 'gallery' ? 'Speaker view' : 'Gallery view', onClick: () => onLayout(mode === 'gallery' ? 'speaker' : 'gallery') },
-        ...(fullscreen.supported
-          ? [{ key: 'fullscreen', icon: fullscreen.active ? Minimize : Maximize, label: fullscreen.active ? 'Exit full screen' : 'Full screen', onClick: fullscreen.toggle, small: true }]
-          : []),
-        { key: 'settings', icon: Settings, label: 'Camera, microphone & speaker', onClick: onOpenSettings },
-        { key: 'agenda', icon: ListOrdered, label: 'Order of Business', onClick: () => setPanel('agenda'), small: true },
-        ...(canShare ? [{ key: 'share', icon: MonitorUp, label: sharing ? 'Stop sharing screen' : 'Share screen', onClick: onToggleShare, small: true }] : []),
-        ...(isHost
-          ? [{ key: 'record', icon: recordingHere ? Square : Circle, label: recordingHere ? 'Stop recording & save' : someoneRecording ? 'Stop the recording' : 'Record audio', onClick: onToggleRecording, danger: true }]
-          : []),
-        ...(moderator
-          ? [
-              { key: 'roll', icon: ClipboardCheck, label: 'Call the roll', onClick: () => void act('roll-call') },
-              { key: 'mute-all', icon: VolumeX, label: 'Mute everyone', onClick: () => void act('mute-all') },
-            ]
-          : []),
-      ] as { key: string; icon: typeof Mic; label: string; onClick: () => void; small?: boolean; danger?: boolean }[],
-    [mode, fullscreen.supported, fullscreen.active, fullscreen.toggle, canShare, sharing, isHost, moderator, recordingHere, someoneRecording, onLayout, onOpenSettings, setPanel, onToggleShare, onToggleRecording, act]
+  // Keyboard shortcuts, as in Google Meet: mute, camera, raise hand.
+  const shortcutRef = useRef({ mic: () => {}, cam: () => {}, hand: () => {} });
+  shortcutRef.current = { mic: () => media.setMicOn(!media.micOn), cam: () => media.setCamOn(!media.camOn), hand: toggleHand };
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.repeat) return;
+      const chord = event.altKey || (IS_MAC && event.ctrlKey && event.metaKey);
+      const action = chord ? (event.code === 'KeyH' ? 'hand' : null) : event.code === 'KeyD' ? 'mic' : event.code === 'KeyE' ? 'cam' : null;
+      if (!action) return;
+      event.preventDefault();
+      shortcutRef.current[action]();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const recordLabel = recordingHere && recordingBy ? elapsedClock(now - recordingBy.since) : recordingBy ? 'Stop rec' : 'Record';
+  const deviceCaret = (kind: 'mic' | 'cam') => (
+    <button
+      type="button"
+      onClick={() => toggleMenu(kind)}
+      className="absolute right-0 top-0 z-10 hidden h-6 w-6 items-center justify-center rounded-full bg-[#2a3366] text-white ring-2 ring-[#0a0f2b] hover:bg-[#3a4590] sm:flex"
+      aria-label={kind === 'mic' ? 'Choose microphone and speaker' : 'Choose camera'}
+      aria-expanded={menu === kind}
+      aria-haspopup="menu"
+    >
+      <ChevronUp className="h-3.5 w-3.5" />
+    </button>
   );
+
+  // Everything that can sit on the bar, grouped (your devices | taking part | moderator tools). `priority` decides
+  // what stays when space runs short: the rest moves into More, so the bar never runs into the screen edges.
+  const items: BarItem[] = [
+    {
+      key: 'mic',
+      group: 0,
+      priority: 0,
+      node: (
+        <div key="mic" className="relative" data-bar-menu="mic">
+          <ControlButton icon={media.micOn ? Mic : MicOff} label={media.micOn ? 'Mute' : 'Unmute'} tone={media.micOn ? 'default' : 'off'} onClick={() => media.setMicOn(!media.micOn)} pressed={!media.micOn} shortcut={SHORTCUTS.mic} />
+          {deviceCaret('mic')}
+          {menu === 'mic' ? <DevicePicker kind="mic" media={media} onOpenSettings={onOpenSettings} onClose={() => setMenu(null)} /> : null}
+        </div>
+      ),
+      menu: { key: 'mic', icon: media.micOn ? Mic : MicOff, label: media.micOn ? 'Mute' : 'Unmute', onClick: () => media.setMicOn(!media.micOn) },
+    },
+    {
+      key: 'cam',
+      group: 0,
+      priority: 1,
+      node: (
+        <div key="cam" className="relative" data-bar-menu="cam">
+          <ControlButton icon={media.camOn ? Video : VideoOff} label={media.camOn ? 'Stop video' : 'Start video'} tone={media.camOn ? 'default' : 'off'} onClick={() => media.setCamOn(!media.camOn)} pressed={!media.camOn} shortcut={SHORTCUTS.cam} />
+          {deviceCaret('cam')}
+          {menu === 'cam' ? <DevicePicker kind="cam" media={media} onOpenSettings={onOpenSettings} onClose={() => setMenu(null)} /> : null}
+        </div>
+      ),
+      menu: { key: 'cam', icon: media.camOn ? Video : VideoOff, label: media.camOn ? 'Stop video' : 'Start video', onClick: () => media.setCamOn(!media.camOn) },
+    },
+    ...(canShare
+      ? [
+          {
+            key: 'share',
+            group: 0 as const,
+            priority: 6,
+            node: <ControlButton key="share" icon={MonitorUp} label={sharing ? 'Stop share' : 'Share'} active={sharing} onClick={onToggleShare} pressed={sharing} />,
+            menu: { key: 'share', icon: MonitorUp, label: sharing ? 'Stop sharing screen' : 'Share screen', onClick: onToggleShare },
+          },
+        ]
+      : []),
+    // Hosts and presiding officers rarely ask for the floor, so their Raise hand lives in More (and on the bar
+    // while their hand is up, to lower it in one tap).
+    ...(!moderator || handUp
+      ? [
+          {
+            key: 'hand',
+            group: 1 as const,
+            priority: 5,
+            node: <ControlButton key="hand" icon={Hand} label={handUp ? 'Lower hand' : 'Raise hand'} tone={handUp ? 'hand' : 'default'} onClick={toggleHand} pressed={handUp} shortcut={SHORTCUTS.hand} />,
+            menu: { key: 'hand', icon: Hand, label: handUp ? 'Lower hand' : 'Raise hand', onClick: toggleHand },
+          },
+        ]
+      : []),
+    {
+      key: 'people',
+      group: 1,
+      priority: 3,
+      node: <ControlButton key="people" icon={Users} label="People" active={panel === 'people'} badge={waitingCount} onClick={() => togglePanel('people')} />,
+      menu: { key: 'people', icon: Users, label: waitingCount ? `People (${waitingCount} waiting)` : 'People', onClick: () => togglePanel('people') },
+    },
+    {
+      key: 'chat',
+      group: 1,
+      priority: 4,
+      node: <ControlButton key="chat" icon={MessageSquare} label="Chat" active={panel === 'chat'} badge={panel === 'chat' ? 0 : unread} onClick={() => togglePanel('chat')} />,
+      menu: { key: 'chat', icon: MessageSquare, label: unread && panel !== 'chat' ? `Chat (${unread} new)` : 'Chat', onClick: () => togglePanel('chat') },
+    },
+    {
+      key: 'agenda',
+      group: 1,
+      priority: 8,
+      node: <ControlButton key="agenda" icon={ListOrdered} label="Agenda" active={panel === 'agenda'} onClick={() => togglePanel('agenda')} />,
+      menu: { key: 'agenda', icon: ListOrdered, label: 'Order of Business', onClick: () => togglePanel('agenda') },
+    },
+    ...(isHost
+      ? [
+          {
+            key: 'record',
+            group: 2 as const,
+            priority: 2,
+            node: (
+              <ControlButton
+                key="record"
+                icon={recordingBy ? Square : Circle}
+                label={recordLabel}
+                ariaLabel={recordingHere && recordingBy ? `Stop recording (${recordLabel} recorded)` : recordingBy ? `Stop ${recordingBy.name}'s recording` : 'Record audio'}
+                tone={recordingHere ? 'record' : 'default'}
+                onClick={onToggleRecording}
+                pressed={!!recordingBy}
+              />
+            ),
+            menu: {
+              key: 'record',
+              icon: recordingBy ? Square : Circle,
+              label: recordingHere ? 'Stop recording & save' : recordingBy ? 'Stop the recording' : 'Record audio',
+              onClick: onToggleRecording,
+              danger: true,
+              iconClass: recordingBy ? undefined : 'fill-red-500 text-red-500',
+            },
+          },
+        ]
+      : []),
+    ...(moderator
+      ? [
+          {
+            key: 'roll',
+            group: 2 as const,
+            priority: 7,
+            node: <ControlButton key="roll" icon={ClipboardCheck} label="Roll call" ariaLabel="Call the roll" onClick={onCallRoll} />,
+            menu: { key: 'roll', icon: ClipboardCheck, label: 'Call the roll', onClick: onCallRoll },
+          },
+        ]
+      : []),
+  ];
+
+  // Fit: measure a button, the gap, More and Leave, then keep the most important items that fit the width.
+  const row = useElementSize<HTMLDivElement>();
+  const moreButton = useRef<HTMLButtonElement>(null);
+  const leaveButton = useRef<HTMLButtonElement>(null);
+  const [metrics, setMetrics] = useState<{ unit: number; gap: number; fixed: number } | null>(null);
+  useLayoutEffect(() => {
+    const more = moreButton.current;
+    const leave = leaveButton.current;
+    const rowEl = row.ref.current;
+    if (!more || !leave || !rowEl) return;
+    const gap = parseFloat(getComputedStyle(rowEl).columnGap) || 0;
+    const unit = more.offsetWidth;
+    const fixed = unit + leave.offsetWidth + (parseFloat(getComputedStyle(leave).marginLeft) || 0) + gap;
+    setMetrics((prev) => (prev && prev.unit === unit && prev.gap === gap && prev.fixed === fixed ? prev : { unit, gap, fixed }));
+  });
+  const widthOf = (set: BarItem[]) => {
+    if (!metrics) return 0;
+    const separators = isSm ? Math.max(0, new Set(set.map((item) => item.group)).size - 1) : 0;
+    return set.length * (metrics.unit + metrics.gap) + separators * (SEPARATOR_WIDTH + metrics.gap) + metrics.fixed;
+  };
+  const kept: BarItem[] = [];
+  for (const item of [...items].sort((a, b) => a.priority - b.priority)) {
+    // Leave a little room at each side, so the bar never touches the screen edges.
+    if (!metrics || widthOf([...kept, item]) <= row.width - 8) kept.push(item);
+  }
+  const onBar = items.filter((item) => kept.includes(item));
+  const overflow = items.filter((item) => !kept.includes(item)).map((item) => item.menu);
+
+  const moreItems: MenuItem[] = [
+    ...overflow,
+    ...(moderator && !handUp ? [{ key: 'hand', icon: Hand, label: 'Raise hand', onClick: toggleHand }] : []),
+    ...(moderator ? [{ key: 'mute-all', icon: VolumeX, label: 'Mute everyone', onClick: () => void act('mute-all') }] : []),
+    { key: 'layout', icon: mode === 'gallery' ? RectangleHorizontal : LayoutGrid, label: mode === 'gallery' ? 'Speaker view' : 'Gallery view', onClick: () => onLayout(mode === 'gallery' ? 'speaker' : 'gallery') },
+    ...(fullscreen.supported ? [{ key: 'fullscreen', icon: fullscreen.active ? Minimize : Maximize, label: fullscreen.active ? 'Exit full screen' : 'Full screen', onClick: fullscreen.toggle, small: true }] : []),
+    { key: 'settings', icon: Settings, label: 'Camera, microphone & speaker', onClick: onOpenSettings },
+  ];
+
+  const barNodes: ReactNode[] = [];
+  onBar.forEach((item, index) => {
+    if (index > 0 && onBar[index - 1].group !== item.group) barNodes.push(<span key={`sep-${item.key}`} className="mx-1 hidden h-8 w-px shrink-0 self-center bg-white/15 sm:block" aria-hidden />);
+    barNodes.push(item.node);
+  });
 
   return (
     <footer className="border-t border-white/10 bg-[#0a0f2b] px-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] pt-2">
-      <div className="mx-auto flex max-w-4xl items-end justify-center gap-0.5 min-[401px]:gap-1 sm:gap-2">
-        <ControlButton
-          icon={media.micOn ? Mic : MicOff}
-          label={media.micOn ? 'Mute' : 'Unmute'}
-          tone={media.micOn ? 'default' : 'off'}
-          onClick={() => media.setMicOn(!media.micOn)}
-          pressed={!media.micOn}
-        />
-        <ControlButton
-          icon={media.camOn ? Video : VideoOff}
-          label={media.camOn ? 'Stop video' : 'Start video'}
-          tone={media.camOn ? 'default' : 'off'}
-          onClick={() => media.setCamOn(!media.camOn)}
-          pressed={!media.camOn}
-        />
-        {canShare ? <ControlButton icon={MonitorUp} label={sharing ? 'Stop share' : 'Share'} active={sharing} onClick={onToggleShare} className="max-sm:hidden" pressed={sharing} /> : null}
-        <ControlButton icon={Hand} label={handUp ? 'Lower hand' : 'Raise hand'} tone={handUp ? 'hand' : 'default'} onClick={() => void act('hand', { raised: !handUp })} pressed={handUp} />
-        <ControlButton icon={Users} label="People" active={panel === 'people'} badge={waitingCount} onClick={() => togglePanel('people')} />
-        <ControlButton icon={MessageSquare} label="Chat" active={panel === 'chat'} badge={panel === 'chat' ? 0 : unread} onClick={() => togglePanel('chat')} />
-        <ControlButton icon={ListOrdered} label="Agenda" active={panel === 'agenda'} onClick={() => togglePanel('agenda')} className="max-sm:hidden" />
-        <div ref={moreRef} className="relative">
-          <ControlButton icon={MoreHorizontal} label="More" active={moreOpen} onClick={() => setMoreOpen((open) => !open)} />
-          {moreOpen ? (
+      <div ref={row.ref} className="mx-auto flex w-full max-w-5xl items-end justify-center gap-0.5 min-[480px]:gap-1 sm:gap-2">
+        {barNodes}
+        <div className="relative" data-bar-menu="more">
+          <ControlButton buttonRef={moreButton} icon={MoreHorizontal} label="More" active={menu === 'more'} onClick={() => toggleMenu('more')} />
+          {menu === 'more' ? (
             <div className="absolute bottom-full right-0 z-50 mb-2 w-64 overflow-hidden rounded-xl bg-[#121a3d] py-1 shadow-2xl ring-1 ring-white/15 sm:left-1/2 sm:right-auto sm:-translate-x-1/2" role="menu">
-              {moreItems.map((item) => (
+              {moreItems.map((item, index) => (
                 <button
                   key={item.key}
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    setMoreOpen(false);
+                    setMenu(null);
                     item.onClick();
                   }}
-                  className={cn('flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm hover:bg-white/10', item.small && 'sm:hidden', item.danger ? 'text-red-300' : 'text-white')}
+                  className={cn(
+                    'flex min-h-12 w-full items-center gap-3 px-4 text-left text-sm hover:bg-white/10',
+                    item.small && 'sm:hidden',
+                    item.danger ? 'text-red-300' : 'text-white',
+                    index === overflow.length && overflow.length > 0 && 'border-t border-white/10'
+                  )}
                 >
-                  <item.icon className={cn('h-4 w-4', item.key === 'record' && !recordingHere && 'fill-red-500 text-red-500')} />
+                  <item.icon className={cn('h-4 w-4', item.iconClass)} />
                   {item.label}
                 </button>
               ))}
             </div>
           ) : null}
         </div>
-        <button type="button" onClick={onLeave} aria-label={isHost ? 'Leave or end the e-session' : 'Leave the e-session'} className="ml-0.5 flex shrink-0 flex-col items-center gap-1 min-[401px]:ml-1 sm:ml-3">
-          <span className="flex h-12 items-center gap-2 rounded-full bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-500 max-[400px]:h-11 max-[400px]:w-11 max-[400px]:justify-center max-[400px]:px-0 sm:h-14 sm:px-6">
+        <button ref={leaveButton} type="button" onClick={onLeave} aria-label={isHost ? 'Leave or end the e-session' : 'Leave the e-session'} className="ml-0.5 flex shrink-0 flex-col items-center gap-1 min-[480px]:ml-1 sm:ml-3">
+          <span className="flex h-12 items-center gap-2 rounded-full bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-500 max-[480px]:h-11 max-[480px]:w-11 max-[480px]:justify-center max-[480px]:px-0 sm:h-14 sm:px-6">
             <PhoneOff className="h-5 w-5" />
-            <span className="max-[400px]:hidden">{isHost ? 'Leave / End' : 'Leave'}</span>
+            <span className="max-[480px]:hidden">{isHost ? 'Leave / End' : 'Leave'}</span>
           </span>
           {/* Same height as the other buttons' captions, so the pill lines up with their circles. */}
-          <span className="invisible text-[11px] font-medium max-[400px]:hidden" aria-hidden>
+          <span className="invisible text-[11px] font-medium max-[480px]:hidden" aria-hidden>
             &nbsp;
           </span>
         </button>

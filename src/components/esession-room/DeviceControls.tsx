@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Camera, Mic, Volume2 } from 'lucide-react';
+import { Camera, ChevronDown, Mic, Volume2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AudioLevels, supportsSpeakerChoice } from '@/lib/esession-rtc';
 import type { LocalMedia } from '@/components/esession-room/use-local-media';
@@ -45,7 +45,8 @@ const labelOf = (device: MediaDeviceInfo, index: number, kind: string) => device
 
 export function DeviceSelects({ media, dark = false }: { media: LocalMedia; dark?: boolean }) {
   const field = cn(
-    'h-12 w-full min-w-0 rounded-lg border px-3 text-base outline-none sm:text-sm',
+    // The browser's own arrow cannot be padded, so it is hidden and drawn below with room around it.
+    'h-12 w-full min-w-0 appearance-none rounded-lg border pl-3 pr-10 text-base outline-none sm:text-sm',
     dark ? 'border-white/15 bg-white/10 text-white focus:border-[#d4a72c] [&>option]:text-[#212121]' : 'border-border bg-white text-text-main focus:border-primary focus:ring-2 focus:ring-primary/15'
   );
   const label = cn('flex items-center gap-2 text-xs font-semibold', dark ? 'text-white/70' : 'text-text-muted');
@@ -64,6 +65,7 @@ export function DeviceSelects({ media, dark = false }: { media: LocalMedia; dark
             <row.icon className="h-3.5 w-3.5" />
             {row.title}
           </span>
+          <span className="relative block">
           <select id={row.id} value={row.value} onChange={(e) => row.onChange(e.target.value)} className={field} disabled={row.list.length === 0}>
             <option value="">{row.list.length ? 'Default' : `No ${row.kind.toLowerCase()} found`}</option>
             {row.list.map((device, index) => (
@@ -72,6 +74,8 @@ export function DeviceSelects({ media, dark = false }: { media: LocalMedia; dark
               </option>
             ))}
           </select>
+          <ChevronDown className={cn('pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2', dark ? 'text-white/70' : 'text-text-muted', row.list.length === 0 && 'opacity-50')} aria-hidden />
+          </span>
         </label>
       ))}
     </div>

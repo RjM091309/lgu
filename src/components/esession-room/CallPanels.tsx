@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { Check, ChevronLeft, ChevronRight, ClipboardCheck, Hand, Lock, MicOff, Send, UserMinus, Video, VideoOff, VolumeX, X } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Hand, Lock, MicOff, Send, UserMinus, Video, VideoOff, VolumeX, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { confirmAction } from '@/components/ui/confirm';
-import { clockTime, type ChatMessage, type Participant, type RoomRole, type RoomView } from '@/lib/esession-room';
+import { clockTime, type ChatMessage, type Participant, type RollCall, type RoomRole, type RoomView } from '@/lib/esession-room';
 import type { LinkQuality } from '@/lib/esession-rtc';
 import { SignalBars } from '@/components/esession-room/VideoTile';
 
@@ -54,6 +54,7 @@ export function PeoplePanel({
   qualities,
   roleLabelOf,
   act,
+  onCallRoll,
 }: {
   room: RoomView;
   selfPid: string;
@@ -61,6 +62,8 @@ export function PeoplePanel({
   qualities: Map<string, LinkQuality | null>;
   roleLabelOf: (participant: Participant) => string | null;
   act: Act;
+  /** Asks first, then calls the roll. */
+  onCallRoll: () => void;
 }) {
   const isHost = selfRole === 'host';
   const moderator = selfRole !== 'participant';
@@ -70,6 +73,8 @@ export function PeoplePanel({
   const hands = room.participantsList.filter((p) => p.hand !== null).sort((a, b) => (a.hand ?? 0) - (b.hand ?? 0));
   const membersPresent = room.participantsList.filter((p) => p.group === 'member').length;
   const lastCall = room.rollCalls.at(-1);
+  const earlierCalls = room.rollCalls.slice(0, -1).reverse();
+  const [showEarlier, setShowEarlier] = useState(false);
 
   const remove = async (participant: Participant) => {
     const confirmed = await confirmAction({
@@ -194,18 +199,55 @@ export function PeoplePanel({
             </p>
           </div>
           {moderator ? (
-            <PanelButton tone="primary" onClick={() => void act('roll-call')}>
+            <PanelButton tone="primary" onClick={onCallRoll}>
               <ClipboardCheck className="h-4 w-4" />
               Call the roll
             </PanelButton>
           ) : null}
         </div>
-        {lastCall ? (
-          <p className="mt-3 border-t border-white/10 pt-3 text-xs text-white/65">
-            Last roll call {clockTime(lastCall.at)}: {lastCall.presentCount} present, {lastCall.hasQuorum ? 'quorum declared' : 'no quorum'}.
-          </p>
-        ) : null}
       </section>
+
+      {lastCall ? (
+        <section id="es-roll-call" aria-label="Roll call" className="mx-3 mt-3 scroll-mt-3 rounded-xl bg-white/5 p-4 ring-1 ring-inset ring-white/10">
+          <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/55">Latest roll call</h3>
+          <RollCallSummary call={lastCall} />
+          <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-white/50">Present · {lastCall.presentCount}</p>
+          {lastCall.present.length ? (
+            <ul className="mt-1.5 flex flex-wrap gap-1.5">
+              {lastCall.present.map((person) => (
+                <li key={person.inviteeId} className="rounded-full bg-white/10 px-2.5 py-1 text-xs text-white">
+                  {person.name}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-1 text-xs text-white/60">No members were in the e-session.</p>
+          )}
+          {lastCall.memberTotal > lastCall.presentCount ? (
+            <p className="mt-2 text-xs text-white/60">
+              {lastCall.memberTotal - lastCall.presentCount} of {lastCall.memberTotal} members were not in the e-session.
+            </p>
+          ) : null}
+          {earlierCalls.length ? (
+            <div className="mt-3 border-t border-white/10 pt-2">
+              <button type="button" onClick={() => setShowEarlier((open) => !open)} className="flex min-h-10 w-full items-center justify-between text-left text-xs font-semibold text-white/80 hover:text-white" aria-expanded={showEarlier}>
+                Earlier roll calls ({earlierCalls.length})
+                <ChevronDown className={cn('h-4 w-4 transition-transform', showEarlier && 'rotate-180')} />
+              </button>
+              {showEarlier ? (
+                <ul className="space-y-2">
+                  {earlierCalls.map((call) => (
+                    <li key={call.at} className="rounded-lg bg-white/5 px-3 py-2">
+                      <RollCallSummary call={call} compact />
+                      <p className="mt-1 text-[11px] text-white/55">{call.present.map((person) => person.name).join(', ') || 'No members present'}</p>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
       {isHost ? (
         <section aria-label="Room settings" className="mx-3 mt-3 space-y-1 rounded-xl bg-white/5 p-2 ring-1 ring-inset ring-white/10">
@@ -224,6 +266,21 @@ export function PeoplePanel({
           </button>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** When, by whom, how many, and whether there was a quorum. */
+function RollCallSummary({ call, compact = false }: { call: RollCall; compact?: boolean }) {
+  return (
+    <div className={compact ? '' : 'mt-1'}>
+      <p className={cn('font-semibold text-white', compact ? 'text-xs' : 'text-sm')}>
+        {call.presentCount} of {call.memberTotal} members present ·{' '}
+        <span className={call.hasQuorum ? 'text-green-300' : 'text-amber-300'}>{call.hasQuorum ? 'quorum declared' : `no quorum (${call.quorum} needed)`}</span>
+      </p>
+      <p className="text-[11px] text-white/55">
+        {clockTime(call.at)} · called by {call.by.name}
+      </p>
     </div>
   );
 }
