@@ -22,6 +22,8 @@ import {
   X,
   UserRoundCheck,
   RectangleHorizontal,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { confirmAction } from '@/components/ui/confirm';
@@ -32,6 +34,7 @@ import type { LocalMedia } from '@/components/esession-room/use-local-media';
 import { RemoteAudio, VideoTile, type TileActions } from '@/components/esession-room/VideoTile';
 import { AgendaPanel, ChatPanel, PeoplePanel } from '@/components/esession-room/CallPanels';
 import { useNow } from '@/components/esession-room/es-ui';
+import type { Fullscreen, FullscreenNotice } from '@/components/esession-room/use-fullscreen';
 
 export type Panel = 'people' | 'chat' | 'agenda';
 type Layout = 'auto' | 'gallery' | 'speaker';
@@ -107,6 +110,7 @@ export interface CallStageProps {
   onToggleRecording: () => void;
   onOpenSettings: () => void;
   onLeave: () => void;
+  fullscreen: Fullscreen;
 }
 
 export function CallStage(props: CallStageProps) {
@@ -301,6 +305,15 @@ export function CallStage(props: CallStageProps) {
                 </button>
               </Banner>
             ) : null}
+            {props.fullscreen.notice ? (
+              <Banner tone="info" onClose={props.fullscreen.dismissNotice}>
+                <span>{FULLSCREEN_NOTICE[props.fullscreen.notice].text}</span>
+                <button type="button" onClick={props.fullscreen.enter} className="pointer-events-auto ml-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-white/15 px-3 text-xs font-bold text-white">
+                  <Maximize className="h-4 w-4" />
+                  {FULLSCREEN_NOTICE[props.fullscreen.notice].action}
+                </button>
+              </Banner>
+            ) : null}
             {poorConnection ? (
               <Banner tone="warning">
                 Your connection is unstable.
@@ -367,6 +380,12 @@ export function CallStage(props: CallStageProps) {
   );
 }
 
+const FULLSCREEN_NOTICE: Record<FullscreenNotice, { text: string; action: string }> = {
+  admitted: { text: 'You are in. Full screen hides the browser bars.', action: 'Go full screen' },
+  left: { text: 'You left full screen.', action: 'Return to full screen' },
+  off: { text: 'Full screen is off on this device.', action: 'Go full screen' },
+};
+
 function Banner({ tone, children, onClose }: { tone: 'info' | 'gold' | 'warning' | 'danger'; children: ReactNode; onClose?: () => void }) {
   return (
     <div
@@ -393,6 +412,7 @@ function TopBar({
   membersPresent,
   mode,
   onToggleLayout,
+  fullscreen,
 }: CallStageProps & { membersPresent: number; mode: 'gallery' | 'speaker'; onToggleLayout: () => void }) {
   const now = useNow(1000);
   const quorumMet = room ? membersPresent >= room.quorum : false;
@@ -432,6 +452,17 @@ function TopBar({
         {mode === 'gallery' ? <RectangleHorizontal className="h-4 w-4" /> : <LayoutGrid className="h-4 w-4" />}
         {mode === 'gallery' ? 'Speaker view' : 'Gallery view'}
       </button>
+      {fullscreen.supported ? (
+        <button
+          type="button"
+          onClick={fullscreen.toggle}
+          className="hidden h-10 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white/80 hover:bg-white/10 sm:inline-flex"
+          aria-pressed={fullscreen.active}
+        >
+          {fullscreen.active ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+          {fullscreen.active ? 'Exit full screen' : 'Full screen'}
+        </button>
+      ) : null}
     </header>
   );
 }
@@ -521,6 +552,7 @@ function ControlBar({
   onToggleRecording,
   onOpenSettings,
   onLeave,
+  fullscreen,
 }: CallStageProps & { waitingCount: number; me: Participant | undefined; mode: 'gallery' | 'speaker'; onLayout: (layout: Layout) => void }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -544,6 +576,9 @@ function ControlBar({
     () =>
       [
         { key: 'layout', icon: mode === 'gallery' ? RectangleHorizontal : LayoutGrid, label: mode === 'gallery' ? 'Speaker view' : 'Gallery view', onClick: () => onLayout(mode === 'gallery' ? 'speaker' : 'gallery') },
+        ...(fullscreen.supported
+          ? [{ key: 'fullscreen', icon: fullscreen.active ? Minimize : Maximize, label: fullscreen.active ? 'Exit full screen' : 'Full screen', onClick: fullscreen.toggle, small: true }]
+          : []),
         { key: 'settings', icon: Settings, label: 'Camera, microphone & speaker', onClick: onOpenSettings },
         { key: 'agenda', icon: ListOrdered, label: 'Order of Business', onClick: () => setPanel('agenda'), small: true },
         ...(canShare ? [{ key: 'share', icon: MonitorUp, label: sharing ? 'Stop sharing screen' : 'Share screen', onClick: onToggleShare, small: true }] : []),
@@ -557,7 +592,7 @@ function ControlBar({
             ]
           : []),
       ] as { key: string; icon: typeof Mic; label: string; onClick: () => void; small?: boolean; danger?: boolean }[],
-    [mode, canShare, sharing, isHost, moderator, recordingHere, someoneRecording, onLayout, onOpenSettings, setPanel, onToggleShare, onToggleRecording, act]
+    [mode, fullscreen.supported, fullscreen.active, fullscreen.toggle, canShare, sharing, isHost, moderator, recordingHere, someoneRecording, onLayout, onOpenSettings, setPanel, onToggleShare, onToggleRecording, act]
   );
 
   return (

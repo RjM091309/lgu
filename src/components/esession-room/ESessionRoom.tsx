@@ -45,6 +45,7 @@ import { attendanceRecordName, attendanceRecordPdf, recordingFileName, saveToSes
 import { useLocalMedia, type LocalMedia } from '@/components/esession-room/use-local-media';
 import { DeviceSelects, MicMeter } from '@/components/esession-room/DeviceControls';
 import { CallStage, type Panel } from '@/components/esession-room/CallStage';
+import { useFullscreen } from '@/components/esession-room/use-fullscreen';
 import { VideoView } from '@/components/esession-room/VideoTile';
 import { InsecureNotice, LiveBadge, RoleBadge, TypeBadge } from '@/components/esession-room/es-ui';
 
@@ -96,6 +97,17 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
 
   const invited = session ? account.canManage || isInvited(session, users, account.inviteeId) : false;
   const myRole = session ? roleIn(account, session) : 'participant';
+
+  // Full screen during the call: hosts and presiding officers go full screen with the join tap; invitees who
+  // ask to join are offered it once they are in, since being admitted is not a tap the browser accepts.
+  const fullscreen = useFullscreen(phase.name === 'in-call');
+  const askedToJoin = useRef(false);
+  const { arrived: fullscreenArrived, release: releaseFullscreen } = fullscreen;
+  useEffect(() => {
+    if (phase.name === 'in-call') fullscreenArrived(askedToJoin.current);
+    else if (phase.name !== 'joining') releaseFullscreen();
+  }, [phase.name, fullscreenArrived, releaseFullscreen]);
+  useEffect(() => releaseFullscreen, [releaseFullscreen]);
 
   const setPanel = useCallback((next: Panel | null) => {
     setPanelState(next);
@@ -196,6 +208,8 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     if (!session) return;
     // Created inside the tap so iPads let the sound play.
     resumeAudio();
+    askedToJoin.current = !startFirst && myRole === 'participant';
+    if (!askedToJoin.current) fullscreen.autoEnter();
     setPhase({ name: 'joining' });
     try {
       let roomId = liveRoom?.roomId;
@@ -501,6 +515,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
           onToggleRecording={() => void toggleRecording()}
           onOpenSettings={() => setSettingsOpen(true)}
           onLeave={() => void onLeaveClick()}
+          fullscreen={fullscreen.state}
         />
         {settingsDialog}
         <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
