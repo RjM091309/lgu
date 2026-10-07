@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 import { confirmAction } from '@/components/ui/confirm';
 import { clockTime, type ChatMessage, type Participant, type RollCall, type RoomRole, type RoomView } from '@/lib/esession-room';
 import type { LinkQuality } from '@/lib/esession-rtc';
+import type { Invitee } from '@/lib/attendance';
 import { SignalBars } from '@/components/esession-room/VideoTile';
 
 // Side panels of the call screen (a drawer in landscape, a bottom sheet in portrait). Dark like the stage.
@@ -55,6 +56,7 @@ export function PeoplePanel({
   roleLabelOf,
   act,
   onCallRoll,
+  notHere,
 }: {
   room: RoomView;
   selfPid: string;
@@ -64,6 +66,8 @@ export function PeoplePanel({
   act: Act;
   /** Asks first, then calls the roll. */
   onCallRoll: () => void;
+  /** Invitees not in the e-session (and not waiting to be admitted), members first. */
+  notHere: Invitee[];
 }) {
   const isHost = selfRole === 'host';
   const moderator = selfRole !== 'participant';
@@ -75,6 +79,11 @@ export function PeoplePanel({
   const lastCall = room.rollCalls.at(-1);
   const earlierCalls = room.rollCalls.slice(0, -1).reverse();
   const [showEarlier, setShowEarlier] = useState(false);
+  const [showNotHere, setShowNotHere] = useState(false);
+  const absentGroups = [
+    { title: 'Members', list: notHere.filter((invitee) => invitee.group === 'member') },
+    { title: 'Staff', list: notHere.filter((invitee) => invitee.group === 'staff') },
+  ].filter((group) => group.list.length);
 
   const remove = async (participant: Participant) => {
     const confirmed = await confirmAction({
@@ -187,6 +196,40 @@ export function PeoplePanel({
           })}
         </ul>
       </section>
+
+      {notHere.length ? (
+        <section aria-label="Not yet here">
+          <button
+            type="button"
+            onClick={() => setShowNotHere((open) => !open)}
+            className="flex min-h-11 w-full items-center justify-between gap-2 px-4 pt-2 text-left hover:text-white"
+            aria-expanded={showNotHere}
+          >
+            <h3 className="text-[11px] font-bold uppercase tracking-wide text-white/55">Not yet here · {notHere.length}</h3>
+            <ChevronDown className={cn('h-4 w-4 text-white/60 transition-transform', showNotHere && 'rotate-180')} />
+          </button>
+          {showNotHere
+            ? absentGroups.map((group) => (
+                <div key={group.title}>
+                  <p className="px-4 pb-1 pt-2 text-[11px] font-semibold text-white/45">
+                    {group.title} · {group.list.length}
+                  </p>
+                  <ul className="space-y-1 px-2">
+                    {group.list.map((invitee) => (
+                      <li key={invitee.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 opacity-75">
+                        <Initials abbr={invitee.abbr} group={invitee.group} />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-semibold text-white">{invitee.name}</span>
+                          <span className="block truncate text-[11px] text-white/60">{invitee.detail}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))
+            : null}
+        </section>
+      ) : null}
 
       <section aria-label="Quorum" className="mx-3 mt-4 rounded-xl bg-white/5 p-4 ring-1 ring-inset ring-white/10">
         <div className="flex items-center justify-between gap-3">

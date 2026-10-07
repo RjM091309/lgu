@@ -29,6 +29,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { confirmAction } from '@/components/ui/confirm';
+import { useUsers } from '@/lib/access-store';
+import { inviteesFor } from '@/lib/attendance';
 import type { Session } from '@/lib/mock-data';
 import { supportsSpeakerChoice, type PeerInfo } from '@/lib/esession-rtc';
 import { elapsedClock, roleLabelFor, type ChatMessage, type Participant, type RollCall, type RoomRole, type RoomView } from '@/lib/esession-room';
@@ -190,6 +192,16 @@ export function CallStage(props: CallStageProps) {
     floatPeople.find((p) => p.role === 'presiding' && p.pid !== selfPid) ??
     floatPeople.find((p) => p.pid !== selfPid);
 
+  // Invitees who are neither in the e-session nor waiting to be admitted. The room's own invitee list decides who
+  // counts; names and positions come from the session's invitation list, as in the lobby.
+  const users = useUsers();
+  const notHere = (() => {
+    if (!room || !session) return [];
+    const invited = new Set(room.invitees);
+    const present = new Set([...participants, ...room.waitingList].map((p) => p.inviteeId));
+    return inviteesFor(session, users).filter((invitee) => invited.has(invitee.id) && !present.has(invitee.id));
+  })();
+
   // Calling the roll is one tap and is kept in the record for good, so it asks first.
   const membersPresent = participants.filter((p) => p.group === 'member').length;
   const callRoll = async () => {
@@ -311,7 +323,7 @@ export function CallStage(props: CallStageProps) {
   const panelBody =
     room && panel ? (
       panel === 'people' ? (
-        <PeoplePanel room={room} selfPid={selfPid} selfRole={selfRole} qualities={new Map([...peers].map(([pid, peer]) => [pid, peer.quality]))} roleLabelOf={roleLabelOf} act={act} onCallRoll={() => void callRoll()} />
+        <PeoplePanel room={room} selfPid={selfPid} selfRole={selfRole} qualities={new Map([...peers].map(([pid, peer]) => [pid, peer.quality]))} roleLabelOf={roleLabelOf} act={act} onCallRoll={() => void callRoll()} notHere={notHere} />
       ) : panel === 'chat' ? (
         <ChatPanel messages={props.chat} selfPid={selfPid} onSend={props.onSendChat} />
       ) : (
