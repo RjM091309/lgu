@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Check, ChevronDown, ChevronLeft, ChevronRight, ClipboardCheck, Hand, Lock, MicOff, Send, UserMinus, Video, VideoOff, VolumeX, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { confirmAction } from '@/components/ui/confirm';
@@ -343,9 +343,30 @@ function ToggleRow({ label, hint, checked, onChange, icon }: { label: string; hi
   );
 }
 
+/** The server keeps the first 500 characters of a message, so the box stops there too. */
+const CHAT_MAX = 500;
+/** The counter appears from here, so the limit never comes as a surprise. */
+const CHAT_WARN_AT = 400;
+/** The box grows with the message up to this height (about five lines), then scrolls. */
+const CHAT_MAX_HEIGHT = 144;
+
 export function ChatPanel({ messages, selfPid, onSend }: { messages: ChatMessage[]; selfPid: string; onSend: (text: string) => Promise<boolean> }) {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  // Set when a paste did not fit, until the message is shortened or sent.
+  const [pasteCut, setPasteCut] = useState(false);
+  const atLimit = draft.length >= CHAT_MAX;
+  const box = useRef<HTMLTextAreaElement>(null);
+
+  // Grow (or shrink) the box to fit what is typed.
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    // scrollHeight leaves out the border, which the height includes.
+    const border = el.offsetHeight - el.clientHeight;
+    el.style.height = `${Math.min(el.scrollHeight + border, CHAT_MAX_HEIGHT)}px`;
+  }, [draft]);
   const listRef = useRef<HTMLOListElement>(null);
 
   useEffect(() => {
@@ -357,7 +378,10 @@ export function ChatPanel({ messages, selfPid, onSend }: { messages: ChatMessage
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
-    if (await onSend(text)) setDraft('');
+    if (await onSend(text)) {
+      setDraft('');
+      setPasteCut(false);
+    }
     setSending(false);
   };
 
@@ -377,22 +401,59 @@ export function ChatPanel({ messages, selfPid, onSend }: { messages: ChatMessage
           );
         })}
       </ol>
-      <form onSubmit={submit} className="flex gap-2 border-t border-white/10 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+      <form onSubmit={submit} className="border-t border-white/10 p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        {/* Right above the box, where the eyes are while typing. */}
+        {draft.length >= CHAT_WARN_AT || pasteCut ? (
+          <p id="es-chat-limit" className={cn('mb-2 flex items-start justify-between gap-3 text-xs', atLimit || pasteCut ? 'text-amber-300' : 'text-white/55')} aria-live="polite">
+            <span>
+              {pasteCut
+                ? 'Your paste was cut at the limit. Send this part, then the rest separately.'
+                : atLimit
+                  ? 'Character limit reached. Send this, then continue in another message.'
+                  : null}
+            </span>
+            <span className="shrink-0 font-semibold tabular-nums">
+              {draft.length} / {CHAT_MAX}
+            </span>
+          </p>
+        ) : null}
+        <div className="flex items-end gap-2">
         <label htmlFor="es-chat" className="sr-only">
           Message to everyone
         </label>
-        <input
+        <textarea
+          ref={box}
           id="es-chat"
+          rows={1}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          maxLength={500}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            if (e.target.value.length < CHAT_MAX) setPasteCut(false);
+          }}
+          onKeyDown={(e) => {
+            // Enter sends and Shift+Enter starts a new line; on touch screens Enter is a new line and the button sends.
+            if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing || window.matchMedia('(pointer: coarse)').matches) return;
+            e.preventDefault();
+            e.currentTarget.form?.requestSubmit();
+          }}
+          onPaste={(e) => {
+            const input = e.currentTarget;
+            const replaced = (input.selectionEnd ?? 0) - (input.selectionStart ?? 0);
+            if (draft.length - replaced + e.clipboardData.getData('text').length > CHAT_MAX) setPasteCut(true);
+          }}
+          maxLength={CHAT_MAX}
           autoComplete="off"
           placeholder="Message to everyone"
-          className="h-12 min-w-0 flex-1 rounded-xl border border-white/15 bg-white/10 px-3 text-base text-white placeholder:text-white/45 outline-none focus:border-[#d4a72c] sm:text-sm"
+          aria-describedby={draft.length >= CHAT_WARN_AT || pasteCut ? 'es-chat-limit' : undefined}
+          className={cn(
+            'block min-h-12 min-w-0 flex-1 resize-none overflow-y-auto rounded-xl border bg-white/10 px-3 py-[11px] text-base leading-6 text-white placeholder:text-white/45 outline-none sm:text-sm sm:leading-6',
+            atLimit || pasteCut ? 'border-amber-400/70 focus:border-amber-400' : 'border-white/15 focus:border-[#d4a72c]'
+          )}
         />
         <button type="submit" disabled={!draft.trim() || sending} className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[#d4a72c] text-[#141b66] disabled:opacity-40" aria-label="Send">
           <Send className="h-5 w-5" />
         </button>
+        </div>
       </form>
     </div>
   );
