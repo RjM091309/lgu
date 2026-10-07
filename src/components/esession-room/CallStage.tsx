@@ -609,6 +609,10 @@ function ControlBar({
             <PhoneOff className="h-5 w-5" />
             <span className="max-[400px]:hidden">{isHost ? 'Leave / End' : 'Leave'}</span>
           </span>
+          {/* Same height as the other buttons' captions, so the pill lines up with their circles. */}
+          <span className="invisible text-[11px] font-medium max-[400px]:hidden" aria-hidden>
+            &nbsp;
+          </span>
         </button>
       </div>
     </footer>
