@@ -9,6 +9,7 @@ import { useUsers } from '@/lib/access-store';
 import { logActivity } from '@/lib/activity-log';
 import { useCalendarSessions } from '@/lib/esession-sync';
 import { isInvited, type MobileAccount } from '@/lib/mobile-accounts';
+import { inviteesFor } from '@/lib/attendance';
 import type { Session } from '@/lib/mock-data';
 import { formatLongDate } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
@@ -544,7 +545,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     if (!roomId) return;
     const audit = await fetchAudit(roomId);
     if (!audit) return;
-    const error = await saveToSessionFiles({ name: attendanceRecordName(audit), blob: attendanceRecordPdf(audit), kind: 'pdf', category: 'Supporting Document', sessionId: audit.room.sessionId }, account);
+    const error = await saveToSessionFiles({ name: attendanceRecordName(audit), blob: attendanceRecordPdf(audit, session ? inviteesFor(session, users) : []), kind: 'pdf', category: 'Supporting Document', sessionId: audit.room.sessionId }, account);
     logActivity({ user: account.username, module: 'E-Session', action: 'Updated', summary: `Ended the e-session: ${audit.room.title}`, detail: `${audit.attendance.length} attendees` });
     if (error) toast('Attendance record not saved', error, 'error');
     else toast('E-session ended', 'The attendance record was saved to Session Files.');

@@ -113,9 +113,10 @@ export const formatBytes = (bytes: number | null) => {
 
 export const todayInManila = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
 
-const letterhead = (): PdfLine[] => [
-  { text: `Republic of the Philippines - Province of ${LGU_PROFILE.province}`, size: 9 },
-  { text: LGU_PROFILE.legislature.toUpperCase(), size: 15, bold: true },
+/** The top of every official PDF: country and province, the legislative body, and its address. */
+export const letterhead = (): PdfLine[] => [
+  { text: `Republic of the Philippines · Province of ${LGU_PROFILE.province}`, size: 9 },
+  { text: LGU_PROFILE.legislativeBody.toUpperCase(), size: 15, bold: true },
   { text: LGU_PROFILE.address, size: 9 },
 ];
 

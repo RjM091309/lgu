@@ -47,6 +47,8 @@ export interface Committee {
 
 export const LGU_PROFILE = {
   legislature: 'LIMS',
+  /** The body named on official documents (PDF letterheads). */
+  legislativeBody: 'Sangguniang Bayan of Capas',
   municipality: 'Municipality of Capas',
   province: 'Tarlac',
   systemName: 'Legislative Information Management System',

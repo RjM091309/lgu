@@ -1,8 +1,8 @@
-import { LGU_PROFILE } from '@/lib/mock-data';
-import { createPdf, type PdfLine } from '@/lib/pdf';
+import { createPdf, type PdfBlock } from '@/lib/pdf';
+import type { Invitee } from '@/lib/attendance';
 import { saveCsv } from '@/lib/files';
 import { formatLongDate } from '@/lib/sessions';
-import { addSessionFiles, todayInManila } from '@/lib/session-files';
+import { addSessionFiles, letterhead, todayInManila } from '@/lib/session-files';
 import type { MobileAccount } from '@/lib/mobile-accounts';
 import {
   ROLE_LABEL,
@@ -149,39 +149,104 @@ const attendanceRows = (audit: RoomAudit, now: number) =>
       total: timeInRoom(entry, now),
     }));
 
-export const attendanceRecordPdf = (audit: RoomAudit) => {
+/**
+ * The attendance record as a PDF: who attended and for how long, who did not, whether there was a quorum, and the
+ * roll calls. `invitees` (the session's invitation list) names the members who never joined; without it that part
+ * is left out.
+ */
+export const attendanceRecordPdf = (audit: RoomAudit, invitees: Invitee[] = []) => {
   const { room } = audit;
   const end = room.endedAt ?? Date.now();
   const rows = attendanceRows(audit, end);
   const members = rows.filter((row) => row.entry.group === 'member');
   const staff = rows.filter((row) => row.entry.group === 'staff');
-  const line = (row: (typeof rows)[number]) =>
-    `${row.entry.name} (${row.entry.detail || ROLE_LABEL[row.entry.role]}) - in ${row.firstIn ? clockTime(row.firstIn) : '-'}, out ${row.lastOut ? clockTime(row.lastOut) : 'still in'}, ${durationText(row.total)}${row.entry.stints.length > 1 ? `, joined ${row.entry.stints.length} times` : ''}`;
+  const attended = new Set(rows.map((row) => row.entry.inviteeId));
+  const invited = new Set(room.invitees);
+  const absent = invitees.filter((invitee) => invitee.group === 'member' && (invited.size === 0 || invited.has(invitee.id)) && !attended.has(invitee.id));
+  const quorumMet = members.length >= audit.quorum;
+  const lastCall = audit.rollCalls.at(-1);
 
-  const lines: PdfLine[] = [
-    { text: `Republic of the Philippines - Province of ${LGU_PROFILE.province}`, size: 9 },
-    { text: LGU_PROFILE.legislature.toUpperCase(), size: 15, bold: true },
-    { text: LGU_PROFILE.address, size: 9 },
+  const attendanceTable = (list: typeof rows): PdfBlock => ({
+    table: {
+      spaceBefore: 6,
+      columns: [
+        { title: 'Name', width: 3.2 },
+        { title: 'Position', width: 2.6 },
+        { title: 'First in', width: 1.25 },
+        { title: 'Last out', width: 1.25 },
+        { title: 'Time in session', width: 1.3 },
+        { title: 'Joins', width: 0.8, align: 'right' },
+      ],
+      rows: list.map((row) => [
+        row.entry.name,
+        row.entry.detail || ROLE_LABEL[row.entry.role],
+        row.firstIn ? clockTime(row.firstIn) : '-',
+        row.lastOut ? clockTime(row.lastOut) : 'Still in',
+        durationText(row.total),
+        String(row.entry.stints.length),
+      ]),
+    },
+  });
+
+  const blocks: PdfBlock[] = [
+    ...letterhead(),
     { text: 'E-SESSION ATTENDANCE RECORD', size: 13, bold: true, spaceBefore: 18 },
     { text: room.title, size: 12, bold: true },
-    { text: `${formatLongDate(room.date)} - scheduled ${room.time} - ${room.type}`, size: 10 },
-    { text: `Held online (LIMS E-Session). Started ${dateTime(room.startedAt)} by ${room.startedBy.name}; ${room.endedAt ? `ended ${dateTime(room.endedAt)}${room.endedBy ? ` by ${room.endedBy.name}` : ''}` : 'still in progress'}. Duration: ${durationText(end - room.startedAt)}.`, size: 10 },
-    { text: `Members present: ${members.length} of ${audit.memberTotal} (quorum: ${audit.quorum})`, size: 11, bold: true, spaceBefore: 14 },
-    ...members.map((row) => ({ text: line(row), size: 10, spaceBefore: 3 })),
-    ...(staff.length ? [{ text: 'Secretariat and staff', size: 11, bold: true, spaceBefore: 12 }, ...staff.map((row) => ({ text: line(row), size: 10, spaceBefore: 3 }))] : []),
+    { text: `${formatLongDate(room.date)} · scheduled ${room.time} · ${room.type} session`, size: 10 },
+    {
+      text: `Held online (LIMS E-Session). Started ${dateTime(room.startedAt)} by ${room.startedBy.name}; ${room.endedAt ? `ended ${dateTime(room.endedAt)}${room.endedBy ? ` by ${room.endedBy.name}` : ''}` : 'still in progress'}. Duration: ${durationText(end - room.startedAt)}.`,
+      size: 10,
+    },
+    {
+      text: quorumMet
+        ? `Quorum: met. ${members.length} of ${audit.memberTotal} members attended; ${audit.quorum} needed.`
+        : `Quorum: not met. ${members.length} of ${audit.memberTotal} members attended; ${audit.quorum} needed.`,
+      size: 11,
+      bold: true,
+      spaceBefore: 12,
+    },
+    ...(lastCall
+      ? [{ text: `Last roll call at ${clockTime(lastCall.at)}: ${lastCall.presentCount} of ${lastCall.memberTotal} members present, ${lastCall.hasQuorum ? 'quorum declared' : 'no quorum'}.`, size: 10 }]
+      : []),
+    { text: `Members who attended (${members.length})`, size: 11, bold: true, spaceBefore: 14, keepWithNext: true },
+    ...(members.length ? [attendanceTable(members)] : [{ text: 'No members joined the e-session.', size: 10, gray: 0.35 }]),
   ];
-  if (audit.rollCalls.length) {
-    lines.push({ text: 'Roll calls', size: 11, bold: true, spaceBefore: 12 });
-    audit.rollCalls.forEach((call) =>
-      lines.push({
-        text: `${clockTime(call.at)} - ${call.presentCount} of ${call.memberTotal} members present, ${call.hasQuorum ? 'quorum declared' : 'no quorum'} (called by ${call.by.name}): ${call.present.map((p) => p.name).join(', ') || 'none'}`,
-        size: 10,
-        spaceBefore: 3,
-      })
+  if (absent.length) {
+    blocks.push(
+      { text: `Members not present (${absent.length})`, size: 11, bold: true, spaceBefore: 14, keepWithNext: true },
+      { table: { spaceBefore: 6, columns: [{ title: 'Name', width: 1 }, { title: 'Position', width: 1 }], rows: absent.map((invitee) => [invitee.name, invitee.detail]) } }
     );
   }
-  lines.push({ text: 'Times are Philippine Standard Time, as recorded by the LIMS server.', size: 9, spaceBefore: 18 });
-  return createPdf(lines, 'SB CAPAS - E-SESSION RECORD');
+  if (staff.length) blocks.push({ text: `Secretariat and staff (${staff.length})`, size: 11, bold: true, spaceBefore: 14, keepWithNext: true }, attendanceTable(staff));
+  if (audit.rollCalls.length) {
+    blocks.push(
+      { text: `Roll calls (${audit.rollCalls.length})`, size: 11, bold: true, spaceBefore: 14, keepWithNext: true },
+      {
+        table: {
+          spaceBefore: 6,
+          columns: [
+            { title: 'Time', width: 1 },
+            { title: 'Called by', width: 1.8 },
+            { title: 'Present', width: 0.9 },
+            { title: 'Quorum', width: 1.1 },
+            { title: 'Members present', width: 3.6 },
+          ],
+          rows: audit.rollCalls.map((call) => [
+            clockTime(call.at),
+            call.by.name,
+            `${call.presentCount} of ${call.memberTotal}`,
+            call.hasQuorum ? 'Declared' : 'Not met',
+            call.present.map((person) => person.name).join(', ') || 'None',
+          ]),
+        },
+      }
+    );
+  }
+  blocks.push({ text: 'Times are Philippine Standard Time, as recorded by the LIMS server.', size: 9, gray: 0.35, spaceBefore: 18 });
+  return createPdf(blocks, {
+    watermark: 'SB CAPAS · E-SESSION RECORD',
+    footer: `E-session attendance record ${room.roomId} · generated ${dateTime(Date.now())}`,
+  });
 };
 
 export const attendanceRecordName = (audit: RoomAudit) => safeName(`${audit.room.title} - E-Session Attendance Record ${fileStamp(audit.room.startedAt)}.pdf`);

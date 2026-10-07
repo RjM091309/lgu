@@ -5,6 +5,9 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { logActivity } from '@/lib/activity-log';
+import { useUsers } from '@/lib/access-store';
+import { inviteesFor } from '@/lib/attendance';
+import { useCalendarSessions } from '@/lib/esession-sync';
 import type { MobileAccount } from '@/lib/mobile-accounts';
 import { formatLongDate } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
@@ -77,6 +80,9 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all');
   const isLive = audit !== null && audit !== 'loading' && audit.room.status === 'live';
   const now = useNow(isLive ? 15_000 : null);
+  // The invitation list names the members who never joined, in the PDF.
+  const users = useUsers();
+  const sessions = useCalendarSessions();
 
   // A live e-session's record keeps filling in, so it is refreshed while open.
   useEffect(() => {
@@ -101,7 +107,8 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
   const attendance = [...audit.attendance].sort((a, b) => Number(a.group !== 'member') - Number(b.group !== 'member') || a.stints[0].joinedAt - b.stints[0].joinedAt);
 
   const downloadPdf = () => {
-    const url = URL.createObjectURL(attendanceRecordPdf(audit));
+    const session = sessions.find((entry) => entry.id === room.sessionId);
+    const url = URL.createObjectURL(attendanceRecordPdf(audit, session ? inviteesFor(session, users) : []));
     const link = document.createElement('a');
     link.href = url;
     link.download = attendanceRecordName(audit);
