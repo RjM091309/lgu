@@ -139,7 +139,13 @@ export function VideoTile({
       ) : null}
 
       {/* Top: what is happening with this person */}
-      <div className="pointer-events-none absolute inset-x-2 top-2 flex items-start gap-1.5">
+      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-1.5">
+        {actions?.pinned ? (
+          <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur-sm">
+            <Pin className="h-3 w-3" />
+            Pinned
+          </span>
+        ) : null}
         {hasFloor ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-[#d4a72c] px-2 py-0.5 text-[11px] font-bold text-[#141b66]">
             <MicIcon className="h-3 w-3" />

@@ -113,6 +113,7 @@ export function CallStage(props: CallStageProps) {
   const { room, selfPid, selfRole, media, peers, speaking, panel, setPanel, act, session } = props;
   const isWide = useMediaQuery('(min-width: 1024px)');
   const [layout, setLayout] = useState<Layout>('auto');
+  // Pinned by account, so the pin survives that person reconnecting (which gives them a new pid).
   const [pinned, setPinned] = useState<string | null>(null);
   const area = useElementSize<HTMLDivElement>();
   const moderator = selfRole !== 'participant';
@@ -122,15 +123,25 @@ export function CallStage(props: CallStageProps) {
   const me = participants.find((p) => p.pid === selfPid);
   const sharer = participants.find((p) => p.screen);
   const floorHolder = participants.find((p) => p.pid === room?.floor);
-  const pinnedPerson = participants.find((p) => p.pid === pinned);
+  const pinnedPerson = participants.find((p) => p.inviteeId === pinned);
+  // A new screen share or a new floor holder brings everyone back to the automatic view, even after picking one by hand.
+  const sharerId = sharer?.inviteeId ?? null;
+  const floorId = floorHolder?.inviteeId ?? null;
+  useEffect(() => {
+    if (sharerId) setLayout('auto');
+  }, [sharerId]);
+  useEffect(() => {
+    if (floorId) setLayout('auto');
+  }, [floorId]);
   // Most recent speaker other than me, for the speaker view when nobody has the floor.
   const lastSpeaker = useRef<string | null>(null);
   const loudOther = [...speaking].find((pid) => pid !== selfPid && participants.some((p) => p.pid === pid));
   if (loudOther) lastSpeaker.current = loudOther;
+  // Who takes the stage: my own pin, then a screen share, then the floor. Someone sharing or holding the floor sees
+  // the next one down (or the last speaker, or the presiding officer) instead of themselves; a pin on myself is honoured.
   const spotlight = pinnedPerson ?? sharer ?? floorHolder ?? null;
   const mode: 'gallery' | 'speaker' = layout === 'auto' ? (spotlight && participants.length > 1 ? 'speaker' : 'gallery') : layout;
-  // Whoever is in the spotlight on everyone else's screen sees the presiding officer (or the last speaker) instead of themselves.
-  const shown = spotlight?.pid === selfPid ? null : spotlight;
+  const shown = pinnedPerson ?? [sharer, floorHolder].find((p) => p && p.pid !== selfPid) ?? null;
   const main =
     mode === 'speaker'
       ? (shown ??
@@ -140,6 +151,11 @@ export function CallStage(props: CallStageProps) {
         me ??
         null)
       : null;
+  // What my pin keeps off the stage, so I can tell and switch back.
+  const hiddenByPin = pinnedPerson ? [sharer, floorHolder].find((p) => p && p.pid !== selfPid && p.pid !== pinnedPerson.pid) : undefined;
+  // Pinned first, then the screen share and the floor, then everyone in joining order.
+  const rank = (p: Participant) => (p === pinnedPerson ? 0 : p === sharer ? 1 : p === floorHolder ? 2 : 3);
+  const ordered = [...participants].sort((a, b) => rank(a) - rank(b));
 
   const roleLabelOf = (p: Participant) => (p.role === 'participant' ? null : session ? roleLabelFor(p.role, session) : p.role === 'host' ? 'Host' : 'Presiding Officer');
   const streamOf = (p: Participant) => (p.pid === selfPid ? (props.screenStream ?? media.stream) : (peers.get(p.pid)?.stream ?? null));
@@ -147,8 +163,17 @@ export function CallStage(props: CallStageProps) {
   const actionsFor = (p: Participant): TileActions => {
     const isSelf = p.pid === selfPid;
     return {
-      onPin: participants.length > 1 ? () => setPinned((current) => (current === p.pid ? null : p.pid)) : undefined,
-      pinned: pinned === p.pid,
+      onPin:
+        participants.length > 1
+          ? () => {
+              if (pinned === p.inviteeId) setPinned(null);
+              else {
+                setPinned(p.inviteeId);
+                setLayout('auto');
+              }
+            }
+          : undefined,
+      pinned: pinned === p.inviteeId,
       onFloor: moderator ? () => void act('floor', { target: room?.floor === p.pid ? null : p.pid }) : undefined,
       onMute: moderator && !isSelf && p.audio ? () => void act('mute', { target: p.pid }) : undefined,
       onRemove:
@@ -266,6 +291,16 @@ export function CallStage(props: CallStageProps) {
                 </button>
               </Banner>
             ) : null}
+            {mode === 'speaker' && hiddenByPin ? (
+              <Banner tone="info">
+                <span>
+                  <span className="font-semibold">{hiddenByPin.name}</span> {hiddenByPin.screen ? 'is sharing a screen' : 'has the floor'}. You pinned {pinnedPerson?.pid === selfPid ? 'yourself' : pinnedPerson?.name}.
+                </span>
+                <button type="button" onClick={() => setPinned(null)} className="pointer-events-auto ml-2 inline-flex h-9 items-center rounded-lg bg-white/15 px-3 text-xs font-bold text-white">
+                  Unpin
+                </button>
+              </Banner>
+            ) : null}
             {poorConnection ? (
               <Banner tone="warning">
                 Your connection is unstable.
@@ -286,14 +321,14 @@ export function CallStage(props: CallStageProps) {
               </div>
             ) : mode === 'gallery' ? (
               <div className={cn('flex flex-wrap justify-center gap-2', scrollGallery ? 'content-start' : 'h-full content-center')}>
-                {participants.map((p) => tile(p, 'shrink-0', scrollGallery ? scrollTile : { width: grid.width, height: grid.height }))}
+                {ordered.map((p) => tile(p, 'shrink-0', scrollGallery ? scrollTile : { width: grid.width, height: grid.height }))}
               </div>
             ) : main ? (
               <div className={cn('flex h-full gap-2', portrait ? 'flex-col' : 'flex-row')}>
                 {tile(main, 'min-h-0 min-w-0 flex-1', undefined, true)}
                 {participants.length > 1 ? (
                   <div className={cn('flex shrink-0 gap-2', portrait ? 'h-28 flex-row overflow-x-auto sm:h-32' : 'w-[clamp(150px,20%,240px)] flex-col overflow-y-auto')}>
-                    {participants.filter((p) => p.pid !== main.pid).map((p) => tile(p, cn('shrink-0', portrait ? 'h-full w-40 sm:w-48' : 'aspect-video w-full')))}
+                    {ordered.filter((p) => p.pid !== main.pid).map((p) => tile(p, cn('shrink-0', portrait ? 'h-full w-40 sm:w-48' : 'aspect-video w-full')))}
                   </div>
                 ) : null}
               </div>
