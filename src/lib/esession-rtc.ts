@@ -8,6 +8,8 @@
 // of the body plus the Secretariat) is the comfortable ceiling; a media server would replace this file
 // for larger rooms.
 
+import { withWebmDuration } from '@/lib/media-duration';
+
 export type PeerLink = 'connecting' | 'connected' | 'reconnecting' | 'failed';
 export type LinkQuality = 'good' | 'fair' | 'poor';
 
@@ -466,7 +468,9 @@ export class CallRecorder {
       const finish = () => {
         this.sources.forEach((source) => source.node.disconnect());
         this.sources.clear();
-        resolve(new Blob(this.chunks, { type: this.mimeType.split(';')[0] }));
+        // Written as a stream, the file has no length of its own; add it so players can seek anywhere.
+        const blob = new Blob(this.chunks, { type: this.mimeType.split(';')[0] });
+        void withWebmDuration(blob, Date.now() - this.startedAt).then(resolve, () => resolve(blob));
       };
       if (this.recorder.state === 'inactive') return finish();
       this.recorder.onstop = finish;

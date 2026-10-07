@@ -58,6 +58,7 @@ import { cn } from '@/lib/utils';
 import { TranscriptPanel } from '@/components/esession/TranscriptPanel';
 import { logActivity } from '@/lib/activity-log';
 import { ROLE_TONE, getCurrentUser, initials, useAccess, useRoles, useUsers } from '@/lib/access-store';
+import { makeSeekable } from '@/lib/media-duration';
 
 
 const KIND_ICONS: Record<FileKind, typeof FileText> = {
@@ -917,6 +918,7 @@ export function SessionFilesPanel() {
                   controls
                   autoPlay
                   className="mx-auto max-h-[45vh] w-full rounded bg-black"
+                  onLoadedMetadata={(e) => makeSeekable(e.currentTarget)}
                   onTimeUpdate={(e) => setMediaTime(e.currentTarget.currentTime)}
                   onError={() => setMediaError(true)}
                 />
@@ -931,6 +933,7 @@ export function SessionFilesPanel() {
                     controls
                     autoPlay
                     className="w-full"
+                    onLoadedMetadata={(e) => makeSeekable(e.currentTarget)}
                     onTimeUpdate={(e) => setMediaTime(e.currentTarget.currentTime)}
                     onError={() => setMediaError(true)}
                   />
