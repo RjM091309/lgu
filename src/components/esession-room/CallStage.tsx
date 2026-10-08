@@ -588,7 +588,7 @@ function PanelHeader({ panel, setPanel, people, unread, waiting }: { panel: Pane
   const tabs: { id: Panel; label: string; badge?: number; count?: number }[] = [
     { id: 'people', label: 'People', count: people, badge: waiting },
     { id: 'chat', label: 'Chat', badge: unread },
-    { id: 'agenda', label: 'Order of Business' },
+    { id: 'agenda', label: 'Agenda' },
   ];
   return (
     <div className="flex items-center gap-1 border-b border-white/10 px-2">
@@ -889,7 +889,7 @@ function ControlBar({
       group: 1,
       priority: 8,
       node: <ControlButton key="agenda" icon={ListOrdered} label="Agenda" active={panel === 'agenda'} onClick={() => togglePanel('agenda')} />,
-      menu: { key: 'agenda', icon: ListOrdered, label: 'Order of Business', onClick: () => togglePanel('agenda') },
+      menu: { key: 'agenda', icon: ListOrdered, label: 'Agenda', onClick: () => togglePanel('agenda') },
     },
     ...(isHost
       ? [
