@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, LogOut } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { NAV_GROUPS } from '@/lib/navigation';
+import { useNavGroups } from '@/lib/modules';
 import { initials, useAccess } from '@/lib/access-store';
 
 interface SidebarProps {
@@ -18,9 +18,10 @@ interface SidebarProps {
 export function Sidebar({ activeTab, setActiveTab, onLogout, collapsed = false, compactHeader = false, className }: SidebarProps) {
   const { user, can } = useAccess();
   // Only the pages the signed-in role can open; groups left empty are hidden.
-  const groups = NAV_GROUPS.map((group) => ({ ...group, items: group.items.filter((item) => can(item.id)) })).filter((group) => group.items.length > 0);
+  const navGroups = useNavGroups();
+  const groups = navGroups.map((group) => ({ ...group, items: group.items.filter((item) => can(item.id)) })).filter((group) => group.items.length > 0);
   // Accordion: one group open at a time, starting with the group that holds the current page.
-  const groupOf = (tab: string) => NAV_GROUPS.find((group) => group.items.some((item) => item.id === tab))?.id ?? null;
+  const groupOf = (tab: string) => navGroups.find((group) => group.items.some((item) => item.id === tab))?.id ?? null;
   const [openGroup, setOpenGroup] = useState<string | null>(() => groupOf(activeTab));
   // Rail tooltips are fixed-positioned so the scrolling nav can't clip them.
   const [hint, setHint] = useState<{ label: string; top: number; left: number } | null>(null);

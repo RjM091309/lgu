@@ -29,7 +29,7 @@ import { confirmAction } from '@/components/ui/confirm';
 import { gridTableCardsRef, gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
 import { LEGISLATIVE_STAGES, StageProgress, StatusBadge, stageProgress } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
-import { openPrintWindow } from '@/lib/files';
+import { escapeHtml, openPrintWindow, saveCsv } from '@/lib/files';
 import { todayInManila } from '@/lib/session-files';
 import { EFFECTIVITY_DAYS, POSTING_DEADLINE_DAYS, PUBLICATION_TONE, addDays, publicationStatus, type PublicationStatus } from '@/lib/publication';
 
@@ -73,9 +73,6 @@ const classificationOf = (bill: Bill): Classification => bill.classification ?? 
 
 const shortDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 const longDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
-const escapeHtml = (value: string) =>
-  value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char] ?? char);
-
 interface EnactedDetails {
   type: Classification;
   enactedOn: string;
@@ -570,7 +567,6 @@ export function LegislativeTrackingList() {
       return;
     }
 
-    const escapeCsv = (value: string) => `"${value.replace(/"/g, '""')}"`;
     const enacted = tab === 'enacted';
     const headers = enacted
       ? ['Record No', 'Title', 'Type', 'Author', 'Category', 'Enacted', 'Publication', 'Publication Note']
@@ -578,9 +574,7 @@ export function LegislativeTrackingList() {
     const rows = filteredRecords.map((bill) => {
       if (enacted) {
         const details = enactedDetails(bill);
-        return [bill.number, bill.title, details.type, bill.author, bill.category, details.enactedOn, details.publication ?? '', details.note]
-          .map((cell) => escapeCsv(String(cell)))
-          .join(',');
+        return [bill.number, bill.title, details.type, bill.author, bill.category, details.enactedOn, details.publication ?? '', details.note];
       }
       return [
         bill.number,
@@ -595,20 +589,14 @@ export function LegislativeTrackingList() {
           return step < 0 ? '' : `${stageProgress(step)}%`;
         })(),
         bill.trackingDate,
-      ].map((cell) => escapeCsv(String(cell))).join(',');
+      ];
     });
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
     const fileTag = { process: 'in-process', enacted: 'enacted', closed: 'vetoed-disapproved' }[tab];
-    link.download = `legislative-${fileTag}-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    if (!saveCsv(`legislative-${fileTag}-${new Date().toISOString().slice(0, 10)}.csv`, headers, rows)) {
+      toast('Export failed', 'The browser blocked the download. Please try again.', 'error');
+      return;
+    }
     toast('Tracking list exported', `${filteredRecords.length} record(s) saved as CSV.`);
     logActivity({ module: 'Legislative Tracking', action: 'Exported', summary: 'Exported the tracking list', detail: `${filteredRecords.length} record(s) saved as CSV.` });
   };
@@ -953,7 +941,7 @@ export function LegislativeTrackingList() {
             {records.slice(0, 6).map((record, index) => (
               <div key={`gov-${record.id}`} className={gridTableRowClassName}>
                 <div className="col-span-4 truncate" title={record.number}>{record.number}</div>
-                <div className={cn('col-span-3', index === 0 ? 'font-medium text-[#ef6c00]' : 'text-text-muted')}>
+                <div className={cn('col-span-3', index === 0 ? 'font-medium text-orange-700' : 'text-text-muted')}>
                   {index === 0 ? 'Similar subject found' : 'None detected'}
                 </div>
                 <div className="col-span-3 tabular-nums">PHP {((index + 1) * 350000).toLocaleString('en-PH')}</div>

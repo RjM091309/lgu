@@ -11,7 +11,8 @@
   --color-background: #f8f9fa;
   --color-surface: #ffffff;
   --color-text-main: #212121;
-  --color-text-muted: #757575;
+  /* #6b6b6b keeps secondary text above 4.5:1 on the grey surfaces too (bg-muted, the page background). */
+  --color-text-muted: #6b6b6b;
   --color-border: #e0e0e0;
   --color-success: #2e7d32;
   --color-warning: #f9a825;
@@ -23,7 +24,7 @@
   --color-accent: #f1f5f9;
   --color-accent-foreground: #1a237e;
   --color-muted: #f1f5f9;
-  --color-muted-foreground: #757575;
+  --color-muted-foreground: #6b6b6b;
   --color-popover: #ffffff;
   --color-popover-foreground: #212121;
   --color-card: #ffffff;
@@ -447,6 +448,9 @@
 .dark .bg-white\/95 { background-color: rgb(19 26 46 / 0.95); }
 .dark .hover\:bg-white:hover { background-color: #1b2540; }
 .dark .bg-\[\#1a237e\] { background-color: #4a5adf; }
+/* The dark theme's primary (#7b8cff) is light enough for links and icons, but white text on it is only 3:1;
+   filled buttons, badges and selected chips use a deeper shade of it. */
+.dark .bg-primary, .dark .hover\:bg-primary:hover { background-color: #4a5adf; }
 .dark .text-\[\#1a237e\] { color: #9aa7ff; }
 .dark .bg-\[\#fafafa\] { background-color: #131a2e; }
 .dark .bg-\[\#f3f4f7\] { background-color: #1b2540; }
@@ -476,10 +480,10 @@
 
 /* Heatmap ramp: light-to-dark in the light theme, dim-to-bright in the dark one. */
 :root {
-  --heat-0: #f3f4f7; --heat-1: #dbe7f8; --heat-2: #b3cdf1; --heat-3: #7eaae6; --heat-4: #3f82d8; --heat-5: #1d5bb0;
+  --heat-0: #f3f4f7; --heat-1: #dbe7f8; --heat-2: #b3cdf1; --heat-3: #7eaae6; --heat-4: #2f6fc4; --heat-5: #1d5bb0;
 }
 .dark {
-  --heat-0: #1b2540; --heat-1: #1c3560; --heat-2: #1f4a86; --heat-3: #2a63b0; --heat-4: #3f82d8; --heat-5: #6aa3ee;
+  --heat-0: #1b2540; --heat-1: #1c3560; --heat-2: #1e4478; --heat-3: #23549a; --heat-4: #2a63b0; --heat-5: #2f6fc4;
 }
 .dark [class*="bg-blue-50/"], .dark [class*="bg-amber-50/"] { background-color: rgb(30 64 175 / 0.18); }
 .dark [class*="bg-amber-50"].border-amber-200 { background-color: #33240a; }
@@ -546,14 +550,15 @@
   --color-background: #f8f9fa;
   --color-surface: #ffffff;
   --color-text-main: #212121;
-  --color-text-muted: #757575;
+  /* #6b6b6b keeps secondary text above 4.5:1 on the grey surfaces too (bg-muted, the page background). */
+  --color-text-muted: #6b6b6b;
   --color-border: #e0e0e0;
   --color-ring: #1a237e;
   --color-input: #e0e0e0;
   --color-accent: #f1f5f9;
   --color-accent-foreground: #1a237e;
   --color-muted: #f1f5f9;
-  --color-muted-foreground: #757575;
+  --color-muted-foreground: #6b6b6b;
   --color-popover: #ffffff;
   --color-popover-foreground: #212121;
   --color-card: #ffffff;

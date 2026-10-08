@@ -4,6 +4,7 @@ import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, Table
 import { mockAttendanceMarks, mockAttendanceSessions, mockMembers, mockPublications, type AttendanceMark } from '@/lib/mock-data';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
+import { useModules } from '@/lib/modules';
 import { EFFECTIVITY_DAYS, POSTING_DEADLINE_DAYS, PUBLICATION_TONE, addDays, publicationStatus } from '@/lib/publication';
 
 // Quorum is a majority of all members of the Sanggunian.
@@ -349,10 +350,13 @@ export function AttendancePublicationView({
   reports: { title: string; type: string; date: string }[];
   onDownload: (report: { title: string; type: string; date: string }) => void;
 }) {
-  const [tab, setTab] = useState<'attendance' | 'publication'>('attendance');
+  const [chosen, setTab] = useState<'attendance' | 'publication'>('attendance');
+  // Publication and posting is part of the Legislative Reports module.
+  const withPublication = useModules().includes('reports');
+  const tab = withPublication ? chosen : 'attendance';
   const tabs = [
     { id: 'attendance' as const, label: 'Attendance & Quorum', icon: ClipboardCheck, count: mockAttendanceSessions.length, unit: 'sessions' },
-    { id: 'publication' as const, label: 'Publication & Posting', icon: Clock, count: mockPublications.length, unit: 'ordinances' },
+    ...(withPublication ? [{ id: 'publication' as const, label: 'Publication & Posting', icon: Clock, count: mockPublications.length, unit: 'ordinances' }] : []),
   ];
   const tabReports = reports.filter((report) => (tab === 'attendance' ? report.type === 'Attendance' : report.type === 'Publication'));
 

@@ -1,11 +1,20 @@
 import { useSyncExternalStore } from 'react';
 import { toast } from '@/components/ui/toast';
 import { STORES, requestPersistentStorage, runTransaction, storageErrorMessage } from '@/lib/app-db';
+import { deleteServerTranscript, fetchServerTranscript, getTranscriptIndex, isSyncLive, saveServerTranscript, subscribeSync } from '@/lib/esession-sync';
+import { createPdf } from '@/lib/pdf';
+import { letterhead } from '@/lib/session-files';
+
+// Transcripts of Session Files recordings. Speech-to-text runs in the browser (transcribe.worker.ts); the result is
+// kept on the LIMS server so every device sees it (and corrections made on one), and wiped with the other demo data
+// when the server restarts. If the server cannot be reached, a transcript is kept on this device instead.
 
 export interface TranscriptSegment {
   start: number;
   end: number;
   text: string;
+  /** Corrected by hand after the speech-to-text. */
+  edited?: boolean;
 }
 
 export interface TranscribeRequest {
@@ -44,17 +53,23 @@ export interface TranscriptState {
   message?: string;
   device?: 'webgpu' | 'wasm';
   createdAt?: string;
-  // Where finished captions came from: transcribed in this browser, or prepared and shipped with the app.
-  source?: 'saved' | 'bundled';
+  // Where finished captions came from: the LIMS server (every device), this device only (saved while the server
+  // could not be reached), or prepared and shipped with the app.
+  source?: 'saved' | 'local' | 'bundled';
+  /** When the server copy last changed (epoch ms), to notice changes made on another device. */
+  updatedAt?: number;
+  savedBy?: string;
 }
 
 interface SavedTranscript {
   id: string;
   segments: TranscriptSegment[];
-  model: string;
-  language: string;
+  model?: string;
+  language?: string;
   device?: 'webgpu' | 'wasm';
   createdAt: string;
+  savedBy?: string;
+  updatedAt?: number;
 }
 
 const SAMPLE_RATE = 16_000;
@@ -64,6 +79,10 @@ const states = new Map<string, TranscriptState>();
 const listeners = new Set<() => void>();
 const workers = new Map<string, Worker>();
 const bundledSources = new Map<string, string>();
+// Transcripts being saved from here: the server's notice of that change is not a change from another device.
+const saving = new Set<string>();
+// When each transcript was last saved from here (server time), for the same reason.
+const savedHere = new Map<string, number>();
 
 const setState = (key: string, next: TranscriptState) => {
   states.set(key, next);
@@ -105,14 +124,19 @@ const loadBundled = async (src: string) => {
   return parseVtt(await response.text());
 };
 
-// A transcript made in this browser wins over the prepared one shipped with the app.
+// The server's transcript comes first, then one kept on this device, then the prepared one shipped with the app.
 const loadSaved = async (key: string) => {
   let next: TranscriptState = { status: 'idle', segments: [], progress: 0 };
-  try {
-    const saved = (await runTransaction(STORES.transcripts, 'readonly', (store) => store.get(key))) as SavedTranscript | undefined;
-    if (saved) next = { status: 'done', segments: saved.segments, progress: 1, device: saved.device, createdAt: saved.createdAt, source: 'saved' };
-  } catch {
-    // Storage unavailable: fall back to the prepared transcript, if any.
+  const shared = await fetchServerTranscript<SavedTranscript>(key);
+  if (shared) {
+    next = { status: 'done', segments: shared.segments, progress: 1, device: shared.device, createdAt: shared.createdAt, source: 'saved', updatedAt: shared.updatedAt, savedBy: shared.savedBy };
+  } else {
+    try {
+      const saved = (await runTransaction(STORES.transcripts, 'readonly', (store) => store.get(key))) as SavedTranscript | undefined;
+      if (saved) next = { status: 'done', segments: saved.segments, progress: 1, device: saved.device, createdAt: saved.createdAt, source: 'local' };
+    } catch {
+      // Storage unavailable: fall back to the prepared transcript, if any.
+    }
   }
   const bundled = bundledSources.get(key);
   if (next.status === 'idle' && bundled) {
@@ -128,6 +152,40 @@ const loadSaved = async (key: string) => {
 const reload = (key: string) => {
   setState(key, LOADING);
   void loadSaved(key);
+};
+
+// Another device transcribed, corrected or removed a transcript: reload the ones open here.
+subscribeSync(() => {
+  const index = getTranscriptIndex();
+  states.forEach((current, key) => {
+    if (saving.has(key) || workers.has(key) || current.status === 'loading' || current.status === 'preparing' || current.status === 'model' || current.status === 'transcribing') return;
+    const listed = index[key];
+    if (listed && savedHere.get(key) === listed.updatedAt) return;
+    const stale = listed ? current.source !== 'saved' || current.updatedAt !== listed.updatedAt : current.source === 'saved';
+    if (stale && isSyncLive()) reload(key);
+  });
+});
+
+/**
+ * Keeps a transcript: on the server for every device, or on this device if the server cannot be reached.
+ * Resolves to where it went.
+ */
+const keep = async (key: string, record: SavedTranscript): Promise<{ source: 'saved' | 'local'; updatedAt?: number } | null> => {
+  saving.add(key);
+  const updatedAt = await saveServerTranscript(key, record).finally(() => saving.delete(key));
+  if (updatedAt !== null) {
+    savedHere.set(key, updatedAt);
+    // An older copy kept on this device is no longer needed.
+    void runTransaction(STORES.transcripts, 'readwrite', (store) => store.delete(key)).catch(() => undefined);
+    return { source: 'saved', updatedAt };
+  }
+  try {
+    await runTransaction(STORES.transcripts, 'readwrite', (store) => store.put(record));
+    requestPersistentStorage();
+    return { source: 'local' };
+  } catch {
+    return null;
+  }
 };
 
 export const useTranscript = (key: string | null, bundledSrc?: string): TranscriptState | null =>
@@ -163,7 +221,7 @@ const finishJob = (key: string) => {
 
 export const isTranscribing = () => workers.size > 0;
 
-export const startTranscription = async (key: string, fileName: string, url: string, model: SttModel, language: string) => {
+export const startTranscription = async (key: string, fileName: string, url: string, model: SttModel, language: string, by: string) => {
   if (workers.size > 0) {
     toast('Transcription not started', 'Another recording is being transcribed. Wait for it to finish or cancel it first.', 'error');
     return;
@@ -206,22 +264,18 @@ export const startTranscription = async (key: string, fileName: string, url: str
       case 'done': {
         finishJob(key);
         const createdAt = new Date().toISOString();
-        const record: SavedTranscript = { id: key, segments: current.segments, model: STT_MODELS[model].id, language, device: current.device, createdAt };
-        try {
-          await runTransaction(STORES.transcripts, 'readwrite', (store) => store.put(record));
-          requestPersistentStorage();
-          setState(key, { status: 'done', segments: current.segments, progress: 1, device: current.device, createdAt, source: 'saved' });
-          toast('Transcription complete', `${fileName}: ${current.segments.length} caption line(s) saved.`);
-        } catch (error) {
-          setState(key, { status: 'done', segments: current.segments, progress: 1, device: current.device, createdAt });
-          toast('Transcript not saved', `${storageErrorMessage(error)} The captions stay available until you refresh.`, 'error');
-        }
+        const record: SavedTranscript = { id: key, segments: current.segments, model: STT_MODELS[model].id, language, device: current.device, createdAt, savedBy: by };
+        const kept = await keep(key, record);
+        setState(key, { status: 'done', segments: current.segments, progress: 1, device: current.device, createdAt, savedBy: by, ...(kept ?? {}) });
+        if (kept?.source === 'saved') toast('Transcription complete', `${fileName}: ${current.segments.length} line(s), saved for every device.`);
+        else if (kept) toast('Transcription saved on this device', `${fileName}: the LIMS server could not be reached, so only this device has the transcript for now.`, 'info');
+        else toast('Transcript not saved', 'It could not be saved on the server or on this device. The captions stay available until you refresh.', 'error');
         break;
       }
       case 'error':
         finishJob(key);
         setState(key, { status: 'error', segments: [], progress: 0, message: message.message });
-        toast('Transcription failed', 'The speech model could not run. Check your internet connection for the first download, then try again.', 'error');
+        toast('Transcription failed', 'The speech model could not be loaded. The LIMS server keeps a copy after the first download; until then it needs internet once. Try again.', 'error');
         break;
     }
   };
@@ -242,11 +296,32 @@ export const cancelTranscription = (key: string) => {
 };
 
 export const deleteTranscript = async (key: string): Promise<string | null> => {
+  const listed = Boolean(getTranscriptIndex()[key]);
+  if (listed && !(await deleteServerTranscript(key))) return 'The transcript could not be removed from the LIMS server. Check the connection and try again.';
   try {
     await runTransaction(STORES.transcripts, 'readwrite', (store) => store.delete(key));
   } catch (error) {
     return storageErrorMessage(error);
   }
+  return null;
+};
+
+/**
+ * Corrects one line of a transcript (the speech-to-text gets names and local terms wrong) and keeps it for every
+ * device. A prepared transcript becomes a saved one with its first correction. Resolves to an error message or null.
+ */
+export const correctLine = async (key: string, index: number, text: string, by: string): Promise<string | null> => {
+  const current = states.get(key);
+  const target = current?.segments[index];
+  if (!current || current.status !== 'done' || !target) return 'The transcript is not ready to edit.';
+  const words = text.trim();
+  if (!words) return 'A line cannot be empty.';
+  if (words === target.text) return null;
+  const segments = current.segments.map((segment, i) => (i === index ? { ...segment, text: words, edited: true } : segment));
+  const createdAt = current.createdAt ?? new Date().toISOString();
+  const kept = await keep(key, { id: key, segments, device: current.device, createdAt, savedBy: by });
+  if (!kept) return 'The correction could not be saved. Please try again.';
+  setState(key, { ...current, segments, savedBy: by, ...kept });
   return null;
 };
 
@@ -271,3 +346,29 @@ export const toVtt = (segments: TranscriptSegment[]) =>
 
 export const toPlainText = (title: string, segments: TranscriptSegment[]) =>
   [title, '', ...segments.map((segment) => `[${formatClock(segment.start)}] ${segment.text}`)].join('\n');
+
+/** The transcript laid out for the minutes: letterhead, the session, and every line with its time. */
+export const transcriptPdf = ({ fileName, session, segments, note }: { fileName: string; session?: { title: string; when: string; where: string }; segments: TranscriptSegment[]; note: string }) => {
+  const corrected = segments.filter((segment) => segment.edited).length;
+  return createPdf(
+    [
+      ...letterhead(),
+      { text: 'TRANSCRIPT OF PROCEEDINGS', size: 13, bold: true, spaceBefore: 18 },
+      ...(session ? [{ text: session.title, size: 12, bold: true }, { text: session.when, size: 10 }, { text: session.where, size: 10 }] : []),
+      { text: `Recording: ${fileName}`, size: 9, spaceBefore: 8, gray: 0.35 },
+      { text: `${note}${corrected ? ` ${corrected} line(s) were corrected by hand, marked *.` : ''}`, size: 9, gray: 0.35 },
+      {
+        table: {
+          columns: [
+            { title: 'Time', width: 12 },
+            { title: 'Spoken', width: 88 },
+          ],
+          rows: segments.map((segment) => [formatClock(segment.start), `${segment.text}${segment.edited ? ' *' : ''}`]),
+          size: 9.5,
+          spaceBefore: 12,
+        },
+      },
+    ],
+    { footer: `Transcript · ${fileName}` }
+  );
+};

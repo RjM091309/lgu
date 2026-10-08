@@ -51,7 +51,7 @@ export function MobileSchedule() {
           <div className={cn('px-4 py-3', SESSION_TONE[next.session.type])}>
             <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide opacity-90">
               <span>Next · {typeLabel(next.session.type)}</span>
-              <span className="rounded-full bg-white/20 px-2 py-0.5 normal-case">{relativeDay(today, next.session.date)}</span>
+              <span className="rounded-full bg-black/20 px-2 py-0.5 normal-case">{relativeDay(today, next.session.date)}</span>
             </div>
             <h2 className="mt-1 text-lg font-bold leading-snug">{next.session.title}</h2>
           </div>

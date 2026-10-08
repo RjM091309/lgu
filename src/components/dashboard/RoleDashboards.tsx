@@ -276,7 +276,7 @@ export function AdminPanel({ onNavigate }: DashboardProps) {
 }
 
 /** Session folders: which checklist items are still missing for each scheduled session. */
-function SessionChecklistCard({ onNavigate, title = 'Session Files Checklist', subtitle = 'Documents and recordings still needed per session' }: DashboardProps & { title?: string; subtitle?: string }) {
+export function SessionChecklistCard({ onNavigate, title = 'Session Files Checklist', subtitle = 'Documents and recordings still needed per session' }: DashboardProps & { title?: string; subtitle?: string }) {
   const { can } = useAccess();
   const files = useSessionFiles();
   const rows = useUpcomingSessions().slice(0, CHECKLIST_WINDOW).map((session) => {

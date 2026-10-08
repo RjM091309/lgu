@@ -9,8 +9,9 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { LGU_PROFILE, mockBills, mockCommitteeAssignments, mockCommitteeHearings, mockCommittees, mockMembers, mockSpecialFiles, type Member } from '@/lib/mock-data';
 import { logActivity } from '@/lib/activity-log';
-import { openPrintWindow, saveCsv } from '@/lib/files';
+import { escapeHtml, openPrintWindow, saveCsv } from '@/lib/files';
 import { cn } from '@/lib/utils';
+import { useModules } from '@/lib/modules';
 import { CompositionChart, committeeRolesOf, shortCommitteeName } from '@/components/members/CompositionChart';
 
 type Assignment = { chair: string; viceChair: string; members: string[] };
@@ -105,26 +106,32 @@ export function MasterListingsView() {
     const assigned = rolesOf(member.id);
     const ok = openPrintWindow(
       `${member.name} — Master Profile`,
-      `<div class="title">${member.name}</div>
+      `<div class="title">${escapeHtml(member.name)}</div>
        <div class="rows">
-         <div><b>Position</b>: ${member.position}</div>
-         <div><b>Seat</b>: ${member.seat}</div>
-         <div><b>Master list tag</b>: ${masterTag(member)}</div>
-         <div><b>Office</b>: ${LGU_PROFILE.address}</div>
+         <div><b>Position</b>: ${escapeHtml(member.position)}</div>
+         <div><b>Seat</b>: ${escapeHtml(member.seat)}</div>
+         <div><b>Master list tag</b>: ${escapeHtml(masterTag(member))}</div>
+         <div><b>Office</b>: ${escapeHtml(LGU_PROFILE.address)}</div>
        </div>
        <table><thead><tr><th>Committee</th><th>Role</th></tr></thead><tbody>${
-         assigned.map((entry) => `<tr><td>${entry.committee.name}</td><td>${entry.role}</td></tr>`).join('') || '<tr><td colspan="2">No committee assignments</td></tr>'
+         assigned.map((entry) => `<tr><td>${escapeHtml(entry.committee.name)}</td><td>${escapeHtml(entry.role)}</td></tr>`).join('') || '<tr><td colspan="2">No committee assignments</td></tr>'
        }</tbody></table>`
     );
     if (!ok) toast('Profile not opened', 'Your browser blocked the print window. Allow pop-ups for this site and try again.', 'error');
   };
 
+  const withSpecialFiles = useModules().includes('legislation');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-primary">Files &amp; Master Listings</h1>
-          <p className="text-sm text-text-muted">Members, committees, and special legislative files recorded in LIMS.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-primary">{withSpecialFiles ? 'Files & Master Listings' : 'Members & Committees'}</h1>
+          <p className="text-sm text-text-muted">
+            {withSpecialFiles
+              ? 'Members, committees, and special legislative files recorded in LIMS.'
+              : 'The members of the Sanggunian and its committees: who is invited to each session and hearing, and who presides.'}
+          </p>
         </div>
         <Button variant="outline" onClick={exportMasterList}>
           <Download className="mr-2 h-4 w-4" />
@@ -152,7 +159,7 @@ export function MasterListingsView() {
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Committee roster */}
-        <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm xl:col-span-2">
+        <section className={cn('overflow-hidden rounded-xl border border-border bg-white shadow-sm', withSpecialFiles ? 'xl:col-span-2' : 'xl:col-span-3')}>
           <header className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-base font-semibold text-text-main">
@@ -232,7 +239,8 @@ export function MasterListingsView() {
           </ul>
         </section>
 
-        {/* Special files */}
+        {/* Special files (part of the Legislative Tracking module) */}
+        {withSpecialFiles ? (
         <section className="self-start rounded-xl border border-border bg-white p-5 shadow-sm">
           <h2 className="text-base font-semibold text-text-main">Special Legislative Files</h2>
           <p className="text-xs text-text-muted">Reference files kept by the Secretariat</p>
@@ -265,6 +273,7 @@ export function MasterListingsView() {
             ))}
           </ul>
         </section>
+        ) : null}
       </div>
 
       {/* Member profile */}

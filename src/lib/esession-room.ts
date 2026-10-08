@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
-import { DEMO_PASSWORD, findLoginAccount, type UserAccount } from '@/lib/access-store';
+import type { UserAccount } from '@/lib/access-store';
 import { inviteesFor } from '@/lib/attendance';
-import { mobileAccounts, type MobileAccount } from '@/lib/mobile-accounts';
+import type { MobileAccount } from '@/lib/mobile-accounts';
 import { mockCommitteeAssignments, type Session } from '@/lib/mock-data';
 import { buildAgenda } from '@/lib/sessions';
 
@@ -43,7 +43,9 @@ export interface RoomSummary {
   autoAdmit: boolean;
   recording: boolean;
   participantCount: number;
-  participants: (Person & { abbr: string; group: 'member' | 'staff' })[];
+  participants: (Person & { abbr: string; group: 'member' | 'staff'; device?: string })[];
+  /** The agenda item being taken up (live rooms). */
+  agendaItem?: string | null;
   /** Everyone who was in the room at some point. */
   attendeeCount: number;
   invitees: string[];
@@ -199,23 +201,6 @@ export const writeESessionAccount = (inviteeId: string | null, remember = false)
   } catch {
     // Storage unavailable (private mode): the sign-in lasts until the page is closed.
   }
-};
-
-export type ESessionSignIn =
-  | { account: MobileAccount }
-  | { error: 'invalid' | 'inactive' }
-  /** A portal account whose role does not attend sessions (Encoder, Viewer). */
-  | { error: 'no-sessions'; role: string };
-
-export const signInESession = (users: UserAccount[], username: string, password: string): ESessionSignIn => {
-  if (password !== DEMO_PASSWORD) return { error: 'invalid' };
-  const login = username.trim().toLowerCase();
-  const account = mobileAccounts(users).find((entry) => entry.username === login);
-  if (account) return { account };
-  const user = findLoginAccount(login);
-  if (user?.status === 'Inactive') return { error: 'inactive' };
-  if (user) return { error: 'no-sessions', role: user.role };
-  return { error: 'invalid' };
 };
 
 // ---- Roles --------------------------------------------------------------------------------------

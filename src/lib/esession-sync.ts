@@ -24,7 +24,7 @@ export interface Notice {
   id: string;
   kind: 'scheduled' | 'updated' | 'reminder' | 'announcement';
   sessionId: string;
-  /** Announcements: the message pushed from the Session Platform. Updates: what changed. */
+  /** Announcements: the message sent from the E-Session Monitor. Updates: what changed. */
   text?: string;
   /** Reminders only: who was reminded. A newly scheduled session concerns everyone invited to it. */
   inviteeIds?: string[];
@@ -74,6 +74,22 @@ export interface ServerFile {
   src?: string;
 }
 
+/** Accounts and roles shared through the server (their shapes are access-store.ts's UserAccount and Role). */
+export interface SharedAccounts {
+  users: unknown[];
+  roles: unknown[];
+}
+
+/** What the server lists about a recording's transcript (the text itself is fetched when it is opened). */
+export interface TranscriptInfo {
+  lines: number;
+  /** Lines corrected by hand. */
+  edited: number;
+  /** Epoch milliseconds. */
+  updatedAt: number;
+  savedBy: string;
+}
+
 export type PresenceReport = Pick<MobileDevice, 'platform' | 'model' | 'os' | 'account'> & { deviceId: string };
 
 interface ESessionState {
@@ -83,6 +99,12 @@ interface ESessionState {
   /** Sessions whose e-session has started: they stay as scheduled. */
   started: string[];
   files: ServerFile[];
+  /** Optional Staff Portal modules an Administrator turned on (see modules.ts). */
+  modules: string[];
+  /** Recordings that have a transcript on the server (by transcriptKey), see transcripts.ts. */
+  transcripts: Record<string, TranscriptInfo>;
+  /** User accounts and roles as last changed in the Staff Portal; null while they are the samples (access-store.ts). */
+  accounts: SharedAccounts | null;
   notices: Notice[];
   devices: MobileDevice[];
   status: SyncStatus;
@@ -98,6 +120,9 @@ interface ServerState {
   devices?: MobileDevice[];
   started?: string[];
   files?: ServerFile[];
+  modules?: string[];
+  transcripts?: Record<string, TranscriptInfo>;
+  accounts?: SharedAccounts | null;
 }
 
 export const rsvpKey = (sessionId: string, inviteeId: string) => `${sessionId}|${inviteeId}`;
@@ -150,7 +175,7 @@ function pastSessionRsvps() {
   return rsvps;
 }
 
-const INITIAL: Omit<ESessionState, 'status'> = { rsvps: SAMPLE_RSVPS, scheduled: mockSeededSessions, started: [], files: [], notices: [], devices: [] };
+const INITIAL: Omit<ESessionState, 'status'> = { rsvps: SAMPLE_RSVPS, scheduled: mockSeededSessions, started: [], files: [], modules: [], transcripts: {}, accounts: null, notices: [], devices: [] };
 
 let state: ESessionState = { ...INITIAL, status: 'connecting' };
 
@@ -163,6 +188,8 @@ const setState = (next: Partial<ESessionState>) => {
 let source: EventSource | null = null;
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let lastVersion = -1;
+// Accounts changed here and on their way to the server: other news from the server must not undo them meanwhile.
+let accountsPending: SharedAccounts | null = null;
 const POLL_MS = 1500;
 
 const SERVER_KEY = 'lims-server';
@@ -219,7 +246,7 @@ const applyServer = (server: ServerState) => {
     setState({ status: 'live' });
     return;
   }
-  setState({ rsvps: server.rsvps, scheduled: server.sessions, started: server.started ?? [], files: server.files ?? [], notices: server.notices, devices: server.devices ?? [], status: 'live' });
+  setState({ rsvps: server.rsvps, scheduled: server.sessions, started: server.started ?? [], files: server.files ?? [], modules: server.modules ?? [], transcripts: server.transcripts ?? {}, accounts: accountsPending ?? server.accounts ?? null, notices: server.notices, devices: server.devices ?? [], status: 'live' });
 };
 
 const poll = async () => {
@@ -413,6 +440,74 @@ export const deleteServerFile = async (id: string): Promise<string | null> => {
   }
 };
 
+// ---- Optional Staff Portal modules -----------------------------------------------------------------
+
+const enabledModules = () => state.modules;
+export const useEnabledModules = () => useSyncExternalStore(subscribe, enabledModules);
+export const getEnabledModules = enabledModules;
+
+/** Turns optional modules on or off for every device (until the server restarts). */
+export const setEnabledModules = (modules: string[]) => {
+  setState({ modules });
+  void send('PUT', '/api/esession/modules', { modules });
+};
+
+// ---- User accounts and roles -------------------------------------------------------------------------
+
+export const getSharedAccounts = () => state.accounts;
+
+/** Shares changed accounts and roles with every device (until the server restarts). False if not saved there. */
+export const saveSharedAccounts = (accounts: SharedAccounts) => {
+  accountsPending = accounts;
+  setState({ accounts });
+  return send('PUT', '/api/esession/accounts', accounts).finally(() => {
+    if (accountsPending === accounts) accountsPending = null;
+  });
+};
+
+// ---- Transcripts kept on the server ----------------------------------------------------------------
+
+const transcriptIndex = () => state.transcripts;
+export const useTranscriptIndex = () => useSyncExternalStore(subscribe, transcriptIndex);
+export const getTranscriptIndex = transcriptIndex;
+/** Calls `listener` on every change of the shared state (for stores outside React, like transcripts.ts). */
+export const subscribeSync = subscribe;
+export const isSyncLive = () => state.status === 'live';
+
+const transcriptUrl = (key: string) => serverUrl(`/api/esession/transcripts?key=${encodeURIComponent(key)}`);
+
+/** A transcript from the server, or null when there is none (or the server cannot be reached). */
+export const fetchServerTranscript = async <T,>(key: string): Promise<T | null> => {
+  if (state.status !== 'live') return null;
+  try {
+    const res = await fetch(transcriptUrl(key), { cache: 'no-store' });
+    return res.ok ? ((await res.json()) as T) : null;
+  } catch {
+    return null;
+  }
+};
+
+/** Saves a transcript for every device; resolves to when it was saved, or null if it could not be. */
+export const saveServerTranscript = async (key: string, transcript: object): Promise<number | null> => {
+  if (state.status !== 'live') return null;
+  try {
+    const res = await fetch(transcriptUrl(key), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(transcript) });
+    if (!res.ok) return null;
+    return ((await res.json()) as { updatedAt: number }).updatedAt;
+  } catch {
+    return null;
+  }
+};
+
+export const deleteServerTranscript = async (key: string) => {
+  if (state.status !== 'live') return false;
+  try {
+    return (await fetch(transcriptUrl(key), { method: 'DELETE' })).ok;
+  } catch {
+    return false;
+  }
+};
+
 /** Shown when the server turns down an edit or a cancellation. */
 export const CHANGE_REFUSED = 'Its e-session has already started, so it stays as scheduled.';
 
@@ -433,13 +528,13 @@ export const sendReminder = (sessionId: string, inviteeIds: string[], from: stri
   void send('POST', '/api/esession/remind', { sessionId, inviteeIds, from, at });
 };
 
-/** A message from the Session Platform to every phone. */
+/** A message from the E-Session Monitor to every phone. */
 export const sendAnnouncement = (sessionId: string, text: string, from: string, at: string) => {
   setState({ notices: [{ id: newNoticeId(), kind: 'announcement', sessionId, text, at, from }, ...state.notices] });
   void send('POST', '/api/esession/announce', { sessionId, text, from, at });
 };
 
-/** A phone checking in: keeps it listed as connected on the Session Platform. */
+/** A phone checking in: keeps it listed as connected on the E-Session Monitor. */
 export const reportPresence = (report: PresenceReport) => void send('POST', '/api/esession/presence', report);
 
 /** A browser tab closing: shows the phone as offline at once instead of after the timeout. */

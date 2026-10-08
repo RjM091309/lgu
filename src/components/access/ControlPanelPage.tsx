@@ -9,6 +9,7 @@ import { saveSecuritySettings, useSecuritySettings, type SecuritySettings } from
 import { mockSessionDevices } from '@/lib/mock-data';
 import { saveCsv } from '@/lib/files';
 import { cn } from '@/lib/utils';
+import { OptionalModules } from '@/components/access/OptionalModules';
 
 // Each safeguard adds its weight to the security score when it is in place.
 const CHECK_GROUPS = ['Sign-in & MFA', 'Sessions & passwords', 'Backups & records'] as const;
@@ -153,13 +154,15 @@ export function ControlPanelPage({ onNavigate }: { onNavigate: (tab: string) => 
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-primary">Control Panel</h1>
-          <p className="text-sm text-text-muted">Security policies, backups, and the health of system services.</p>
+          <p className="text-sm text-text-muted">Optional modules, security policies, backups, and the health of system services.</p>
         </div>
         <Button onClick={save} disabled={!dirty}>
           <Save className="mr-2 h-4 w-4" />
           Save Settings
         </Button>
       </div>
+
+      <OptionalModules />
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-3">
         {/* Security score: sticks while the settings beside it scroll. */}
@@ -292,6 +295,10 @@ export function ControlPanelPage({ onNavigate }: { onNavigate: (tab: string) => 
             <KeyRound className="h-3.5 w-3.5" />
             Sign-in &amp; multi-factor authentication
           </header>
+          <p className="border-b border-border bg-amber-50/60 px-5 py-2.5 text-xs text-amber-900">
+            In this demonstration, sign-in is checked in the browser with the demo password, so these policies are saved but not yet applied. They take effect once sign-in
+            moves to the LIMS server.
+          </p>
           <div className="divide-y divide-border">
             <SettingRow title="Require MFA for administrators" description="Administrator accounts must confirm every sign-in with a second factor.">
               <Switch checked={draft.requireMfaForAdmins} onChange={(value) => set('requireMfaForAdmins', value)} label="Require MFA for administrators" />

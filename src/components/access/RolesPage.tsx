@@ -8,7 +8,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity } from '@/lib/activity-log';
-import { ADMIN_ROLE, ALL_PAGES, PERMISSION_GROUPS, ROLE_TONE, initials, setRoles, useRoles, useUsers, type Role } from '@/lib/access-store';
+import { ADMIN_ROLE, ALL_PAGES, PERMISSION_GROUPS, ROLE_TONE, initials, setRoles, usePermissionGroups, useRoles, useUsers, type Role } from '@/lib/access-store';
 import { cn } from '@/lib/utils';
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -24,6 +24,9 @@ export function RolesPage() {
   const [form, setForm] = useState({ name: '', scope: '' });
   const [formError, setFormError] = useState('');
 
+  // Only pages turned on are shown; permissions for pages in modules turned off are kept as they are.
+  const permissionGroups = usePermissionGroups();
+  const shownPages = permissionGroups.flatMap((group) => group.pages.map((page) => page.id));
   const pagesOf = (role: Role) => draft[role.name] ?? role.pages;
   const changedRoles = useMemo(
     () =>
@@ -132,7 +135,7 @@ export function RolesPage() {
         {roles.map((role) => {
           const tone = ROLE_TONE[role.tone];
           const members = users.filter((user) => user.role === role.name);
-          const pageCount = role.name === ADMIN_ROLE ? ALL_PAGES.length : pagesOf(role).length;
+          const pageCount = role.name === ADMIN_ROLE ? shownPages.length : pagesOf(role).filter((page) => shownPages.includes(page)).length;
           return (
             <div key={role.name} className="relative flex flex-col overflow-hidden rounded-xl border border-border bg-white p-5 shadow-sm">
               <span className={cn('absolute inset-x-0 top-0 h-1', tone.bar)} aria-hidden />
@@ -161,7 +164,7 @@ export function RolesPage() {
                   {members.slice(0, 4).map((user) => (
                     <span
                       key={user.id}
-                      className={cn('flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-white', user.status === 'Active' ? tone.avatar : 'bg-slate-200 text-slate-500')}
+                      className={cn('flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold ring-2 ring-white', user.status === 'Active' ? tone.avatar : 'bg-slate-200 text-slate-600')}
                       title={user.name}
                     >
                       {initials(user.name)}
@@ -174,7 +177,7 @@ export function RolesPage() {
                 </div>
                 <span className="inline-flex items-center gap-1 text-xs text-text-muted">
                   <Users className="h-3.5 w-3.5" />
-                  {members.length} · {pageCount}/{ALL_PAGES.length} pages
+                  {members.length} · {pageCount}/{shownPages.length} pages
                 </span>
               </div>
             </div>
@@ -218,7 +221,7 @@ export function RolesPage() {
               </tr>
             </thead>
             <tbody>
-              {PERMISSION_GROUPS.map((group) => {
+              {permissionGroups.map((group) => {
                 const ids = group.pages.map((page) => page.id);
                 return (
                   <Fragment key={group.id}>

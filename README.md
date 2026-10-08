@@ -5,6 +5,15 @@ React + Vite + TypeScript app (Tailwind CSS).
 
 All records in the app are **sample data** (see `src/lib/mock-data.ts`). Officials are shown by position only.
 
+## What the Staff Portal shows
+
+The client asked for **e-sessions** and **keeping the record (transcriptions)** of sessions, so the Staff Portal opens set up for that: the dashboard (e-sessions live and coming up, replies, session folders, transcripts), Calendar Sessions, the E-Session Monitor, Session Files, Members & Committees, Attendance, the Activity Log, and Administration.
+
+- **Optional modules:** the rest of the LIMS built from the full requirements (Legislative Tracking with the special legislative files, Transaction Operations, Archives, Electronic Signature, the legislative reports, and the System Requirements reference) is kept but hidden. An Administrator turns any of them on in **Administration → Control Panel → Optional modules**; it then shows for the roles that have it, on every device, until the server restarts. Nothing is deleted (`src/lib/modules.ts`).
+- **E-Session Monitor:** what is happening in E-Session, live from the server: the sittings running now with who is in each and on what device, the current agenda item and quorum, sittings already ended (with their record), the next sitting with its replies, the phones running LIMS Mobile, and notices sent to them. Sittings are started and run in E-Session (`/es`) itself.
+- **Transcripts:** made in the browser from a recording in Session Files, then kept on the LIMS server for every device (wiped on restart, like the other demo data). Each line can be corrected (marked *corrected*), and the transcript downloads as captions, text, or a PDF laid out for the minutes. The speech model and its runtime come through the LIMS server (`server/speech-models.mjs`), which keeps the model after the first download, so transcription works in a hall without internet; run one transcription while online first.
+- **Sign-in:** one rule for the Staff Portal, E-Session and LIMS Mobile (`src/lib/sign-in.ts`), with the same messages everywhere (members are told to use E-Session or LIMS Mobile; Encoder and Viewer accounts to use the Staff Portal). Accounts and roles changed on the Users and Roles pages are shared through the server, so a new or deactivated account applies on tablets and phones at once. The security policies on the Control Panel are saved but not applied until sign-in moves to the server.
+
 ## Requirements
 
 - Node.js (LTS recommended)
@@ -67,7 +76,7 @@ Builds `downloads/LIMS-Mobile.apk` (debug-signed, about 5 MB). Needs JDK 21 and 
 
 To install on a phone while LIMS is running: **Calendar Sessions → Mobile app → Android app**, scan the QR code, install the download (allow installing from this source), open **LIMS Mobile**, and enter the server address shown in that window (for example `192.168.1.10:2510`). The app polls the LIMS server every 1.5 seconds through Android's own HTTP client, and shows reminders and new sessions in the notification bar. It runs full screen (the status and navigation bars show only on a swipe from the edge).
 
-Every phone running LIMS Mobile, in the app or the browser, appears on **E-Session → Session Platform** under *Phones · LIMS Mobile* as soon as it connects: model, who is signed in, and whether it is online (offline about 15 seconds after it stops checking in). **Live Updates → Push** reaches these phones as an alert.
+Every phone running LIMS Mobile, in the app or the browser, appears on **E-Session → E-Session Monitor** under *Phones · LIMS Mobile* as soon as it connects: model, who is signed in, and whether it is online (offline about 15 seconds after it stops checking in). **Notices to Phones** reaches them as an alert.
 
 ## LIMS E-Session (live video sittings)
 
@@ -75,7 +84,7 @@ Members of the body and the Secretariat hold sessions by video at `/es`, built f
 
 - **Sign in:** on the public site, **Staff Login → E-Session**, or open `/es` directly (it can be added to a tablet's home screen). Same accounts as LIMS Mobile: members by position (`vicemayor`, `councilor1` … `councilor8`, `ipmr`, `abc`, `sk`), staff by username (`admin`, `secretary`, `records`, `committee`, …). Password: `admin123`. Encoder and Viewer accounts do not take part in sessions.
 - **Roles:** Administrators host: they start and end e-sessions, admit people from the waiting room, mute, remove, lock the room, and record. The Presiding Officer (the Vice Mayor, or the committee chair at a hearing) recognizes speakers, moves through the order of business, and calls the roll; the hosts can too. Everyone else can raise a hand for the floor and chat.
-- **One calendar:** the Calendar Sessions page, Session Files, Session Platform and the dashboards, LIMS Mobile, and the `/es` app all read the same calendar from the LIMS server (`server/esession-sync.mjs`), so a session scheduled, edited or cancelled in one shows in the others at once. Session Files has a folder for every session and meeting still to come, plus any that has files.
+- **One calendar:** the Calendar Sessions page, Session Files, the E-Session Monitor and the dashboards, LIMS Mobile, and the `/es` app all read the same calendar from the LIMS server (`server/esession-sync.mjs`), so a session scheduled, edited or cancelled in one shows in the others at once. Session Files has a folder for every session and meeting still to come, plus any that has files.
 - **Sample calendar:** from October 14 to November 30 (`mockSeededSessions` in `src/lib/mock-data.ts`): weekly regular sessions, the budget special session, four hearings and six meetings. They can be edited and cancelled like anything scheduled in the app. Restarting the server brings back these originals and drops whatever was scheduled during a demo.
 - **Scheduling:** Administrators can schedule from the `/es` lobby as well as from the calendar and LIMS Mobile (all three share one form), and edit or cancel sessions from the sample calendar or set up in the app until its e-session starts (the server refuses changes after that). Invitees are notified in the mobile app; a new date or time clears their responses so they confirm again. A special session needs a purpose (LGC Sec. 52), which becomes its main agenda item.
 - **Meetings:** a fourth type for informal gatherings (caucus, briefing, coordination). The host picks the invitees and an optional agenda, and can **Start a meeting** right away from the lobby. Meetings are not official sessions: no quorum, no roll call, no presiding officer (the hosts run them), and they are labelled as such in the room and in History. Members not invited still see them listed under *Other sessions* but cannot join.

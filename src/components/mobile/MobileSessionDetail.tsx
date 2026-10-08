@@ -97,7 +97,7 @@ export function MobileSessionDetail() {
         </button>
         <div className="mt-3 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide opacity-90">
           <span>{typeLabel(session.type)}</span>
-          <span className="rounded-full bg-white/20 px-2 py-0.5 normal-case">{relativeDay(today, session.date)}</span>
+          <span className="rounded-full bg-black/20 px-2 py-0.5 normal-case">{relativeDay(today, session.date)}</span>
         </div>
         <h1 className="mt-1 text-2xl font-bold leading-tight">{session.title}</h1>
         {committeeNameOf(session) ? <p className="mt-1 text-sm opacity-85">{committeeNameOf(session)}</p> : null}

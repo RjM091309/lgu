@@ -200,7 +200,8 @@ export function StatisticsView({
   ];
 
   const maxHearings = Math.max(...mockCommitteeHearings.flatMap((row) => row.monthly));
-  const heatColor = (value: number) => HEAT[Math.round((value / Math.max(1, maxHearings)) * (HEAT.length - 1))];
+  const heatStep = (value: number) => Math.round((value / Math.max(1, maxHearings)) * (HEAT.length - 1));
+  const heatColor = (value: number) => HEAT[heatStep(value)];
   const hearingTotals = mockCommitteeHearings.map((row) => row.monthly.reduce((sum, v) => sum + v, 0));
   const maxTotal = Math.max(1, ...hearingTotals);
 
@@ -365,7 +366,7 @@ export function StatisticsView({
                   {row.monthly.map((value, i) => (
                     <td key={MONTHS[i]} className="p-0">
                       <div
-                        className={cn('flex h-9 items-center justify-center rounded-md font-semibold tabular-nums', value >= 4 ? 'text-white' : value === 0 ? 'text-text-muted' : 'text-text-main')}
+                        className={cn('flex h-9 items-center justify-center rounded-md font-semibold tabular-nums', heatStep(value) >= 4 ? 'text-white' : value === 0 ? 'text-text-muted' : 'text-text-main')}
                         style={{ backgroundColor: heatColor(value) }}
                         title={`${row.committee}, ${MONTHS[i]} 2026: ${value} hearing${value === 1 ? '' : 's'}`}
                       >

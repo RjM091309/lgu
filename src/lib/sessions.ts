@@ -1,12 +1,15 @@
 import { LGU_PROFILE, mockBills, type Session } from '@/lib/mock-data';
-import { openPrintWindow, saveFile } from '@/lib/files';
+import { escapeHtml, openPrintWindow, saveFile } from '@/lib/files';
 
-/** Colour of each kind of session on the calendars (web and mobile). */
+/**
+ * Colour of each kind of session on the calendars (web and mobile). Dark enough for white text in both themes; the
+ * orange and teal are fixed values because dark mode turns the stock -700 shades light (index.css).
+ */
 export const SESSION_TONE: Record<Session['type'], string> = {
   Regular: 'bg-primary text-white',
   'Committee Hearing': 'bg-violet-600 text-white',
-  Special: 'bg-orange-500 text-white',
-  Meeting: 'bg-teal-600 text-white',
+  Special: 'bg-[#c2410c] text-white',
+  Meeting: 'bg-[#0f766e] text-white',
 };
 
 /** Sessions and hearings are official proceedings of the body; meetings are not. */
@@ -84,13 +87,13 @@ export const addSessionToCalendar = (session: Session) => {
 
 export const printAgenda = (session: Session) => {
   const items = buildAgenda(session)
-    .map((item) => `<li>${item}</li>`)
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
     .join('');
   openPrintWindow(
     `${session.title} - Order of Business`,
     `
-    <div class="title">${session.title}</div>
-    <div class="rows">${formatLongDate(session.date)} · ${session.time} · ${session.location}</div>
+    <div class="title">${escapeHtml(session.title)}</div>
+    <div class="rows">${formatLongDate(session.date)} · ${escapeHtml(session.time)} · ${escapeHtml(session.location)}</div>
     <h3>Order of Business</h3>
     <ol>${items}</ol>`
   );

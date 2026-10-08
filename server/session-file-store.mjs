@@ -133,6 +133,8 @@ export function createFileStore() {
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(name)}`);
+      // Contents come from any device: the type always follows the name (TYPES has no HTML or SVG), never a guess.
+      res.setHeader('X-Content-Type-Options', 'nosniff');
       const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range ?? '');
       if (range && (range[1] || range[2])) {
         const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
@@ -146,12 +148,16 @@ export function createFileStore() {
         res.statusCode = 206;
         res.setHeader('Content-Range', `bytes ${start}-${end}/${size}`);
         res.setHeader('Content-Length', end - start + 1);
-        createReadStream(pathOf(id), { start, end }).pipe(res);
+        createReadStream(pathOf(id), { start, end })
+          .on('error', () => res.destroy())
+          .pipe(res);
         return;
       }
       res.statusCode = 200;
       res.setHeader('Content-Length', size);
-      createReadStream(pathOf(id)).pipe(res);
+      createReadStream(pathOf(id))
+        .on('error', () => res.destroy())
+        .pipe(res);
     },
 
     has: (id) => sizes.has(id),

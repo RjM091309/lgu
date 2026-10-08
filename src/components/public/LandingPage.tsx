@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/DataTable';
 import { LGU_PROFILE, mockBills, mockCommitteeHearings, mockCommittees, mockMembers, mockSessions, mockYearlyActivity } from '@/lib/mock-data';
-import { openPrintWindow, saveCsv, saveFile } from '@/lib/files';
+import { escapeHtml, openPrintWindow, saveCsv, saveFile } from '@/lib/files';
 import { addSessionToCalendar, buildAgenda, formatLongDate, isOfficial, printAgenda } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
 import { useCalendarSessions } from '@/lib/esession-sync';
@@ -58,8 +58,9 @@ import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { logActivity } from '@/lib/activity-log';
-import { DEMO_PASSWORD, findLoginAccount, useUsers } from '@/lib/access-store';
-import { signInESession, writeESessionAccount } from '@/lib/esession-room';
+import { DEMO_PASSWORD, useUsers } from '@/lib/access-store';
+import { writeESessionAccount } from '@/lib/esession-room';
+import { signInToPortal, signInToSessions, type SignInError } from '@/lib/sign-in';
 import { EgovAiChat } from '@/components/public/EgovAiChat';
 import { LANDING_COPY, type Lang } from '@/components/public/landing-copy';
 import { HeroSlider, type HeroSlide } from '@/components/public/HeroSlider';
@@ -282,6 +283,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     });
   };
 
+  // The shared sign-in messages, in the language the public site is shown in.
+  const messageFor = (error: SignInError, role?: string) =>
+    ({
+      missing: t.loginMissing,
+      invalid: t.loginInvalid,
+      inactive: t.loginDeactivated,
+      'no-sessions': t.eSessionNoSessions(role ?? ''),
+      'member-portal': t.memberUseESession,
+    })[error];
+
   const handlePortalLogin = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoginError('');
@@ -292,9 +303,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     }
     if (loginTarget === 'esession') {
       // Members of the body (by position) and session staff; same accounts as LIMS Mobile.
-      const result = signInESession(users, username, password);
+      const result = signInToSessions(users, username, password);
       if ('error' in result) {
-        const message = result.error === 'inactive' ? t.loginDeactivated : result.error === 'no-sessions' ? t.eSessionNoSessions(result.role) : t.loginInvalid;
+        const message = messageFor(result.error, result.role);
         setLoginError(message);
         toast(t.signInFailed, message, 'error');
         return;
@@ -306,20 +317,16 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       navigate('/es');
       return;
     }
-    // Every sample account shares the demo password; each signs in with its own role.
-    const account = password === DEMO_PASSWORD ? findLoginAccount(username) : null;
-    if (account && account.status === 'Inactive') {
-      setLoginError(t.loginDeactivated);
-      toast(t.signInFailed, t.accountDeactivated, 'error');
+    // The same rule as E-Session and LIMS Mobile (src/lib/sign-in.ts): staff accounts, each with its own role.
+    const result = signInToPortal(users, username, password);
+    if ('error' in result) {
+      const message = messageFor(result.error, result.role);
+      setLoginError(message);
+      toast(t.signInFailed, message, 'error');
       return;
     }
-    if (account) {
-      toast(t.signedIn, t.welcomeAs(account.name, account.role));
-      onLogin(rememberMe, account.id);
-      return;
-    }
-    setLoginError(t.loginInvalid);
-    toast(t.signInFailed, t.loginInvalid, 'error');
+    toast(t.signedIn, t.welcomeAs(result.account.name, result.account.role));
+    onLogin(rememberMe, result.account.id);
   };
 
   const handlePublicRegistration = async (e: FormEvent<HTMLFormElement>) => {
@@ -824,9 +831,6 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       .map(([label, value]) => `${label}: ${value}`),
   ].filter(Boolean);
 
-  const escapeHtml = (value: string) =>
-    value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
   const exportResults = () => {
     if (unifiedInquiryResults.length === 0) {
       toast(t.exportCsv, t.nothingToExport, 'error');
@@ -848,7 +852,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
     const rows = unifiedInquiryResults
       .map(
         (r) =>
-          `<tr><td>${escapeHtml(r.number)}</td><td>${escapeHtml(r.title)}</td><td>${escapeHtml(r.classification)}</td><td>${r.date}</td><td>${escapeHtml(r.status)}</td></tr>`
+          `<tr><td>${escapeHtml(r.number)}</td><td>${escapeHtml(r.title)}</td><td>${escapeHtml(r.classification)}</td><td>${escapeHtml(r.date)}</td><td>${escapeHtml(r.status)}</td></tr>`
       )
       .join('');
     const opened = openPrintWindow(
@@ -924,20 +928,20 @@ export function LandingPage({ onLogin }: LandingPageProps) {
       <div class="card">
         <div class="watermark">${watermarkText}</div>
         <div class="rows">
-          <div><b>Type</b>: ${record.recordType}</div>
-          <div><b>Record No.</b>: ${record.number}</div>
-          <div><b>Status</b>: ${record.status}</div>
-          <div><b>Category</b>: ${record.category}</div>
-          <div><b>Subject</b>: ${record.subject}</div>
-          <div><b>Referral</b>: ${record.referral}</div>
-          <div><b>Classification</b>: ${record.classification}</div>
-          <div><b>Action taken</b>: ${record.actionTaken}</div>
-          <div><b>Sponsor</b>: ${record.sponsor ?? ''}</div>
-          <div><b>Co-author</b>: ${record.coAuthor ?? ''}</div>
-          <div><b>Date</b>: ${record.date}</div>
+          <div><b>Type</b>: ${escapeHtml(record.recordType)}</div>
+          <div><b>Record No.</b>: ${escapeHtml(record.number)}</div>
+          <div><b>Status</b>: ${escapeHtml(record.status)}</div>
+          <div><b>Category</b>: ${escapeHtml(record.category)}</div>
+          <div><b>Subject</b>: ${escapeHtml(record.subject)}</div>
+          <div><b>Referral</b>: ${escapeHtml(record.referral)}</div>
+          <div><b>Classification</b>: ${escapeHtml(record.classification)}</div>
+          <div><b>Action taken</b>: ${escapeHtml(record.actionTaken)}</div>
+          <div><b>Sponsor</b>: ${escapeHtml(record.sponsor)}</div>
+          <div><b>Co-author</b>: ${escapeHtml(record.coAuthor)}</div>
+          <div><b>Date</b>: ${escapeHtml(record.date)}</div>
         </div>
-        <div class="title">${record.title}</div>
-        <div class="body">${record.bodyPreview}</div>
+        <div class="title">${escapeHtml(record.title)}</div>
+        <div class="body">${escapeHtml(record.bodyPreview)}</div>
       </div>`
     );
   };

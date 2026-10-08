@@ -7,7 +7,7 @@ import { toast } from '@/components/ui/toast';
 import { type Session } from '@/lib/mock-data';
 import { SESSION_TONE, addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
-import { openPrintWindow } from '@/lib/files';
+import { escapeHtml, openPrintWindow } from '@/lib/files';
 import { HOLIDAY_SOURCE_LABEL, holidayTitle, holidayTone, useHolidays } from '@/lib/holidays';
 import { SCOPE_LABEL } from '@/lib/local-holidays';
 import { ADMIN_ROLE, useAccess, useUsers } from '@/lib/access-store';
@@ -173,14 +173,14 @@ export function CalendarSessionsPanel() {
     const row = (invitee: Invitee) => {
       const rsvp = rsvpOf(attendance, session.id, invitee.id);
       const status = statusChip(rsvp?.status ?? 'none').label;
-      return `<tr><td>${invitee.name}</td><td>${invitee.detail}</td><td>${status}</td><td>${rsvp?.reason ?? ''}</td></tr>`;
+      return `<tr><td>${escapeHtml(invitee.name)}</td><td>${escapeHtml(invitee.detail)}</td><td>${status}</td><td>${escapeHtml(rsvp?.reason)}</td></tr>`;
     };
     const ok = openPrintWindow(
       `Attendance · ${session.title}`,
-      `<div class="title">${session.title}</div>
+      `<div class="title">${escapeHtml(session.title)}</div>
        <div class="rows">
-         <div><b>Date</b>: ${formatLongDate(session.date)}, ${session.time}</div>
-         <div><b>Venue</b>: ${session.location}</div>
+         <div><b>Date</b>: ${formatLongDate(session.date)}, ${escapeHtml(session.time)}</div>
+         <div><b>Venue</b>: ${escapeHtml(session.location)}</div>
          <div><b>${held ? 'Attendance' : 'Confirmed'}</b>: ${counts.attending} ${statusChip('attending').label.toLowerCase()} · ${counts.declined} ${statusChip('declined').label.toLowerCase()} · ${counts.none} ${statusChip('none').label.toLowerCase()}</div>
        </div>
        <table><thead><tr><th>Name</th><th>Position / Office</th><th>Response</th><th>Reason</th></tr></thead><tbody>${invitees.map(row).join('')}</tbody></table>`

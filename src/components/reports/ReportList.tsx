@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, type SelectOption } from '@/components/ui/select';
 import { mockBills, mockSessions } from '@/lib/mock-data';
+import { useModules } from '@/lib/modules';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { openPrintWindow, saveCsv } from '@/lib/files';
+import { escapeHtml, openPrintWindow, saveCsv } from '@/lib/files';
 import { BarChart3, TrendingUp, PieChart, FileText, Download, Users } from 'lucide-react';
 import { gridTableCardsRef, gridTableClassName, gridTableHeaderClassName, gridTableRowClassName } from '@/components/ui/table';
 import { logActivity } from '@/lib/activity-log';
@@ -150,12 +151,12 @@ export function ReportList({ activeTab }: ReportListProps) {
     const table =
       type === 'Attendance'
         ? `<table><thead><tr><th>Session</th><th>Date</th><th>Present</th><th>Absent</th><th>Quorum</th></tr></thead><tbody>${attendanceRows
-            .map((row) => `<tr><td>${row.title}</td><td>${row.date}</td><td>${row.present}</td><td>${row.absent}</td><td>${row.quorum}</td></tr>`)
+            .map((row) => `<tr><td>${escapeHtml(row.title)}</td><td>${escapeHtml(row.date)}</td><td>${row.present}</td><td>${row.absent}</td><td>${row.quorum}</td></tr>`)
             .join('')}</tbody></table>`
         : `<table><thead><tr><th>Record No.</th><th>Title</th><th>Committee</th><th>Status</th><th>Date Filed</th></tr></thead><tbody>${mockBills
-            .map((bill) => `<tr><td>${bill.number}</td><td>${bill.title}</td><td>${bill.committee ?? bill.author}</td><td>${bill.status}</td><td>${bill.dateFiled}</td></tr>`)
+            .map((bill) => `<tr><td>${escapeHtml(bill.number)}</td><td>${escapeHtml(bill.title)}</td><td>${escapeHtml(bill.committee ?? bill.author)}</td><td>${escapeHtml(bill.status)}</td><td>${escapeHtml(bill.dateFiled)}</td></tr>`)
             .join('')}</tbody></table>`;
-    return openPrintWindow(title, `<div class="title">${title}</div><div class="rows">Period: ${period} · Generated ${generated}</div>${table}`);
+    return openPrintWindow(title, `<div class="title">${escapeHtml(title)}</div><div class="rows">Period: ${escapeHtml(period)} · Generated ${generated}</div>${table}`);
   };
 
   const handleGenerate = () => {
@@ -191,12 +192,16 @@ export function ReportList({ activeTab }: ReportListProps) {
     logActivity({ module: 'Reports', action: 'Exported', summary: 'Exported the legislation listing', detail: `${filteredListing.length} record(s) saved as CSV.` });
   };
 
+  // With the Legislative Reports module off, this page is just the attendance report.
+  const modules = useModules();
+  const attendanceOnly = activeTab === 'report-attendance-publication' && !modules.includes('reports');
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-primary">{selected.title}</h1>
-          <p className="text-sm text-text-muted">{selected.description}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-primary">{attendanceOnly ? 'Attendance Reports' : selected.title}</h1>
+          <p className="text-sm text-text-muted">{attendanceOnly ? 'Session attendance and whether each sitting had a quorum.' : selected.description}</p>
         </div>
         <Button onClick={() => setGenerateOpen(true)}>
           <BarChart3 className="mr-2 h-4 w-4" />

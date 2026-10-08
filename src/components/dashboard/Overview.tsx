@@ -26,7 +26,7 @@ import { DataTable } from '@/components/ui/DataTable';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { cn } from '@/lib/utils';
-import { openPrintWindow } from '@/lib/files';
+import { escapeHtml, openPrintWindow } from '@/lib/files';
 import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
 import { todayInManila } from '@/lib/session-files';
 import { LEGISLATIVE_PHASES, LEGISLATIVE_STAGES, StatusBadge } from '@/components/ui/status-badge';
@@ -34,6 +34,8 @@ import { AccountShortcut } from '@/components/dashboard/AccountShortcut';
 import { Card, LinkButton, SESSION_TYPE_TONE, StatTiles, formatShortDate, relativeDays, type Tile } from '@/components/dashboard/widgets';
 import { AdminPanel, CommitteeDashboard, EncoderDashboard, RecordsDashboard, ViewerDashboard, dashboardKindOf } from '@/components/dashboard/RoleDashboards';
 import { useAccess } from '@/lib/access-store';
+import { useModules } from '@/lib/modules';
+import { ESessionDashboard } from '@/components/dashboard/ESessionDashboard';
 import { AreaSparkline, BarList, CountUp, DonutChart, PHASE_COLORS, PipelineChart, SegmentMeter, SERIES_COLORS, GroupedBarChart } from '@/components/dashboard/charts';
 
 interface OverviewProps {
@@ -165,15 +167,15 @@ function LegislativeOverview({ onNavigate, showAdmin = false }: OverviewProps & 
       `
       <div class="card">
         <div class="rows">
-          <div><b>Record No.</b>: ${bill.number}</div>
-          <div><b>Classification</b>: ${bill.classification ?? 'Ordinance'}</div>
-          <div><b>Status</b>: ${bill.status}</div>
-          <div><b>Committee</b>: ${bill.committee ?? bill.author}</div>
-          <div><b>Date filed</b>: ${bill.dateFiled}</div>
-          <div><b>Action taken</b>: ${bill.actionTaken ?? ''}</div>
+          <div><b>Record No.</b>: ${escapeHtml(bill.number)}</div>
+          <div><b>Classification</b>: ${escapeHtml(bill.classification ?? 'Ordinance')}</div>
+          <div><b>Status</b>: ${escapeHtml(bill.status)}</div>
+          <div><b>Committee</b>: ${escapeHtml(bill.committee ?? bill.author)}</div>
+          <div><b>Date filed</b>: ${escapeHtml(bill.dateFiled)}</div>
+          <div><b>Action taken</b>: ${escapeHtml(bill.actionTaken)}</div>
         </div>
-        <div class="title">${bill.title}</div>
-        <div class="body">${bill.description}</div>
+        <div class="title">${escapeHtml(bill.title)}</div>
+        <div class="body">${escapeHtml(bill.description)}</div>
       </div>`
     );
 
@@ -525,11 +527,45 @@ const ROLE_ACTIONS: Record<ReturnType<typeof dashboardKindOf>, { tab: string; la
   ],
 };
 
+// The same, while the portal is set up for e-sessions (the Legislative Tracking module off).
+const ESESSION_INTRO: Record<ReturnType<typeof dashboardKindOf>, string> = {
+  admin: 'E-sessions live and coming up, their records and transcripts, and the accounts that use them.',
+  records: 'Sittings coming up, the files and recordings each needs, and the transcripts still to make.',
+  committee: 'Committee hearings: replies, the next hearing, and hearing records.',
+  encoder: 'Recordings and documents each sitting still needs in Session Files.',
+  viewer: 'The attendance record of the Sanggunian and the sessions coming up.',
+  general: 'E-sessions and their records you have access to.',
+};
+
+const ESESSION_ACTIONS: Record<ReturnType<typeof dashboardKindOf>, { tab: string; label: string; icon: typeof FileText }[]> = {
+  admin: [
+    { tab: 'access-users', label: 'Manage users', icon: Users },
+    { tab: 'esig-session-files', label: 'Session files', icon: Upload },
+    { tab: 'esig-calendar-sessions', label: 'Calendar', icon: CalendarDays },
+  ],
+  records: [
+    { tab: 'esig-session-files', label: 'Session files', icon: Upload },
+    { tab: 'esig-calendar-sessions', label: 'Calendar', icon: CalendarDays },
+  ],
+  committee: [
+    { tab: 'esig-session-files', label: 'Session files', icon: Upload },
+    { tab: 'esig-calendar-sessions', label: 'Calendar', icon: CalendarDays },
+  ],
+  encoder: [{ tab: 'esig-session-files', label: 'Upload files', icon: Upload }],
+  viewer: [{ tab: 'report-attendance-publication', label: 'Attendance', icon: BarChart3 }],
+  general: [
+    { tab: 'esig-session-files', label: 'Session files', icon: Upload },
+    { tab: 'esig-calendar-sessions', label: 'Calendar', icon: CalendarDays },
+  ],
+};
+
 /** Dashboard shell: the same greeting for everyone, then the body that fits the signed-in role. */
 export function Overview({ onNavigate }: OverviewProps) {
   const { user, role, can } = useAccess();
   const kind = dashboardKindOf(role?.name);
-  const actions = ROLE_ACTIONS[kind].filter((action) => can(action.tab));
+  // The legislative dashboards belong to the Legislative Tracking module; without it, the e-session one.
+  const legislative = useModules().includes('legislation');
+  const actions = (legislative ? ROLE_ACTIONS : ESESSION_ACTIONS)[kind].filter((action) => can(action.tab));
 
   const manilaHour = Number(new Intl.DateTimeFormat('en-PH', { timeZone: 'Asia/Manila', hour: 'numeric', hour12: false }).format(new Date()));
   const greeting = manilaHour < 12 ? 'Good morning' : manilaHour < 18 ? 'Good afternoon' : 'Good evening';
@@ -543,7 +579,7 @@ export function Overview({ onNavigate }: OverviewProps) {
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary">
             {greeting}, {user.name}
           </h1>
-          <p className="mt-1 text-sm text-text-muted">{ROLE_INTRO[kind]}</p>
+          <p className="mt-1 text-sm text-text-muted">{(legislative ? ROLE_INTRO : ESESSION_INTRO)[kind]}</p>
         </div>
         <div className="flex flex-col gap-3 lg:items-end">
           <AccountShortcut />
@@ -569,12 +605,13 @@ export function Overview({ onNavigate }: OverviewProps) {
         </div>
       </div>
 
-      {kind === 'admin' ? <LegislativeOverview onNavigate={onNavigate} showAdmin /> : null}
-      {kind === 'records' ? <RecordsDashboard onNavigate={onNavigate} /> : null}
-      {kind === 'committee' ? <CommitteeDashboard onNavigate={onNavigate} /> : null}
-      {kind === 'encoder' ? <EncoderDashboard onNavigate={onNavigate} /> : null}
-      {kind === 'viewer' ? <ViewerDashboard onNavigate={onNavigate} /> : null}
-      {kind === 'general' ? <LegislativeOverview onNavigate={onNavigate} /> : null}
+      {!legislative ? <ESessionDashboard kind={kind} onNavigate={onNavigate} /> : null}
+      {legislative && kind === 'admin' ? <LegislativeOverview onNavigate={onNavigate} showAdmin /> : null}
+      {legislative && kind === 'records' ? <RecordsDashboard onNavigate={onNavigate} /> : null}
+      {legislative && kind === 'committee' ? <CommitteeDashboard onNavigate={onNavigate} /> : null}
+      {legislative && kind === 'encoder' ? <EncoderDashboard onNavigate={onNavigate} /> : null}
+      {legislative && kind === 'viewer' ? <ViewerDashboard onNavigate={onNavigate} /> : null}
+      {legislative && kind === 'general' ? <LegislativeOverview onNavigate={onNavigate} /> : null}
     </div>
   );
 }

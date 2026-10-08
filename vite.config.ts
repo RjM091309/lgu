@@ -5,7 +5,8 @@ import {defineConfig, loadEnv, type Connect, type Plugin} from 'vite';
 import {createEgovAiHandler} from './server/egovai-proxy.mjs';
 import {createESessionSyncHandler} from './server/esession-sync.mjs';
 import {createESessionRoomsHandler} from './server/esession-rooms.mjs';
-import {startHttpsServer} from './server/https.mjs';
+import {SECURITY_HEADERS, startHttpsServer} from './server/https.mjs';
+import {createSpeechModelHandler} from './server/speech-models.mjs';
 
 // Mounts the eGovAI proxy on the dev and preview servers so credentials stay server-side.
 const egovAiProxy = (env: Record<string, string>): Plugin => ({
@@ -27,6 +28,8 @@ const eSession = (env: Record<string, string>): Plugin => {
     const sync = createESessionSyncHandler();
     middlewares.use(sync);
     middlewares.use(createESessionRoomsHandler(env, {onSessionStarted: sync.markStarted}));
+    // Speech model and runtime for transcription, kept on this server so it works without internet.
+    middlewares.use(createSpeechModelHandler());
   };
   return {
     name: 'esession',
@@ -51,7 +54,9 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, './src'),
       },
     },
+    preview: {headers: SECURITY_HEADERS},
     server: {
+      headers: SECURITY_HEADERS,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true',

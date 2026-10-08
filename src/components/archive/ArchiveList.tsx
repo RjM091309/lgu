@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { openPrintWindow, saveCsv } from '@/lib/files';
+import { escapeHtml, openPrintWindow, saveCsv } from '@/lib/files';
 import { logActivity } from '@/lib/activity-log';
 import { cn } from '@/lib/utils';
 
@@ -209,12 +209,12 @@ export function ArchiveList() {
   const printRecord = (record: ArchivedRecord) => {
     const ok = openPrintWindow(
       record.number,
-      `<div class="title">${record.title}</div>
+      `<div class="title">${escapeHtml(record.title)}</div>
        <div class="rows">
-         <div><b>Record No.</b>: ${record.number}</div>
-         <div><b>Type</b>: ${record.type}</div>
+         <div><b>Record No.</b>: ${escapeHtml(record.number)}</div>
+         <div><b>Type</b>: ${escapeHtml(record.type)}</div>
          <div><b>Date</b>: ${formatDate(record.date)}</div>
-         <div><b>Archive location</b>: Shelf ${record.shelf}, Box ${record.box}</div>
+         <div><b>Archive location</b>: Shelf ${escapeHtml(record.shelf)}, Box ${escapeHtml(record.box)}</div>
          <div><b>Legislative year</b>: ${archive.year}</div>
        </div>`
     );
@@ -308,12 +308,12 @@ export function ArchiveList() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-baseline justify-between gap-2">
                     <span className="text-lg font-bold leading-none">{entry.year}</span>
-                    <span className={cn('text-[11px] tabular-nums', active ? 'text-white/75' : 'text-text-muted')}>{entry.count} records</span>
+                    <span className={cn('text-[11px] tabular-nums', active ? 'text-white/90' : 'text-text-muted')}>{entry.count} records</span>
                   </span>
                   <span className={cn('mt-2 block h-1.5 overflow-hidden rounded-full', active ? 'bg-white/20' : 'bg-[#eef0f4]')}>
                     <span className={cn('block h-full rounded-full', active ? 'bg-white' : 'bg-[#2a78d6]')} style={{ width: `${rate}%` }} />
                   </span>
-                  <span className={cn('mt-1 block text-[10px]', active ? 'text-white/75' : 'text-text-muted')}>{rate}% scanned</span>
+                  <span className={cn('mt-1 block text-[10px]', active ? 'text-white/90' : 'text-text-muted')}>{rate}% scanned</span>
                 </span>
               </button>
             );

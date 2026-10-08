@@ -5,6 +5,10 @@ import { env, pipeline, type AutomaticSpeechRecognitionPipeline, type ProgressIn
 import type { TranscribeRequest, TranscribeResponse, TranscriptSegment } from '@/lib/transcripts';
 
 env.allowLocalModels = false;
+// The model and the runtime come through the LIMS server (server/speech-models.mjs), which keeps the model after
+// its first download, so transcription works in a session hall without internet.
+env.remoteHost = `${self.location.origin}/api/speech/models/`;
+if (env.backends.onnx.wasm) env.backends.onnx.wasm.wasmPaths = `${self.location.origin}/api/speech/runtime/`;
 
 const SAMPLE_RATE = 16_000;
 const WINDOW_SECONDS = 30;

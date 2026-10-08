@@ -12,7 +12,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity, useActivityLog } from '@/lib/activity-log';
-import { ADMIN_ROLE, PERMISSION_GROUPS, ROLE_TONE, getCurrentUser, initials, setUsers, useRoles, useUsers, type UserAccount } from '@/lib/access-store';
+import { ADMIN_ROLE, ROLE_TONE, usePermissionGroups, getCurrentUser, initials, setUsers, useRoles, useUsers, type UserAccount } from '@/lib/access-store';
+import { mobileAccounts } from '@/lib/mobile-accounts';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
 
@@ -29,6 +30,7 @@ const lastActiveLabel = (timestamp: string, today: string) => {
 };
 
 export function UsersPage() {
+  const permissionGroups = usePermissionGroups();
   const users = useUsers();
   const roles = useRoles();
   const activity = useActivityLog();
@@ -143,11 +145,17 @@ export function UsersPage() {
     });
     if (!confirmed) return;
     const id = `USR-${String(Math.max(0, ...users.map((user) => Number(user.id.replace(/\D/g, '')) || 0)) + 1).padStart(3, '0')}`;
+    // Sign-in names are matched in lower case and must be unique, members' included (sjuan@… and sjuan@… on
+    // another domain would otherwise share one login, and admin@… would shadow the admin account).
+    const taken = new Set(mobileAccounts(users).map((account) => account.username).concat(users.map((user) => user.username.toLowerCase())));
+    const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '') || 'user';
+    let username = base;
+    for (let n = 2; taken.has(username); n += 1) username = `${base}${n}`;
     setUsers((prev) => [
       ...prev,
-      { id, name, username: email.split('@')[0], email, office: form.office.trim() || 'SB Secretariat', role: form.role, status: 'Active', mfa: false, lastActive: `${today}T00:00` },
+      { id, name, username, email, office: form.office.trim() || 'SB Secretariat', role: form.role, status: 'Active', mfa: false, lastActive: `${today}T00:00` },
     ]);
-    toast('User account created', `An activation link was sent to ${email}.`);
+    toast('User account created', `Username ${username}. An activation link was sent to ${email}.`);
     logActivity({ module: 'Administration', action: 'Created', summary: `Created a user account for ${name}`, detail: `${form.role} · activation link sent to ${email}` });
     setAddOpen(false);
   };
@@ -157,7 +165,7 @@ export function UsersPage() {
       className={cn(
         'relative flex shrink-0 items-center justify-center rounded-full font-semibold',
         size === 'sm' ? 'h-9 w-9 text-xs' : 'h-16 w-16 text-lg',
-        user.status === 'Active' ? roleTone(user.role).avatar : 'bg-slate-200 text-slate-500'
+        user.status === 'Active' ? roleTone(user.role).avatar : 'bg-slate-200 text-slate-600'
       )}
     >
       {initials(user.name)}
@@ -378,7 +386,7 @@ export function UsersPage() {
                 <div>
                   <h3 className="text-[11px] font-semibold uppercase tracking-wide text-text-muted">Access through the {profile.role} role</h3>
                   <ul className="mt-2 space-y-2">
-                    {PERMISSION_GROUPS.map((group) => {
+                    {permissionGroups.map((group) => {
                       const role = roles.find((entry) => entry.name === profile.role);
                       const allowed = group.pages.filter((page) => profile.role === ADMIN_ROLE || (role?.pages.includes(page.id) ?? false));
                       const status = allowed.length === group.pages.length ? 'Allowed' : allowed.length > 0 ? 'Some pages' : 'No access';

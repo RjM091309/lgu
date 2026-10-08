@@ -13,6 +13,9 @@ const MAX_BODY_BYTES = 64 * 1024;
 // The first browser hands over the sample responses and the editable sample calendar in one request.
 const MAX_SEED_BYTES = 256 * 1024;
 const MAX_SEED_SESSIONS = 100;
+// A transcript of a long sitting runs to a few thousand lines.
+const MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024;
+const MAX_TRANSCRIPT_SEGMENTS = 20_000;
 // Built by `npm run apk`; offered to phones from the web app's Mobile app window.
 const APK_FILE = fileURLToPath(new URL('../downloads/LIMS-Mobile.apk', import.meta.url));
 const MAX_NOTICES = 50;
@@ -21,6 +24,11 @@ const KEEPALIVE_MS = 25_000;
 const DEVICE_OFFLINE_MS = 15_000;
 const DEVICE_FORGET_MS = 30 * 60_000;
 const DEVICE_PLATFORMS = ['app', 'browser'];
+// Upper bounds on what devices can add, so the in-memory state cannot be grown without limit.
+const MAX_DEVICES = 300;
+const MAX_SESSIONS = 500;
+const MAX_TRANSCRIPTS = 300;
+const ROLE_TONES = ['indigo', 'blue', 'violet', 'emerald', 'slate'];
 
 const SESSION_TYPES = ['Regular', 'Special', 'Committee Hearing', 'Meeting'];
 const MAX_INVITEES = 200;
@@ -128,9 +136,17 @@ export function createESessionSyncHandler() {
   // no longer be edited or cancelled.
   // `calendarSeeded` is kept apart, so a browser still running an older copy of the app (which seeds only the
   // responses) cannot leave the calendar empty.
+  // `transcripts`: per recording (src/lib/transcripts.ts transcriptKey), whether it has a transcript, how many lines
+  // were corrected, and when it last changed; the text is fetched separately. Wiped on restart.
+  // `accounts`: the user accounts and roles as last changed on Users or Roles & Permissions, so a new or deactivated
+  // account reaches every device (E-Session and LIMS Mobile sign in with them too). null: the sample accounts.
+  // `modules`: the optional Staff Portal modules an Administrator turned on (src/lib/modules.ts); all off after a
+  // restart, so the portal opens with just what the client asked for.
   // `files`: Session Files added during the demo (contents in session-file-store.mjs). An entry whose id is one of
   // the sample files replaces it; `deleted: true` hides a sample file.
-  let state = { seeded: false, calendarSeeded: false, version: 0, rsvps: {}, sessions: [], notices: [], devices: [], started: [], files: [] };
+  let state = { seeded: false, calendarSeeded: false, version: 0, rsvps: {}, sessions: [], notices: [], devices: [], started: [], files: [], modules: [], transcripts: {}, accounts: null };
+  // The transcripts themselves; the state above lists which recordings have one (and when it last changed).
+  const transcriptData = new Map();
   const fileStore = createFileStore();
   let fileSeq = 0;
   const clients = new Set();
@@ -180,6 +196,18 @@ export function createESessionSyncHandler() {
       next();
       return;
     }
+    try {
+      await handle(req, res, path);
+    } catch (error) {
+      // A bad request must never take the server down with it.
+      console.error('[esession-sync]', error instanceof Error ? error.message : error);
+      if (!res.headersSent) sendJson(res, 500, { error: 'server_error' });
+      else res.destroy();
+    }
+  }
+
+  async function handle(req, res, path) {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
 
     const origin = req.headers.origin;
     if (origin && APP_ORIGINS.includes(origin)) {
@@ -236,6 +264,21 @@ export function createESessionSyncHandler() {
       });
       createReadStream(APK_FILE).pipe(res);
       return;
+    }
+
+    // ---- Transcripts ----
+    if (path === '/api/esession/transcripts') {
+      const key = new URL(req.url, 'http://localhost').searchParams.get('key');
+      if (!key || key.length > 400) {
+        sendJson(res, 400, { error: 'invalid_key' });
+        return;
+      }
+      if (req.method === 'GET') {
+        const saved = transcriptData.get(key);
+        if (saved) sendJson(res, 200, saved);
+        else sendJson(res, 404, { error: 'not_found' });
+        return;
+      }
     }
 
     // ---- Session Files ----
@@ -300,7 +343,7 @@ export function createESessionSyncHandler() {
     let body = {};
     if (req.method !== 'DELETE') {
       try {
-        body = await readJsonBody(req, path === '/api/esession/seed' ? MAX_SEED_BYTES : MAX_BODY_BYTES);
+        body = await readJsonBody(req, path === '/api/esession/seed' ? MAX_SEED_BYTES : path === '/api/esession/transcripts' ? MAX_TRANSCRIPT_BYTES : MAX_BODY_BYTES);
       } catch (error) {
         sendJson(res, error.message === 'too_large' ? 413 : 400, { error: error.message });
         return;
@@ -356,6 +399,10 @@ export function createESessionSyncHandler() {
         return;
       }
       if (!state.sessions.some((entry) => entry.id === session.id)) {
+        if (state.sessions.length >= MAX_SESSIONS) {
+          sendJson(res, 507, { error: 'too_many_sessions' });
+          return;
+        }
         state = { ...state, sessions: [...state.sessions, session] };
         addNotice({ kind: 'scheduled', sessionId: session.id, at, from });
         publish();
@@ -420,6 +467,108 @@ export function createESessionSyncHandler() {
       return;
     }
 
+    if (path === '/api/esession/transcripts' && (req.method === 'PUT' || req.method === 'DELETE')) {
+      const key = new URL(req.url, 'http://localhost').searchParams.get('key');
+      if (!key || key.length > 400) {
+        sendJson(res, 400, { error: 'invalid_key' });
+        return;
+      }
+      if (req.method === 'DELETE') {
+        transcriptData.delete(key);
+        const { [key]: _removed, ...rest } = state.transcripts;
+        state = { ...state, transcripts: rest };
+        publish();
+        sendJson(res, 200, { ok: true });
+        return;
+      }
+      const segments = Array.isArray(body.segments)
+        ? body.segments.slice(0, MAX_TRANSCRIPT_SEGMENTS).flatMap((segment) => {
+            const start = Number(segment?.start);
+            const end = Number(segment?.end);
+            const words = typeof segment?.text === 'string' ? segment.text.trim().slice(0, 2000) : '';
+            if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || !words) return [];
+            return [{ start, end: Math.max(start, end), text: words, ...(segment.edited === true ? { edited: true } : {}) }];
+          })
+        : null;
+      const savedBy = text(body.savedBy, 120);
+      if (!segments || !savedBy) {
+        sendJson(res, 400, { error: 'invalid_transcript' });
+        return;
+      }
+      if (!transcriptData.has(key) && transcriptData.size >= MAX_TRANSCRIPTS) {
+        sendJson(res, 507, { error: 'too_many_transcripts' });
+        return;
+      }
+      const updatedAt = Date.now();
+      const record = {
+        segments,
+        model: text(body.model, 80) ?? undefined,
+        language: text(body.language, 40) ?? undefined,
+        device: body.device === 'webgpu' || body.device === 'wasm' ? body.device : undefined,
+        createdAt: text(body.createdAt, 40) ?? new Date(updatedAt).toISOString(),
+        savedBy,
+        updatedAt,
+      };
+      transcriptData.set(key, record);
+      state = { ...state, transcripts: { ...state.transcripts, [key]: { lines: segments.length, edited: segments.filter((segment) => segment.edited).length, updatedAt, savedBy } } };
+      publish();
+      sendJson(res, 200, { updatedAt });
+      return;
+    }
+
+    if (path === '/api/esession/accounts' && req.method === 'PUT') {
+      const plain = (value, max) => (typeof value === 'string' && value.length <= max ? value : null);
+      const users = Array.isArray(body.users)
+        ? body.users.slice(0, 200).flatMap((user) => {
+            const entry = {
+              id: plain(user?.id, 32),
+              name: plain(user?.name, 120),
+              username: plain(user?.username, 60),
+              email: plain(user?.email, 160),
+              office: plain(user?.office, 120),
+              role: plain(user?.role, 60),
+              status: user?.status === 'Inactive' ? 'Inactive' : 'Active',
+              mfa: user?.mfa === true,
+              lastActive: plain(user?.lastActive, 20) ?? '',
+            };
+            return entry.id && entry.name && entry.username && entry.role ? [entry] : [];
+          })
+        : null;
+      const roles = Array.isArray(body.roles)
+        ? body.roles.slice(0, 30).flatMap((role) => {
+            const entry = {
+              name: plain(role?.name, 60),
+              scope: plain(role?.scope, 200) ?? '',
+              updated: plain(role?.updated, 20) ?? '',
+              pages: Array.isArray(role?.pages) ? role.pages.filter((page) => typeof page === 'string' && page.length <= 60).slice(0, 60) : [],
+              // Every device looks the tone up in its own table (access-store.ts ROLE_TONE).
+              tone: ROLE_TONES.includes(role?.tone) ? role.tone : 'slate',
+            };
+            return entry.name ? [entry] : [];
+          })
+        : null;
+      if (!users?.length || !roles?.length) {
+        sendJson(res, 400, { error: 'invalid_accounts' });
+        return;
+      }
+      state = { ...state, accounts: { users, roles } };
+      publish();
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (path === '/api/esession/modules' && req.method === 'PUT') {
+      const modules = Array.isArray(body.modules) ? [...new Set(body.modules.filter((entry) => typeof entry === 'string' && /^[a-z-]{1,32}$/.test(entry)))].slice(0, 20) : null;
+      if (!modules) {
+        sendJson(res, 400, { error: 'invalid_modules' });
+        return;
+      }
+      state = { ...state, modules };
+      publish();
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
     if (path === '/api/esession/presence' && req.method === 'POST') {
       const id = typeof body.deviceId === 'string' && ID_PATTERN.test(body.deviceId) ? body.deviceId : null;
       const platform = DEVICE_PLATFORMS.includes(body.platform) ? body.platform : null;
@@ -430,6 +579,10 @@ export function createESessionSyncHandler() {
       const now = Date.now();
       const account = toAccount(body.account);
       const previous = state.devices.find((device) => device.id === id);
+      if (!previous && state.devices.length >= MAX_DEVICES) {
+        sendJson(res, 507, { error: 'too_many_devices' });
+        return;
+      }
       const next = {
         id,
         platform,

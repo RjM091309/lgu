@@ -24,6 +24,13 @@ const RENEW_BEFORE_MS = 7 * 24 * 60 * 60_000;
 
 let listeningPort = null;
 
+/** Sent with every response: no type guessing, no framing by other sites, and no full addresses leaked onward. */
+export const SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Referrer-Policy': 'same-origin',
+};
+
 /** The HTTPS port once it is listening; null when it is off or failed to start. */
 export const getHttpsPort = () => listeningPort;
 

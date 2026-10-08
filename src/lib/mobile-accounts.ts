@@ -1,4 +1,4 @@
-import { ADMIN_ROLE, DEMO_PASSWORD, initials, type UserAccount } from '@/lib/access-store';
+import { ADMIN_ROLE, initials, type UserAccount } from '@/lib/access-store';
 import { inviteesFor } from '@/lib/attendance';
 import { mockMembers, type Session } from '@/lib/mock-data';
 
@@ -57,8 +57,5 @@ export const mobileAccounts = (users: UserAccount[]): MobileAccount[] => [
       canManage: user.role === ADMIN_ROLE,
     })),
 ];
-
-export const signInMobile = (users: UserAccount[], username: string, password: string) =>
-  password === DEMO_PASSWORD ? mobileAccounts(users).find((account) => account.username === username.trim().toLowerCase()) ?? null : null;
 
 export const isInvited = (session: Session, users: UserAccount[], inviteeId: string) => inviteesFor(session, users).some((invitee) => invitee.id === inviteeId);

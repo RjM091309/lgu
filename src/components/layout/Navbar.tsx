@@ -37,14 +37,13 @@ import {
 } from 'lucide-react';
 import { LGU_PROFILE, mockBills, mockMembers } from '@/lib/mock-data';
 import { useCalendarSessions } from '@/lib/esession-sync';
-import { NAV_GROUPS, findNavItem } from '@/lib/navigation';
+import { findNavItemIn, useNavGroups } from '@/lib/modules';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity } from '@/lib/activity-log';
-import { ADMIN_ROLE, ALL_PAGES, canOpenPage, initials, useAccess, useUsers } from '@/lib/access-store';
-import { fetchServerInfo, writeESessionAccount } from '@/lib/esession-room';
-import { mobileAccounts } from '@/lib/mobile-accounts';
+import { ADMIN_ROLE, ALL_PAGES, canOpenPage, initials, useAccess } from '@/lib/access-store';
+import { useOpenESession } from '@/components/esession/use-open-esession';
 import { useTheme } from '@/lib/theme';
 
 interface NavbarProps {
@@ -132,7 +131,8 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   const searchBoxRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  const current = findNavItem(activeTab);
+  const navGroups = useNavGroups();
+  const current = findNavItemIn(navGroups, activeTab);
   const { user, role } = useAccess();
   const unreadCount = notifications.filter((item) => item.unread).length;
   const today = new Intl.DateTimeFormat('en-PH', {
@@ -147,7 +147,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   const calendarSessions = useCalendarSessions();
   const searchEntries = useMemo(
     () => [
-      ...NAV_GROUPS.flatMap((group) =>
+      ...navGroups.flatMap((group) =>
         group.items.map((item) => ({
           id: `menu-${item.id}`,
           label: item.label,
@@ -185,7 +185,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         group: 'Session File',
       })),
     ],
-    [calendarSessions]
+    [calendarSessions, navGroups]
   );
 
   const matchesSearchQuery = (query: string, values: string[]) => {
@@ -376,7 +376,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
               }}
               placeholder="Search pages, records..."
               aria-label="Search"
-              className="h-10 w-full rounded-lg border border-white/15 bg-white/10 pl-9 pr-16 text-[13px] text-white outline-none placeholder:text-white/50 focus:border-white/40 focus:bg-white/15 focus:ring-2 focus:ring-white/15"
+              className="h-10 w-full rounded-lg border border-white/15 bg-white/10 pl-9 pr-9 text-[13px] text-white outline-none placeholder:text-white/50 focus:border-white/40 focus:bg-white/15 focus:ring-2 focus:ring-white/15"
             />
             {searchKeyword ? (
               <button
@@ -776,33 +776,13 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
   );
 }
 
-/**
- * Opens E-Session in its own window next to the dashboard, for staff who take part in sessions, so a document
- * here can be presented there (Present → Share your screen → this tab). It opens on the server's https address,
- * where the camera and microphone work. On that same address the window is signed in already as this person;
- * coming from the http address it asks for the password, with the username filled in.
- */
+/** Opens E-Session in its own window next to the dashboard, for staff who take part in sessions. */
 function OpenESessionButton() {
-  const { user } = useAccess();
-  const account = mobileAccounts(useUsers()).find((entry) => entry.inviteeId === `user:${user.id}`);
-  const [httpsPort, setHttpsPort] = useState<number | null>(null);
-  React.useEffect(() => {
-    void fetchServerInfo().then((info) => setHttpsPort(info.httpsPort));
-  }, []);
+  const { account, open } = useOpenESession();
   if (!account) return null;
 
-  const open = () => {
-    const sameAddress = window.location.protocol === 'https:' || !httpsPort;
-    const url = sameAddress ? `${window.location.origin}/es` : `https://${window.location.hostname}:${httpsPort}/es?user=${encodeURIComponent(account.username)}`;
-    // The new window starts with a copy of this tab's session sign-in (same address only).
-    if (sameAddress) writeESessionAccount(account.inviteeId);
-    const win = window.open(url, 'lims-esession');
-    if (!win) return toast('E-Session did not open', 'The browser blocked the new window. Allow pop-ups for this site, or open /es in a new tab.', 'error');
-    win.focus();
-  };
-
   return (
-    <Button variant="ghost" className="hidden h-10 shrink-0 gap-2 px-3 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white md:inline-flex" onClick={open} title="Open E-Session in its own window">
+    <Button variant="ghost" className="hidden h-10 shrink-0 gap-2 px-3 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white md:inline-flex" onClick={() => open()} title="Open E-Session in its own window">
       <Video className="h-4 w-4 text-[#e8c766]" />
       E-Session
     </Button>

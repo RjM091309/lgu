@@ -60,9 +60,9 @@ export function SessionCard({ entry, muted = false }: { entry: MySession; muted?
       className={cn('flex items-stretch gap-3 rounded-xl border border-border bg-white p-3 shadow-sm transition-colors active:bg-muted', muted && 'opacity-70')}
     >
       <div className={cn('flex w-14 shrink-0 flex-col items-center justify-center rounded-lg py-1.5', SESSION_TONE[session.type])}>
-        <span className="text-[10px] font-semibold uppercase opacity-80">{parts.month}</span>
+        <span className="text-[10px] font-semibold uppercase opacity-90">{parts.month}</span>
         <span className="text-xl font-bold leading-none tabular-nums">{parts.day}</span>
-        <span className="text-[10px] font-medium opacity-80">{parts.weekday}</span>
+        <span className="text-[10px] font-medium opacity-90">{parts.weekday}</span>
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-[10px] font-bold uppercase tracking-wide text-text-muted">{typeLabel(session.type)}</p>

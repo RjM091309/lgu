@@ -18,13 +18,21 @@ import { motion, AnimatePresence } from 'motion/react';
 import { setStaffArea } from '@/lib/theme';
 import { LandingPage } from '@/components/public/LandingPage';
 import { Toaster, toast } from '@/components/ui/toast';
-import { setCurrentUser, useAccess } from '@/lib/access-store';
+import { setCurrentUser, useAccess, useCurrentUserActive } from '@/lib/access-store';
 import { findNavItem } from '@/lib/navigation';
+import { isPageOn } from '@/lib/modules';
+import { useSyncStatus } from '@/lib/esession-sync';
 import { ConfirmDialogHost } from '@/components/ui/confirm';
 import { LandingSkeleton, PageSkeleton } from '@/components/ui/skeleton';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/** Why a page cannot be opened: its module is turned off, or the role does not include it. */
+const unavailableText = (tab: string, roleName = 'current') => {
+  const label = findNavItem(tab)?.item.label ?? 'That page';
+  return isPageOn(tab) ? `${label} is not part of the ${roleName} role.` : `${label} is turned off. An Administrator can turn it on in the Control Panel.`;
+};
 
 const SESSION_KEY = 'sb-capas-session';
 
@@ -131,18 +139,32 @@ export default function App() {
 
   // Pages outside the signed-in role (typed URLs, or after switching accounts) fall back to the dashboard.
   const isAllowed = can(activeTab);
+  // Which optional modules are on comes from the server; until it answers, a page from one is not turned away.
+  const modulesKnown = useSyncStatus() !== 'connecting';
+
+  // The account was deleted or deactivated on another device: sign out (once the shared accounts are known, so an
+  // account created during the demo is not turned away while the server is still answering).
+  const accountActive = useCurrentUserActive();
+  useEffect(() => {
+    if (!isLoggedIn || accountActive || !modulesKnown) return;
+    toast('Signed out', 'This account was deactivated or removed by an Administrator.', 'error');
+    writeSession(null);
+    setIsLoggedIn(false);
+    setLoadedView(null);
+    navigate('/', { replace: true });
+  }, [isLoggedIn, accountActive, modulesKnown, navigate]);
   const blockedTabRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!isLoggedIn || isAllowed) {
+    if (!isLoggedIn || isAllowed || !modulesKnown || !accountActive) {
       blockedTabRef.current = null;
       return;
     }
     // Effects can run twice for one visit (dev strict mode); tell the user once.
     if (blockedTabRef.current === activeTab) return;
     blockedTabRef.current = activeTab;
-    toast('Page not available', `${findNavItem(activeTab)?.item.label ?? 'That page'} is not part of the ${role?.name ?? 'current'} role.`, 'error');
+    toast('Page not available', unavailableText(activeTab, role?.name), 'error');
     navigate('/dashboard', { replace: true });
-  }, [isLoggedIn, isAllowed, activeTab, role?.name, navigate]);
+  }, [isLoggedIn, isAllowed, modulesKnown, accountActive, activeTab, role?.name, navigate]);
 
   useEffect(() => {
     mainScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
@@ -168,7 +190,7 @@ export default function App() {
 
   const setActiveTab = (tab: string) => {
     if (!can(tab)) {
-      toast('Page not available', `${findNavItem(tab)?.item.label ?? 'That page'} is not part of the ${role?.name ?? 'current'} role.`, 'error');
+      toast('Page not available', unavailableText(tab, role?.name), 'error');
       return;
     }
     navigate(tabToPath[tab as keyof typeof tabToPath] ?? '/dashboard');

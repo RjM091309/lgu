@@ -10,7 +10,8 @@ import express from 'express';
 import { createEgovAiHandler } from './egovai-proxy.mjs';
 import { createESessionSyncHandler } from './esession-sync.mjs';
 import { createESessionRoomsHandler } from './esession-rooms.mjs';
-import { startHttpsServer } from './https.mjs';
+import { createSpeechModelHandler } from './speech-models.mjs';
+import { SECURITY_HEADERS, startHttpsServer } from './https.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const distDir = path.join(root, 'dist');
@@ -18,11 +19,18 @@ const port = Number(process.env.PORT) || 2510;
 
 const app = express();
 app.disable('x-powered-by');
+// The same baseline headers as the dev server (vite.config.ts); the /es pages tighten framing further.
+app.use((_req, res, next) => {
+  Object.entries(SECURITY_HEADERS).forEach(([name, value]) => res.setHeader(name, value));
+  next();
+});
 app.use(createEgovAiHandler(process.env));
 const eSessionSync = createESessionSyncHandler();
 app.use(eSessionSync);
 // The rooms tell the calendar when a session starts, so it can no longer be changed.
 app.use(createESessionRoomsHandler(process.env, { onSessionStarted: eSessionSync.markStarted }));
+// Speech model and runtime for transcription, kept on this server so it works without internet.
+app.use(createSpeechModelHandler());
 app.use(express.static(distDir));
 // Client-side routes (react-router) all load the same page.
 app.get('*', (_req, res) => res.sendFile(path.join(distDir, 'index.html')));

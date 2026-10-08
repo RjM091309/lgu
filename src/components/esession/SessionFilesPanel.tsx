@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent } from 'react';
 import {
+  Captions,
   CalendarDays,
   Check,
   Clock,
@@ -24,12 +25,14 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import { useTranscriptIndex } from '@/lib/esession-sync';
+import { transcriptKey } from '@/lib/transcripts';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
-import { downloadUrl, openPrintWindow, printPdfUrl } from '@/lib/files';
+import { downloadUrl, escapeHtml, openPrintWindow, printPdfUrl } from '@/lib/files';
 import {
   FILE_CATEGORIES,
   defaultFileSessionId,
@@ -157,6 +160,8 @@ interface PendingUpload {
 
 export function SessionFilesPanel() {
   const files = useSessionFiles();
+  // Which recordings have a transcript (kept on the LIMS server), for the badge on each one.
+  const transcripts = useTranscriptIndex();
   // One folder per session and meeting on the calendar shared with LIMS Mobile and the E-Session app.
   const fileSessions = useFileSessions();
   const defaultSessionId = defaultFileSessionId(fileSessions);
@@ -269,7 +274,7 @@ export function SessionFilesPanel() {
       !!url &&
       (file.kind === 'pdf'
         ? printPdfUrl(url)
-        : openPrintWindow(file.name, `<div class="title">${file.name}</div><img src="${url}" alt="" style="max-width:100%;margin-top:12px" />`));
+        : openPrintWindow(file.name, `<div class="title">${escapeHtml(file.name)}</div><img src="${escapeHtml(url)}" alt="" style="max-width:100%;margin-top:12px" />`));
     if (!started) {
       toast('Print failed', file.kind === 'pdf' ? `${file.name} could not be sent to the printer.` : 'Your browser blocked the print window. Allow pop-ups for this site and try again.', 'error');
     }
@@ -574,6 +579,13 @@ export function SessionFilesPanel() {
                 </button>
               ) : null}
               {missing ? <span className="font-semibold text-amber-700">Recording not yet attached</span> : <span>{formatBytes(file.size)}</span>}
+              {canPlay && !missing && (transcripts[transcriptKey(file)] || file.transcriptSrc) ? (
+                <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-full bg-green-50 px-2 py-px font-semibold text-green-800">
+                  <Captions className="h-3 w-3" />
+                  Transcript
+                  {transcripts[transcriptKey(file)]?.edited ? ' · corrected' : ''}
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -711,7 +723,7 @@ export function SessionFilesPanel() {
                         {tab.count}
                       </span>
                     </span>
-                    <span className={cn('text-[11px]', active ? 'text-white/75' : 'text-text-muted')}>{tab.meta}</span>
+                    <span className={cn('text-[11px]', active ? 'text-white/90' : 'text-text-muted')}>{tab.meta}</span>
                   </button>
                 );
               })}
@@ -1023,7 +1035,7 @@ export function SessionFilesPanel() {
                       <KindIcon className="h-4 w-4 shrink-0" />
                       {entry.label}
                     </span>
-                    <span className={cn('text-[11px] leading-tight', active ? 'text-white/75' : 'text-text-muted')}>{entry.hint}</span>
+                    <span className={cn('text-[11px] leading-tight', active ? 'text-white/90' : 'text-text-muted')}>{entry.hint}</span>
                   </button>
                 );
               })}

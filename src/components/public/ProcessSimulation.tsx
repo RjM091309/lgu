@@ -184,7 +184,7 @@ export function ProcessSimulation({ copy, bills, onViewStage, onViewRecord }: Pr
                   >
                     {copy.stages[item.key].label}
                   </span>
-                  <span className="hidden text-[11px] tabular-nums text-slate-400 md:block">{copy.stageCount(countAt(index))}</span>
+                  <span className="hidden text-[11px] tabular-nums text-slate-500 md:block">{copy.stageCount(countAt(index))}</span>
                 </button>
               </li>
             );

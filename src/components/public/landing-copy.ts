@@ -368,7 +368,8 @@ const EN = {
   eSessionSignIn: 'Sign in to E-Session',
   eSessionMembers: 'Members:',
   eSessionStaff: 'Staff:',
-  eSessionNoSessions: (role: string) => `The ${role} role does not take part in sessions. Use the Staff Portal instead.`,
+  eSessionNoSessions: (role: string) => `The ${role} role does not take part in sessions. Sign in to the Staff Portal instead.`,
+  memberUseESession: 'Members of the Sanggunian sign in to E-Session or LIMS Mobile, not the Staff Portal.',
   eSessionWelcome: (name: string) => `Welcome, ${name}. Opening E-Session…`,
 
   viewerTitle: 'Public Document Viewer',
@@ -815,6 +816,7 @@ const FIL: LandingCopy = {
   eSessionMembers: 'Mga kasapi:',
   eSessionStaff: 'Kawani:',
   eSessionNoSessions: (role: string) => `Ang tungkuling ${role} ay hindi kasali sa mga sesyon. Gamitin na lang ang Staff Portal.`,
+  memberUseESession: 'Ang mga miyembro ng Sanggunian ay nagsa-sign in sa E-Session o LIMS Mobile, hindi sa Staff Portal.',
   eSessionWelcome: (name: string) => `Maligayang pagdating, ${name}. Binubuksan ang E-Session…`,
 
   viewerTitle: 'Tagatingin ng Pampublikong Dokumento',

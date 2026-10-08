@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input';
 import { toast } from '@/components/ui/toast';
 import { DEMO_PASSWORD, useUsers } from '@/lib/access-store';
 import { mobileAccounts, type MobileAccount } from '@/lib/mobile-accounts';
-import { signInESession } from '@/lib/esession-room';
+import { signInMessage, signInToSessions } from '@/lib/sign-in';
 import { cn } from '@/lib/utils';
 import { InsecureNotice } from '@/components/esession-room/es-ui';
 
@@ -22,18 +22,8 @@ export function ESessionLogin({ onSignIn }: { onSignIn: (account: MobileAccount,
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!username.trim() || !password) return setError('Enter your username and password.');
-    const result = signInESession(users, username, password);
-    if ('error' in result) {
-      setError(
-        result.error === 'inactive'
-          ? 'This account is deactivated. Contact the SB Secretariat administrator.'
-          : result.error === 'no-sessions'
-            ? `The ${result.role} role does not take part in sessions. Use the Staff Portal instead.`
-            : 'The username or password is incorrect.'
-      );
-      return;
-    }
+    const result = signInToSessions(users, username, password);
+    if ('error' in result) return setError(signInMessage(result.error, result.role));
     toast('Signed in', `Welcome, ${result.account.name}.`);
     onSignIn(result.account, remember);
   };

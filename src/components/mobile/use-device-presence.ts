@@ -4,7 +4,7 @@ import { reportLeaving, reportPresence, useSyncStatus, type PresenceReport } fro
 import type { MobileAccount } from '@/lib/mobile-accounts';
 import { isNativeApp } from '@/lib/native';
 
-// Lets the Session Platform list this phone among the session devices: it checks in every few seconds
+// Lets the E-Session Monitor list this phone among the session devices: it checks in every few seconds
 // with its model and the account signed in on it, and is shown offline once the check-ins stop.
 
 const DEVICE_KEY = 'lims-device-id';

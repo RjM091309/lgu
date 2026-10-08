@@ -220,8 +220,11 @@ export function createESessionRoomsHandler(env = {}, { onSessionStarted } = {}) 
       autoAdmit: room.autoAdmit,
       recording: room.recording !== null,
       participantCount: inRoom.length,
-      participants: inRoom.slice(0, 12).map((p) => ({ inviteeId: p.account.inviteeId, name: p.account.name, abbr: p.account.abbr, group: p.account.group })),
+      // Who is in the room and on what (e.g. "iPad · Safari"), for the lobby and the Staff Portal's E-Session Monitor.
+      participants: inRoom.slice(0, 40).map((p) => ({ inviteeId: p.account.inviteeId, name: p.account.name, abbr: p.account.abbr, group: p.account.group, device: p.device })),
       attendeeCount: room.attendance.size,
+      // The agenda item being taken up.
+      agendaItem: room.status === 'live' ? (room.agenda[room.agendaIndex] ?? null) : null,
       invitees: [...room.invitees],
     };
   };
@@ -741,7 +744,7 @@ export function createESessionRoomsHandler(env = {}, { onSessionStarted } = {}) 
     attendance: [...room.attendance.values()],
   });
 
-  return async function eSessionRoomsHandler(req, res, next) {
+  const handle = async (req, res, next) => {
     const url = new URL(req.url || '/', 'http://localhost');
     const path = url.pathname;
 
@@ -810,5 +813,16 @@ export function createESessionRoomsHandler(env = {}, { onSessionStarted } = {}) 
       return match[2] === 'join' ? joinRoom(req, res, room, body) : act(res, room, body);
     }
     return sendJson(res, 404, { error: 'not_found' });
+  };
+
+  return async function eSessionRoomsHandler(req, res, next) {
+    try {
+      await handle(req, res, next);
+    } catch (error) {
+      // A bad request must never take the server (and every live room) down with it.
+      console.error('[esession-rooms]', error instanceof Error ? error.message : error);
+      if (!res.headersSent) sendJson(res, 500, { error: 'server_error' });
+      else res.destroy();
+    }
   };
 }

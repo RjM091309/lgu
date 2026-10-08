@@ -6,12 +6,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { mockMembers, type Member } from '@/lib/mock-data';
-import { openPrintWindow } from '@/lib/files';
+import { escapeHtml, openPrintWindow } from '@/lib/files';
 import { logActivity } from '@/lib/activity-log';
 import { isPresent, lockDocument, presentMembers, signDocument, signableDocuments, signaturesFor, useESignatures } from '@/lib/esignatures';
 import { SignaturePad, type SignaturePadHandle } from '@/components/esession/SignaturePad';
-
-const escapeHtml = (text: string) => text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 export function ESignaturePanel() {
   const all = useESignatures();

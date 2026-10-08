@@ -148,6 +148,14 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const launcherRef = useRef<HTMLButtonElement | null>(null);
+  // On phones the launcher would cover the hero's search button, so there it shows once the page is scrolled.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 80);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const isBusy = messages.some((message) => message.status === 'streaming');
   const lastMessage = messages[messages.length - 1];
@@ -268,7 +276,7 @@ export function EgovAiChat({ lang = 'EN' }: { lang?: 'EN' | 'FIL' }) {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="group fixed bottom-5 right-4 z-40 flex items-center gap-3 rounded-full focus-visible:outline-none sm:right-6"
+            className={cn('group fixed bottom-5 right-4 z-40 flex items-center gap-3 rounded-full focus-visible:outline-none sm:right-6', !scrolled && 'max-sm:hidden')}
             aria-label={L.open}
           >
             <span className="relative hidden overflow-hidden rounded-2xl border border-[#18237f]/10 bg-white py-2 pl-4 pr-4 text-left shadow-[0_10px_30px_-10px_rgba(10,15,61,0.45)] transition-transform duration-200 group-hover:-translate-x-1 group-focus-visible:ring-2 group-focus-visible:ring-primary/40 sm:block">

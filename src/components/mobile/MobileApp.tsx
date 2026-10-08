@@ -7,7 +7,8 @@ import { Toaster, toast } from '@/components/ui/toast';
 import { ConfirmDialogHost } from '@/components/ui/confirm';
 import { DEMO_PASSWORD, useUsers } from '@/lib/access-store';
 import { useCalendarSessions, useESessionState, useSyncStatus, type Notice } from '@/lib/esession-sync';
-import { isInvited, mobileAccounts, signInMobile, type MobileAccount } from '@/lib/mobile-accounts';
+import { isInvited, mobileAccounts, type MobileAccount } from '@/lib/mobile-accounts';
+import { signInMessage, signInToSessions } from '@/lib/sign-in';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { MobileContext, useMobile } from '@/components/mobile/mobile-context';
 import { ServerSettings } from '@/components/mobile/ServerSettings';
@@ -53,7 +54,7 @@ export function MobileApp() {
   const [accountId, setAccountId] = useState(() => readStored(ACCOUNT_KEY));
   const account = useMemo(() => mobileAccounts(users).find((entry) => entry.inviteeId === accountId) ?? null, [users, accountId]);
 
-  // Listed on the Session Platform from the moment it connects, signed in or not.
+  // Listed on the E-Session Monitor from the moment it connects, signed in or not.
   useDevicePresence(account);
 
   const signIn = (next: MobileAccount) => {
@@ -256,9 +257,10 @@ function MobileLogin({ onSignIn }: { onSignIn: (account: MobileAccount) => void 
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!username.trim() || !password) return setError('Enter your username and password.');
-    const account = signInMobile(users, username, password);
-    if (!account) return setError('The username or password is incorrect.');
+    // The same rule and messages as E-Session and the Staff Portal (src/lib/sign-in.ts).
+    const result = signInToSessions(users, username, password);
+    if ('error' in result) return setError(signInMessage(result.error, result.role));
+    const { account } = result;
     toast('Signed in', `Welcome, ${account.name}.`);
     onSignIn(account);
   };
