@@ -34,9 +34,16 @@ export interface Session {
   date: string;
   time: string;
   location: string;
-  type: 'Regular' | 'Special' | 'Committee Hearing';
+  /** A Meeting is informal (a caucus, briefing or coordination meeting): not an official session of the body. */
+  type: 'Regular' | 'Special' | 'Committee Hearing' | 'Meeting';
   /** For committee hearings: the committee conducting it (see mockCommittees). */
   committeeId?: string;
+  /** For special sessions: the matter it was called for, as stated in the notice (LGC Sec. 52). */
+  purpose?: string;
+  /** For meetings: who is invited (`member:m1`, `user:USR-001`), chosen when it is set up. */
+  invitees?: string[];
+  /** For meetings: the topics to take up, if any were given. */
+  agenda?: string[];
 }
 
 export interface Committee {
@@ -310,6 +317,29 @@ export const mockSessions: Session[] = [
     type: 'Committee Hearing',
     committeeId: 'c9',
   },
+];
+
+const CONFERENCE_ROOM = 'SB Conference Room, Capas Municipal Hall';
+const ALL_MEMBERS = Array.from({ length: 12 }, (_, index) => `member:m${index + 1}`);
+const SECRETARIAT = ['user:USR-001', 'user:USR-002', 'user:USR-003', 'user:USR-005'];
+
+/**
+ * The calendar from October 14 to November 30: weekly regular sessions (Mondays; Bonifacio Day skipped),
+ * the budget special session, hearings on measures already filed, and informal meetings. Unlike the sessions
+ * above they can be edited and cancelled in the app; the LIMS server loads them at every start, so a restart
+ * brings back these originals (and drops whatever was scheduled during a demo).
+ */
+export const mockSeededSessions: Session[] = [
+  {
+    id: 'mt1',
+    title: 'Caucus on the Proposed 2027 Annual Budget',
+    date: '2026-10-14',
+    time: '10:00 AM',
+    location: CONFERENCE_ROOM,
+    type: 'Meeting',
+    invitees: [...ALL_MEMBERS, 'user:USR-001', 'user:USR-002'],
+    agenda: ['Briefing by the Municipal Budget Officer', 'Questions from the members', 'Order of consideration at the special session'],
+  },
   {
     id: 's3',
     title: 'Special Session on the 2027 Annual Budget',
@@ -317,6 +347,67 @@ export const mockSessions: Session[] = [
     time: '09:00 AM',
     location: LGU_PROFILE.sessionHall,
     type: 'Special',
+    purpose: 'Consideration of the Proposed 2027 Annual Budget of the Municipality of Capas',
+  },
+  { id: 's39', title: '39th Regular Session', date: '2026-10-19', time: '09:00 AM', location: LGU_PROFILE.sessionHall, type: 'Regular' },
+  { id: 'h1', title: 'Public Hearing: Proposed 2027 Annual Budget', date: '2026-10-21', time: '02:00 PM', location: LGU_PROFILE.sessionHall, type: 'Committee Hearing', committeeId: 'c1' },
+  {
+    id: 'mt2',
+    title: 'Coordination Meeting with the MDRRMO on Typhoon Season Preparedness',
+    date: '2026-10-22',
+    time: '02:00 PM',
+    location: 'MDRRMO Operations Center, Capas Municipal Hall',
+    type: 'Meeting',
+    invitees: ['member:m1', 'member:m8', 'member:m3', 'member:m6', 'member:m12', 'user:USR-001', 'user:USR-004'],
+    agenda: ['Status of barangay disaster preparedness equipment', 'Evacuation centers and pre-emptive evacuation plan', 'Requests for legislative support'],
+  },
+  { id: 's40', title: '40th Regular Session', date: '2026-10-26', time: '09:00 AM', location: LGU_PROFILE.sessionHall, type: 'Regular' },
+  { id: 'h2', title: 'Public Hearing: Tricycle Fare Rates (Second Hearing)', date: '2026-10-28', time: '02:00 PM', location: LGU_PROFILE.sessionHall, type: 'Committee Hearing', committeeId: 'c9' },
+  {
+    id: 'mt3',
+    title: 'Secretariat Coordination: Sessions and Records during Undas',
+    date: '2026-10-29',
+    time: '10:00 AM',
+    location: CONFERENCE_ROOM,
+    type: 'Meeting',
+    invitees: SECRETARIAT,
+    agenda: ['Preparations for the 41st Regular Session on November 2', 'Records Section duty schedule'],
+  },
+  { id: 's41', title: '41st Regular Session', date: '2026-11-02', time: '09:00 AM', location: LGU_PROFILE.sessionHall, type: 'Regular' },
+  {
+    id: 'mt4',
+    title: 'Briefing on the 2027 Local Development Investment Program',
+    date: '2026-11-05',
+    time: '02:00 PM',
+    location: CONFERENCE_ROOM,
+    type: 'Meeting',
+    invitees: [...ALL_MEMBERS, 'user:USR-001', 'user:USR-002'],
+    agenda: ['Presentation by the Municipal Planning and Development Coordinator', 'Open forum'],
+  },
+  { id: 's42', title: '42nd Regular Session', date: '2026-11-09', time: '09:00 AM', location: LGU_PROFILE.sessionHall, type: 'Regular' },
+  { id: 'h3', title: 'Public Hearing: Capas Municipal Scholarship Program', date: '2026-11-11', time: '10:00 AM', location: LGU_PROFILE.sessionHall, type: 'Committee Hearing', committeeId: 'c4' },
+  {
+    id: 'mt5',
+    title: 'Committee Caucus on the Tricycle Fare Rates Report',
+    date: '2026-11-13',
+    time: '10:00 AM',
+    location: CONFERENCE_ROOM,
+    type: 'Meeting',
+    invitees: ['member:m3', 'member:m8', 'member:m5', 'member:m11', 'user:USR-001', 'user:USR-004'],
+    agenda: ['Summary of the two public hearings', 'Draft committee report and recommended fare matrix'],
+  },
+  { id: 's43', title: '43rd Regular Session', date: '2026-11-16', time: '09:00 AM', location: LGU_PROFILE.sessionHall, type: 'Regular' },
+  { id: 'h4', title: 'Public Hearing: Anti-Littering and Solid Waste Segregation Program', date: '2026-11-18', time: '02:00 PM', location: LGU_PROFILE.sessionHall, type: 'Committee Hearing', committeeId: 'c8' },
+  { id: 's44', title: '44th Regular Session', date: '2026-11-23', time: '09:00 AM', location: LGU_PROFILE.sessionHall, type: 'Regular' },
+  {
+    id: 'mt6',
+    title: 'Secretariat Year-End Records Review',
+    date: '2026-11-25',
+    time: '10:00 AM',
+    location: CONFERENCE_ROOM,
+    type: 'Meeting',
+    invitees: SECRETARIAT,
+    agenda: ['Status of minutes and journals for 2026', 'Session Files still incomplete', 'Archiving schedule for December'],
   },
 ];
 
@@ -343,7 +434,7 @@ export const mockPastSessions: Session[] = [
   pastSession('ps31', '31st Regular Session', '2026-07-13', 'Regular'),
   pastSession('ph3', 'Public Hearing: Supplemental Funds for Barangay Disaster Preparedness Equipment', '2026-07-16', 'Committee Hearing', '10:00 AM', 'c1'),
   pastSession('ps32', '32nd Regular Session', '2026-07-20', 'Regular'),
-  pastSession('psp1', 'Special Session on Supplemental Budget No. 1', '2026-07-24', 'Special'),
+  { ...pastSession('psp1', 'Special Session on Supplemental Budget No. 1', '2026-07-24', 'Special'), purpose: 'Consideration of Supplemental Budget No. 1 for Calendar Year 2026' },
   pastSession('ps33', '33rd Regular Session', '2026-08-03', 'Regular'),
   pastSession('ph4', 'Public Hearing: Access Road Linking Barangay Sta. Lucia to New Clark City', '2026-08-12', 'Committee Hearing', '02:00 PM', 'c5'),
   pastSession('ps34', '34th Regular Session', '2026-08-17', 'Regular'),

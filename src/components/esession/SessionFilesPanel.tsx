@@ -32,8 +32,8 @@ import { confirmAction } from '@/components/ui/confirm';
 import { downloadUrl, openPrintWindow, printPdfUrl } from '@/lib/files';
 import {
   FILE_CATEGORIES,
-  DEFAULT_FILE_SESSION_ID,
-  FILE_SESSIONS,
+  defaultFileSessionId,
+  useFileSessions,
   MAX_UPLOAD_BYTES,
   addSessionFiles,
   detectKind,
@@ -118,8 +118,6 @@ const UPLOAD_KINDS: { value: FileKind; label: string; hint: string; one: string;
 ];
 const uploadKindOf = (kind: FileKind) => UPLOAD_KINDS.find((entry) => entry.value === kind) ?? UPLOAD_KINDS[0];
 
-const sessionTitle = (id: string) => FILE_SESSIONS.find((session) => session.id === id)?.title ?? 'Unassigned session';
-
 const RECORDING_ACCEPT = 'audio/*,video/*,.mp3,.wav,.m4a,.aac,.ogg,.mp4,.webm,.mov,.m4v';
 
 const selectClass = 'h-9 rounded-md border border-border bg-white px-2 text-sm text-text-main';
@@ -159,6 +157,10 @@ interface PendingUpload {
 
 export function SessionFilesPanel() {
   const files = useSessionFiles();
+  // One folder per session and meeting on the calendar shared with LIMS Mobile and the E-Session app.
+  const fileSessions = useFileSessions();
+  const defaultSessionId = defaultFileSessionId(fileSessions);
+  const sessionTitle = (id: string) => fileSessions.find((session) => session.id === id)?.title ?? 'Unassigned session';
   const { user: currentUser } = useAccess();
   const users = useUsers();
   const roles = useRoles();
@@ -170,7 +172,7 @@ export function SessionFilesPanel() {
   };
   const [keyword, setKeyword] = useState('');
   // Each session is its own tab so files from different sessions never share one list.
-  const [activeSession, setActiveSession] = useState(DEFAULT_FILE_SESSION_ID || OTHER_TAB);
+  const [activeSession, setActiveSession] = useState(defaultSessionId || OTHER_TAB);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
   const [sort, setSort] = useState<SortKey>('type');
@@ -180,7 +182,7 @@ export function SessionFilesPanel() {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [pending, setPending] = useState<PendingUpload[]>([]);
-  const [uploadSession, setUploadSession] = useState(DEFAULT_FILE_SESSION_ID);
+  const [uploadSession, setUploadSession] = useState(defaultSessionId);
   const [uploadKind, setUploadKind] = useState<FileKind>('pdf');
   const [isDragging, setIsDragging] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -201,6 +203,12 @@ export function SessionFilesPanel() {
     if (strip && tab) strip.scrollLeft = tab.offsetLeft - strip.offsetLeft - 8;
   }, []);
 
+  // A folder can go away (its session cancelled on the calendar): open the default one instead.
+  useEffect(() => {
+    if (activeSession !== OTHER_TAB && !fileSessions.some((session) => session.id === activeSession)) setActiveSession(defaultSessionId || OTHER_TAB);
+    if (!fileSessions.some((session) => session.id === uploadSession)) setUploadSession(defaultSessionId);
+  }, [fileSessions, activeSession, uploadSession, defaultSessionId]);
+
   // Lists, counts and the checklist show only the current version of each document; older ones are in its history.
   const currentFiles = useMemo(() => latestVersions(files), [files]);
   const versionCounts = useMemo(() => {
@@ -212,11 +220,11 @@ export function SessionFilesPanel() {
   const showsVersion = (file: SessionFile) => (versionCounts.get(versionGroupOf(file)) ?? 1) > 1 || VERSIONED_CATEGORIES.includes(file.category);
 
   const inSession = (file: SessionFile, tab: string) =>
-    tab === OTHER_TAB ? !FILE_SESSIONS.some((session) => session.id === file.sessionId) : file.sessionId === tab;
+    tab === OTHER_TAB ? !fileSessions.some((session) => session.id === file.sessionId) : file.sessionId === tab;
   const sessionFiles = useMemo(() => currentFiles.filter((file) => inSession(file, activeSession)), [currentFiles, activeSession]);
   const otherCount = currentFiles.filter((file) => inSession(file, OTHER_TAB)).length;
   const sessionTabs = [
-    ...FILE_SESSIONS.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}${session.date < todayInManila() ? ' · Held' : ''}`, count: currentFiles.filter((file) => file.sessionId === session.id).length })),
+    ...fileSessions.map((session) => ({ id: session.id, title: session.title, meta: `${shortDate(session.date)} · ${session.type}${session.date < todayInManila() ? ' · Held' : ''}`, count: currentFiles.filter((file) => file.sessionId === session.id).length })),
     ...(otherCount > 0 ? [{ id: OTHER_TAB, title: 'Other files', meta: 'No listed session', count: otherCount }] : []),
   ];
 
@@ -289,7 +297,7 @@ export function SessionFilesPanel() {
     setPending([]);
     // Start on the file type the list is showing, so the Audio tab's upload expects audio.
     setUploadKind(kind ?? (kindFilter !== 'all' ? kindFilter : 'pdf'));
-    setUploadSession(sessionId ?? (activeSession !== OTHER_TAB ? activeSession : DEFAULT_FILE_SESSION_ID));
+    setUploadSession(sessionId ?? (activeSession !== OTHER_TAB ? activeSession : defaultSessionId));
     setUploadOpen(true);
   };
 
@@ -298,7 +306,7 @@ export function SessionFilesPanel() {
     setIsDragging(false);
     if (event.dataTransfer.files.length === 0) return;
     setPending([]);
-    setUploadSession(activeSession !== OTHER_TAB ? activeSession : DEFAULT_FILE_SESSION_ID);
+    setUploadSession(activeSession !== OTHER_TAB ? activeSession : defaultSessionId);
     // Files dropped on the list take the type of the first supported file.
     const kind = Array.from(event.dataTransfer.files).map(detectKind).find((entry): entry is FileKind => entry !== null) ?? 'pdf';
     setUploadKind(kind);
@@ -521,13 +529,13 @@ export function SessionFilesPanel() {
       icon: FileVideo,
       hint: awaitingRecordings ? `${awaitingRecordings} awaiting upload` : 'Audio and video',
     },
-    { label: 'Sessions covered', value: `${sessionsCovered}/${FILE_SESSIONS.length}`, icon: CalendarDays, hint: 'Sessions with at least one file' },
+    { label: 'Sessions covered', value: `${sessionsCovered}/${fileSessions.length}`, icon: CalendarDays, hint: 'Sessions with at least one file' },
   ];
 
-  const currentSession = FILE_SESSIONS.find((session) => session.id === activeSession);
+  const currentSession = fileSessions.find((session) => session.id === activeSession);
 
-  const checklistSessionId = currentSession?.id ?? DEFAULT_FILE_SESSION_ID;
-  const checklistSession = FILE_SESSIONS.find((session) => session.id === checklistSessionId);
+  const checklistSessionId = currentSession?.id ?? defaultSessionId;
+  const checklistSession = fileSessions.find((session) => session.id === checklistSessionId);
   const checklist = CHECKLIST_CATEGORIES.map((category) => {
     const matches = currentFiles.filter((file) => file.sessionId === checklistSessionId && file.category === category);
     const ready = matches.some((file) => file.blob || file.src);
@@ -835,6 +843,12 @@ export function SessionFilesPanel() {
         <aside className="rounded-xl border border-border bg-white p-5 shadow-sm">
           <h2 className="text-base font-semibold text-text-main">Session Checklist</h2>
           <p className="text-xs text-text-muted">{checklistSession ? checklistSession.title : 'No session selected'}</p>
+          {checklistSession?.type === 'Meeting' ? (
+            <p className="mt-4 rounded-lg bg-muted/60 px-3 py-2.5 text-xs text-text-muted">
+              Meetings are not official sessions, so no documents are required. Notes, recordings and handouts can still be kept in this folder.
+            </p>
+          ) : (
+          <>
           <div className="mt-4 flex items-center gap-3">
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-muted">
               <div
@@ -871,6 +885,8 @@ export function SessionFilesPanel() {
               </li>
             ))}
           </ul>
+          </>
+          )}
           <p className="mt-4 text-[11px] text-text-muted">Follows the session tab you have open.</p>
         </aside>
       </div>
@@ -977,7 +993,7 @@ export function SessionFilesPanel() {
           <label className="block text-xs font-semibold text-text-muted">
             Session
             <select value={uploadSession} onChange={(e) => setUploadSession(e.target.value)} className={cn(selectClass, 'mt-1 w-full')}>
-              {FILE_SESSIONS.map((session) => (
+              {fileSessions.map((session) => (
                 <option key={session.id} value={session.id}>
                   {session.title} ({session.date})
                 </option>

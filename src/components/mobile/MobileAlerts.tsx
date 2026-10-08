@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BellOff, BellRing, CalendarPlus, ChevronRight, Megaphone } from 'lucide-react';
+import { BellOff, BellRing, CalendarClock, CalendarPlus, ChevronRight, Megaphone } from 'lucide-react';
 import { nowInManila, useCalendarSessions } from '@/lib/esession-sync';
 import { useMobile } from '@/components/mobile/mobile-context';
 import { noticeText, timeAgo } from '@/components/mobile/mobile-ui';
@@ -43,8 +43,8 @@ export function MobileAlerts() {
         <ul className="overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-border">
           {notices.map((notice) => {
             const session = sessions.find((entry) => entry.id === notice.sessionId);
-            const { heading, body } = noticeText(notice, session?.title ?? 'A session');
-            const Icon = notice.kind === 'reminder' ? BellRing : notice.kind === 'announcement' ? Megaphone : CalendarPlus;
+            const { heading, body } = noticeText(notice, session?.title ?? 'A session', session?.type === 'Meeting');
+            const Icon = notice.kind === 'reminder' ? BellRing : notice.kind === 'announcement' ? Megaphone : notice.kind === 'updated' ? CalendarClock : CalendarPlus;
             return (
               <li key={notice.id} className="border-b border-border last:border-b-0">
                 <Link to={session ? `/m/session/${session.id}` : '/m'} className={cn('flex items-start gap-3 px-4 py-3 active:bg-muted', unseenOnOpen.has(notice.id) && 'bg-primary/[0.03]')}>

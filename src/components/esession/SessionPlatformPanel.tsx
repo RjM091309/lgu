@@ -26,11 +26,11 @@ import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { mockMembers, mockSessionDevices, mockSessions, type SessionDevice } from '@/lib/mock-data';
-import { buildAgenda, formatLongDate } from '@/lib/sessions';
-import { useSessionFiles } from '@/lib/session-files';
+import { buildAgenda, formatLongDate, isOfficial } from '@/lib/sessions';
+import { todayInManila, useSessionFiles } from '@/lib/session-files';
 import { logActivity } from '@/lib/activity-log';
 import { useAccess } from '@/lib/access-store';
-import { nowInManila, sendAnnouncement, useMobileDevices, type MobileDevice } from '@/lib/esession-sync';
+import { nowInManila, sendAnnouncement, useCalendarSessions, useMobileDevices, type MobileDevice } from '@/lib/esession-sync';
 import { MobileAppDialog } from '@/components/esession/MobileAppDialog';
 
 interface PlatformDevice extends SessionDevice {
@@ -74,7 +74,10 @@ const DeviceIcon = ({ type, className }: { type: string; className?: string }) =
   type === 'Laptop' ? <Laptop className={className} /> : type === 'Tablet' || type === 'iPad' ? <Tablet className={className} /> : <MonitorSmartphone className={className} />;
 
 export function SessionPlatformPanel() {
-  const session = mockSessions[0];
+  // The next session or hearing on the calendar shared with the E-Session app (today's, if there is one).
+  const today = todayInManila();
+  const calendar = useCalendarSessions();
+  const session = calendar.find((entry) => entry.date >= today && isOfficial(entry)) ?? mockSessions[0];
   const agendaItems = buildAgenda(session);
   const sessionFiles = useSessionFiles();
 

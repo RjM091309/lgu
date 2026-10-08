@@ -144,7 +144,10 @@ function SignedIn({ account, signOut }: { account: MobileAccount; signOut: () =>
     fresh
       .filter((notice) => notice.from !== account.name)
       .slice(0, 2)
-      .forEach((notice) => announce(notice, sessions.find((entry) => entry.id === notice.sessionId)?.title ?? 'a session'));
+      .forEach((notice) => {
+        const session = sessions.find((entry) => entry.id === notice.sessionId);
+        announce(notice, session?.title ?? 'a session', session?.type === 'Meeting');
+      });
   }, [notices, sessions, account.name, status]);
 
   // The Android app shows reminders in the phone's notification bar (Android 13+ asks once).
@@ -184,8 +187,8 @@ function SignedIn({ account, signOut }: { account: MobileAccount; signOut: () =>
 /** Android notification ids are 32-bit integers; derive a stable one from the notice id. */
 const notificationId = (id: string) => [...id].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) | 0, 7) & 0x7fffffff;
 
-function announce(notice: Notice, title: string) {
-  const { heading, body } = noticeText(notice, title);
+function announce(notice: Notice, title: string, meeting: boolean) {
+  const { heading, body } = noticeText(notice, title, meeting);
   toast(heading, body, 'info');
   navigator.vibrate?.([120, 60, 120]);
   if (isNativeApp) {

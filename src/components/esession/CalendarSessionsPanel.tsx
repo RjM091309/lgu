@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, BellRing, CalendarPlus, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, Flag, MapPin, Plus, Printer, Smartphone, Trash2, Undo2, Users, X } from 'lucide-react';
+import { AlertTriangle, BellRing, CalendarPlus, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, FileText, Flag, MapPin, Pencil, Plus, Printer, Smartphone, Trash2, Undo2, Users, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -12,7 +12,7 @@ import { HOLIDAY_SOURCE_LABEL, holidayTitle, holidayTone, useHolidays } from '@/
 import { SCOPE_LABEL } from '@/lib/local-holidays';
 import { ADMIN_ROLE, useAccess, useUsers } from '@/lib/access-store';
 import { QUORUM, committeeNameOf, inviteesFor, rsvpOf, setRsvp, useAttendance, type Invitee, type RsvpStatus } from '@/lib/attendance';
-import { cancelScheduledSession, isScheduledInApp, nowInManila, sendReminder, useCalendarSessions, useSyncStatus } from '@/lib/esession-sync';
+import { CHANGE_REFUSED, canChangeSession, cancelScheduledSession, nowInManila, sendReminder, useCalendarSessions, useStartedSessions, useSyncStatus } from '@/lib/esession-sync';
 import { confirmAction } from '@/components/ui/confirm';
 import { ScheduleSessionForm } from '@/components/esession/ScheduleSessionForm';
 import { MobileAppDialog } from '@/components/esession/MobileAppDialog';
@@ -47,7 +47,9 @@ export function CalendarSessionsPanel() {
   const [declineTarget, setDeclineTarget] = useState<Invitee | null>(null);
   const [declineReason, setDeclineReason] = useState('');
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const started = useStartedSessions();
   const [chipList, setChipList] = useState<'upcoming' | 'completed'>('upcoming');
   const syncStatus = useSyncStatus();
 
@@ -161,7 +163,7 @@ export function CalendarSessionsPanel() {
       tone: 'destructive',
     });
     if (!confirmed) return;
-    cancelScheduledSession(session.id);
+    if (!(await cancelScheduledSession(session.id))) return toast('Not cancelled', `${session.title}: ${CHANGE_REFUSED}`, 'error');
     toast('Session cancelled', `${session.title} was removed from the calendar.`);
     logActivity({ module: 'E-Session', action: 'Deleted', summary: `Cancelled ${session.title}`, detail: `${formatLongDate(session.date)}, ${session.time}` });
   };
@@ -351,7 +353,7 @@ export function CalendarSessionsPanel() {
               </Button>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-[11px] text-text-muted">
-              {(['Regular', 'Committee Hearing', 'Special'] as const).map((type) => (
+              {(['Regular', 'Committee Hearing', 'Special', 'Meeting'] as const).map((type) => (
                 <span key={type} className="inline-flex items-center gap-1">
                   <span className={cn('h-2.5 w-2.5 rounded-sm', SESSION_TONE[type])} />
                   {type}
@@ -520,7 +522,14 @@ export function CalendarSessionsPanel() {
                     Print attendance
                   </Button>
                 ) : null}
-                {canManage && isScheduledInApp(session.id) ? (
+                {/* The same rule as the /es lobby and LIMS Mobile: editable sessions only, before their e-session starts. */}
+                {canManage && canChangeSession(session, started, today) ? (
+                  <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => setEditOpen(true)}>
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                    Edit
+                  </Button>
+                ) : null}
+                {canManage && canChangeSession(session, started, today) ? (
                   <Button variant="outline" size="sm" className="h-8 text-xs text-red-700 hover:border-red-300 hover:bg-red-50" onClick={cancelSession}>
                     <Trash2 className="mr-1.5 h-3.5 w-3.5" />
                     Cancel session
@@ -585,7 +594,7 @@ export function CalendarSessionsPanel() {
                 <span className="bg-green-600" style={{ width: `${(counts.attending / Math.max(invitees.length, 1)) * 100}%` }} />
                 <span className="bg-red-500" style={{ width: `${(counts.declined / Math.max(invitees.length, 1)) * 100}%` }} />
               </div>
-              {session.type !== 'Committee Hearing' ? (
+              {session.type === 'Regular' || session.type === 'Special' ? (
                 <p className={cn('mt-2 text-[11px] font-medium', membersAttending >= QUORUM ? 'text-green-700' : 'text-amber-700')}>
                   {held
                     ? membersAttending >= QUORUM
@@ -712,12 +721,39 @@ export function CalendarSessionsPanel() {
             {scheduleOpen ? (
               <ScheduleSessionForm
                 scheduledBy={user.name}
+                scheduledById={`user:${user.id}`}
                 onCancel={() => setScheduleOpen(false)}
                 onScheduled={(entry) => {
                   setScheduleOpen(false);
                   selectSession(entry);
                   toast('Session scheduled', `${entry.title} on ${formatLongDate(entry.date)}. Invitees were notified in the mobile app.`);
                   logActivity({ module: 'E-Session', action: 'Created', summary: `Scheduled ${entry.title}`, detail: `${formatLongDate(entry.date)}, ${entry.time} · ${entry.location}` });
+                }}
+              />
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit a session scheduled in the app */}
+      <Dialog open={editOpen && Boolean(session)} onOpenChange={setEditOpen}>
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl text-primary">Edit {session?.type === 'Meeting' ? 'meeting' : 'session'}</DialogTitle>
+            <DialogDescription>Invitees are notified of the change in the mobile app.</DialogDescription>
+          </DialogHeader>
+          <div className="mt-5">
+            {editOpen && session ? (
+              <ScheduleSessionForm
+                key={session.id}
+                session={session}
+                scheduledBy={user.name}
+                scheduledById={`user:${user.id}`}
+                onCancel={() => setEditOpen(false)}
+                onScheduled={(entry) => {
+                  setEditOpen(false);
+                  toast('Changes saved', `${entry.title}: invitees were notified in the mobile app.`);
+                  logActivity({ module: 'E-Session', action: 'Updated', summary: `Changed ${entry.title}`, detail: `${formatLongDate(entry.date)}, ${entry.time} · ${entry.location}` });
                 }}
               />
             ) : null}

@@ -231,6 +231,9 @@ export function PeoplePanel({
         </section>
       ) : null}
 
+      {room.type === 'Meeting' ? (
+        <p className="mx-3 mt-4 rounded-xl bg-white/5 p-4 text-xs text-white/70 ring-1 ring-inset ring-white/10">This is a meeting, not an official session of the body: there is no quorum or roll call.</p>
+      ) : (
       <section aria-label="Quorum" className="mx-3 mt-4 rounded-xl bg-white/5 p-4 ring-1 ring-inset ring-white/10">
         <div className="flex items-center justify-between gap-3">
           <div>
@@ -249,6 +252,7 @@ export function PeoplePanel({
           ) : null}
         </div>
       </section>
+      )}
 
       {lastCall ? (
         <section id="es-roll-call" aria-label="Roll call" className="mx-3 mt-3 scroll-mt-3 rounded-xl bg-white/5 p-4 ring-1 ring-inset ring-white/10">

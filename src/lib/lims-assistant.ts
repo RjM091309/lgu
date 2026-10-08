@@ -15,6 +15,7 @@ import {
   mockCommittees,
   mockMembers,
   mockPublications,
+  mockSeededSessions,
   mockSessions,
   mockYearlyActivity,
   type Bill,
@@ -342,7 +343,11 @@ const IDF = new Map<string, number>();
   for (const [term, count] of df) IDF.set(term, Math.log(1 + RECORD_INDEX.length / count));
 }
 
-const SESSION_INDEX = mockSessions.map((session) => ({
+// The sample calendar's sessions and hearings, as published (meetings are internal). Changes made during a
+// demo are not reflected here: the assistant answers from the published schedule.
+const PUBLIC_SESSIONS: Session[] = [...mockSessions, ...mockSeededSessions.filter((session) => session.type !== 'Meeting')];
+
+const SESSION_INDEX = PUBLIC_SESSIONS.map((session) => ({
   session,
   terms: indexText([
     [session.title, 2],
@@ -1004,7 +1009,7 @@ function sessionAnswer(parsed: Parsed, context: ConversationContext, focusSessio
     }
   }
 
-  const upcoming = mockSessions.filter((session) => session.date >= todayIso()).sort((a, b) => a.date.localeCompare(b.date));
+  const upcoming = PUBLIC_SESSIONS.filter((session) => session.date >= todayIso()).sort((a, b) => a.date.localeCompare(b.date));
   const ofType = has('special')
     ? upcoming.filter((s) => s.type === 'Special')
     : has('hearing')

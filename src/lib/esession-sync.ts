@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import { mockAttendanceMarks, mockAttendanceSessions, mockCommitteeAssignments, mockMembers, mockPastSessions, mockSessions, type Session } from '@/lib/mock-data';
+import { mockAttendanceMarks, mockAttendanceSessions, mockCommitteeAssignments, mockMembers, mockPastSessions, mockSeededSessions, mockSessions, type Session } from '@/lib/mock-data';
 import { isNativeApp } from '@/lib/native';
 
 // E-Session state shared by the web calendar and the mobile app (/m): attendance responses, sessions
@@ -22,9 +22,9 @@ export interface Rsvp {
 
 export interface Notice {
   id: string;
-  kind: 'scheduled' | 'reminder' | 'announcement';
+  kind: 'scheduled' | 'updated' | 'reminder' | 'announcement';
   sessionId: string;
-  /** Announcements only: the message pushed from the Session Platform. */
+  /** Announcements: the message pushed from the Session Platform. Updates: what changed. */
   text?: string;
   /** Reminders only: who was reminded. A newly scheduled session concerns everyone invited to it. */
   inviteeIds?: string[];
@@ -55,8 +55,10 @@ export type PresenceReport = Pick<MobileDevice, 'platform' | 'model' | 'os' | 'a
 
 interface ESessionState {
   rsvps: Record<string, Rsvp>;
-  /** Sessions scheduled in the app, on top of the sample sessions. */
+  /** Sessions that can be edited and cancelled: the editable sample calendar plus those scheduled in the app. */
   scheduled: Session[];
+  /** Sessions whose e-session has started: they stay as scheduled. */
+  started: string[];
   notices: Notice[];
   devices: MobileDevice[];
   status: SyncStatus;
@@ -64,11 +66,13 @@ interface ESessionState {
 
 interface ServerState {
   seeded: boolean;
+  calendarSeeded?: boolean;
   version: number;
   rsvps: Record<string, Rsvp>;
   sessions: Session[];
   notices: Notice[];
   devices?: MobileDevice[];
+  started?: string[];
 }
 
 export const rsvpKey = (sessionId: string, inviteeId: string) => `${sessionId}|${inviteeId}`;
@@ -121,7 +125,9 @@ function pastSessionRsvps() {
   return rsvps;
 }
 
-let state: ESessionState = { rsvps: SAMPLE_RSVPS, scheduled: [], notices: [], devices: [], status: 'connecting' };
+const INITIAL: Omit<ESessionState, 'status'> = { rsvps: SAMPLE_RSVPS, scheduled: mockSeededSessions, started: [], notices: [], devices: [] };
+
+let state: ESessionState = { ...INITIAL, status: 'connecting' };
 
 const listeners = new Set<() => void>();
 const setState = (next: Partial<ESessionState>) => {
@@ -173,7 +179,7 @@ export const setServerAddress = (origin: string) => {
   if (pollTimer) clearInterval(pollTimer);
   pollTimer = null;
   lastVersion = -1;
-  setState({ rsvps: SAMPLE_RSVPS, scheduled: [], notices: [], devices: [], status: 'connecting' });
+  setState({ ...INITIAL, status: 'connecting' });
   connect();
 };
 
@@ -181,14 +187,14 @@ const applyServer = (server: ServerState) => {
   // Polling sees the same state until something changes; only re-render when it does.
   if (server.version === lastVersion && state.status === 'live') return;
   lastVersion = server.version;
-  if (!server.seeded) {
-    // First browser to connect since the server started hands it the sample responses (the server
-    // ignores any seed after the first).
-    void send('POST', '/api/esession/seed', { rsvps: SAMPLE_RSVPS });
+  if (!server.seeded || !server.calendarSeeded) {
+    // First browser to connect since the server started hands it the sample responses and the editable
+    // sample calendar (the server ignores any seed after the first), so a restart brings the originals back.
+    void send('POST', '/api/esession/seed', { rsvps: SAMPLE_RSVPS, sessions: mockSeededSessions });
     setState({ status: 'live' });
     return;
   }
-  setState({ rsvps: server.rsvps, scheduled: server.sessions, notices: server.notices, devices: server.devices ?? [], status: 'live' });
+  setState({ rsvps: server.rsvps, scheduled: server.sessions, started: server.started ?? [], notices: server.notices, devices: server.devices ?? [], status: 'live' });
 };
 
 const poll = async () => {
@@ -241,12 +247,19 @@ const subscribe = (listener: () => void) => {
   return () => listeners.delete(listener);
 };
 
+/** False when the server turned the change down; this copy is then replaced with the server's. */
 async function send(method: 'POST' | 'PUT' | 'DELETE', url: string, body?: unknown) {
-  if (state.status !== 'live' && url !== '/api/esession/seed') return;
+  if (state.status !== 'live' && url !== '/api/esession/seed') return true;
   try {
-    await fetch(`${serverBase}${url}`, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+    const res = await fetch(`${serverBase}${url}`, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+    if (res.ok) return true;
+    // e.g. the session's e-session started meanwhile: undo the change here by taking the server's state.
+    lastVersion = -1;
+    void poll();
+    return false;
   } catch {
     setState({ status: 'offline' });
+    return true;
   }
 }
 
@@ -294,18 +307,48 @@ export const scheduleSession = (session: Session, from: string, at: string) => {
   void send('POST', '/api/esession/sessions', { session, from, at });
 };
 
-/** Removes a session scheduled in the app (the sample sessions stay). */
-export const cancelScheduledSession = (id: string) => {
+/**
+ * Saves changes to a session scheduled in the app and tells its invitees what changed. A new date or time
+ * clears the attendance responses, so everyone confirms again for the new schedule.
+ */
+export const updateScheduledSession = async (session: Session, changes: string, from: string, at: string) => {
+  const previous = state.scheduled.find((entry) => entry.id === session.id);
+  if (!previous) return false;
+  const rescheduled = previous.date !== session.date || previous.time !== session.time;
+  const prefix = `${session.id}|`;
+  setState({
+    scheduled: state.scheduled.map((entry) => (entry.id === session.id ? session : entry)),
+    rsvps: rescheduled ? Object.fromEntries(Object.entries(state.rsvps).filter(([key]) => !key.startsWith(prefix))) : state.rsvps,
+    notices: [{ id: newNoticeId(), kind: 'updated', sessionId: session.id, text: changes, at, from }, ...state.notices],
+  });
+  return send('PUT', `/api/esession/sessions/${encodeURIComponent(session.id)}`, { session, changes, from, at });
+};
+
+/** Removes a session that can be changed (see canChangeSession). False if the server turned it down. */
+export const cancelScheduledSession = async (id: string) => {
   const prefix = `${id}|`;
   setState({
     scheduled: state.scheduled.filter((entry) => entry.id !== id),
     rsvps: Object.fromEntries(Object.entries(state.rsvps).filter(([key]) => !key.startsWith(prefix))),
     notices: state.notices.filter((notice) => notice.sessionId !== id),
   });
-  void send('DELETE', `/api/esession/sessions/${encodeURIComponent(id)}`);
+  return send('DELETE', `/api/esession/sessions/${encodeURIComponent(id)}`);
 };
 
-export const isScheduledInApp = (id: string) => state.scheduled.some((entry) => entry.id === id);
+/** Shown when the server turns down an edit or a cancellation. */
+export const CHANGE_REFUSED = 'Its e-session has already started, so it stays as scheduled.';
+
+const startedIds = () => state.started;
+/** Sessions whose e-session has started (live or ended) since the server last started. */
+export const useStartedSessions = () => useSyncExternalStore(subscribe, startedIds);
+
+/**
+ * Whether a session can still be edited or cancelled: one of the editable sessions (the sample calendar from
+ * mid-October, or one scheduled in the app), not yet past, and its e-session not started. Pass the list from
+ * useStartedSessions so the component updates when a session starts.
+ */
+export const canChangeSession = (session: Session, started: string[], today: string) =>
+  session.date >= today && !started.includes(session.id) && state.scheduled.some((entry) => entry.id === session.id);
 
 export const sendReminder = (sessionId: string, inviteeIds: string[], from: string, at: string) => {
   setState({ notices: [{ id: newNoticeId(), kind: 'reminder', sessionId, inviteeIds, at, from }, ...state.notices] });

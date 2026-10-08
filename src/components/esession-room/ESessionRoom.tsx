@@ -822,7 +822,7 @@ function PreJoin({
     action = (
       <Button onClick={() => onJoin(true)} disabled={joining || !lobbyReady} className="h-14 w-full text-base font-bold">
         {joining ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Play className="mr-2 h-5 w-5 fill-current" />}
-        {joining ? 'Starting…' : 'Start e-session'}
+        {joining ? 'Starting…' : session.type === 'Meeting' ? 'Start meeting' : 'Start e-session'}
       </Button>
     );
   } else {
@@ -927,7 +927,7 @@ function PreJoin({
               ) : (
                 <p className="text-text-muted">
                   {account.canManage
-                    ? 'Starting opens the e-session to everyone invited. You can admit them, record, and end it.'
+                    ? `Starting opens the ${session.type === 'Meeting' ? 'meeting' : 'e-session'} to everyone invited. You can admit them, record, and end it.`
                     : 'Not started yet. This page updates by itself when the Secretariat starts it; check your camera and microphone meanwhile.'}
                 </p>
               )}

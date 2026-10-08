@@ -121,10 +121,14 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
     logActivity({ user: account.username, module: 'E-Session', action: 'Exported', summary: `Exported the e-session record of the ${room.title}`, detail: `${audit.events.length} events` });
   };
 
+  // A meeting has no quorum and no roll call.
+  const meeting = room.type === 'Meeting';
   const stats = [
     { label: 'Duration', value: durationText(end - (room.liveSince ?? room.startedAt)), icon: Timer },
-    { label: 'Members present', value: `${membersPresent}/${audit.memberTotal}`, icon: Users, hint: membersPresent >= audit.quorum ? 'Quorum reached' : `Quorum is ${audit.quorum}` },
-    { label: 'Roll calls', value: String(audit.rollCalls.length), icon: ClipboardList },
+    meeting
+      ? { label: 'Members present', value: String(membersPresent), icon: Users, hint: 'Meeting · not an official session' }
+      : { label: 'Members present', value: `${membersPresent}/${audit.memberTotal}`, icon: Users, hint: membersPresent >= audit.quorum ? 'Quorum reached' : `Quorum is ${audit.quorum}` },
+    ...(meeting ? [] : [{ label: 'Roll calls', value: String(audit.rollCalls.length), icon: ClipboardList }]),
     { label: 'Chat messages', value: String(audit.chat.length), icon: MessageSquare },
   ];
 

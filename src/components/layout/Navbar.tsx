@@ -34,7 +34,8 @@ import {
   UserPlus,
   X,
 } from 'lucide-react';
-import { LGU_PROFILE, mockBills, mockMembers, mockSessions } from '@/lib/mock-data';
+import { LGU_PROFILE, mockBills, mockMembers } from '@/lib/mock-data';
+import { useCalendarSessions } from '@/lib/esession-sync';
 import { NAV_GROUPS, findNavItem } from '@/lib/navigation';
 import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
@@ -139,6 +140,8 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
     year: 'numeric',
   }).format(new Date());
 
+  // Sessions and meetings from the calendar shared with LIMS Mobile and the E-Session app.
+  const calendarSessions = useCalendarSessions();
   const searchEntries = useMemo(
     () => [
       ...NAV_GROUPS.flatMap((group) =>
@@ -164,7 +167,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         keywords: [member.name, member.role, member.position, member.seat],
         group: 'Member',
       })),
-      ...mockSessions.map((session) => ({
+      ...calendarSessions.map((session) => ({
         id: `session-${session.id}`,
         label: `${session.title} (${session.date})`,
         tab: 'esig-calendar-sessions',
@@ -179,7 +182,7 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         group: 'Session File',
       })),
     ],
-    []
+    [calendarSessions]
   );
 
   const matchesSearchQuery = (query: string, values: string[]) => {

@@ -9,6 +9,9 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const MAX_BODY_BYTES = 64 * 1024;
+// The first browser hands over the sample responses and the editable sample calendar in one request.
+const MAX_SEED_BYTES = 256 * 1024;
+const MAX_SEED_SESSIONS = 100;
 // Built by `npm run apk`; offered to phones from the web app's Mobile app window.
 const APK_FILE = fileURLToPath(new URL('../downloads/LIMS-Mobile.apk', import.meta.url));
 const MAX_NOTICES = 50;
@@ -18,7 +21,9 @@ const DEVICE_OFFLINE_MS = 15_000;
 const DEVICE_FORGET_MS = 30 * 60_000;
 const DEVICE_PLATFORMS = ['app', 'browser'];
 
-const SESSION_TYPES = ['Regular', 'Special', 'Committee Hearing'];
+const SESSION_TYPES = ['Regular', 'Special', 'Committee Hearing', 'Meeting'];
+const MAX_INVITEES = 200;
+const MAX_AGENDA_ITEMS = 40;
 const RSVP_STATUSES = ['attending', 'declined'];
 const ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -35,13 +40,13 @@ const sendJson = (res, status, body) => {
   res.end(JSON.stringify(body));
 };
 
-const readJsonBody = (req) =>
+const readJsonBody = (req, limit = MAX_BODY_BYTES) =>
   new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (chunk) => {
       size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
+      if (size > limit) {
         reject(new Error('too_large'));
         req.destroy();
         return;
@@ -79,7 +84,24 @@ const toSession = (value) => {
   if (!id || !title || !location || !date || !time || !type) return null;
   const committeeId = type === 'Committee Hearing' && typeof value.committeeId === 'string' && ID_PATTERN.test(value.committeeId) ? value.committeeId : undefined;
   if (type === 'Committee Hearing' && !committeeId) return null;
-  return { id, title, date, time, location, type, ...(committeeId ? { committeeId } : {}) };
+  const purpose = type === 'Special' ? text(value.purpose, 300) : null;
+  // A meeting's invitees are chosen when it is set up; sessions and hearings invite by type.
+  const invitees =
+    type === 'Meeting' && Array.isArray(value.invitees) ? [...new Set(value.invitees.filter((entry) => typeof entry === 'string' && ID_PATTERN.test(entry)))].slice(0, MAX_INVITEES) : null;
+  if (type === 'Meeting' && !invitees?.length) return null;
+  const agenda = type === 'Meeting' && Array.isArray(value.agenda) ? value.agenda.map((item) => text(item, 300)).filter(Boolean).slice(0, MAX_AGENDA_ITEMS) : [];
+  return {
+    id,
+    title,
+    date,
+    time,
+    location,
+    type,
+    ...(committeeId ? { committeeId } : {}),
+    ...(purpose ? { purpose } : {}),
+    ...(invitees ? { invitees } : {}),
+    ...(agenda.length ? { agenda } : {}),
+  };
 };
 
 const lanUrls = (port) =>
@@ -99,9 +121,13 @@ const apkInfo = () => {
 
 /** @returns connect/express-style middleware handling /api/esession/* */
 export function createESessionSyncHandler() {
-  // `seeded` stays false until the first browser sends the sample responses, so the sample data
-  // lives in one place (src/lib/esession-sync.ts).
-  let state = { seeded: false, version: 0, rsvps: {}, sessions: [], notices: [], devices: [] };
+  // `seeded` stays false until the first browser sends the sample responses and the editable sample
+  // calendar, so the sample data lives in one place (src/lib/esession-sync.ts). A restart starts over.
+  // `started`: sessions whose e-session has been started since then (told by esession-rooms.mjs); they can
+  // no longer be edited or cancelled.
+  // `calendarSeeded` is kept apart, so a browser still running an older copy of the app (which seeds only the
+  // responses) cannot leave the calendar empty.
+  let state = { seeded: false, calendarSeeded: false, version: 0, rsvps: {}, sessions: [], notices: [], devices: [], started: [] };
   const clients = new Set();
 
   const publish = () => {
@@ -143,7 +169,7 @@ export function createESessionSyncHandler() {
     return { inviteeId, name, detail: text(value.detail, 160) ?? '' };
   };
 
-  return async function eSessionSyncHandler(req, res, next) {
+  async function eSessionSyncHandler(req, res, next) {
     const path = (req.url || '').split('?')[0];
     if (!path.startsWith('/api/esession/')) {
       next();
@@ -215,7 +241,7 @@ export function createESessionSyncHandler() {
     let body = {};
     if (req.method !== 'DELETE') {
       try {
-        body = await readJsonBody(req);
+        body = await readJsonBody(req, path === '/api/esession/seed' ? MAX_SEED_BYTES : MAX_BODY_BYTES);
       } catch (error) {
         sendJson(res, error.message === 'too_large' ? 413 : 400, { error: error.message });
         return;
@@ -223,15 +249,24 @@ export function createESessionSyncHandler() {
     }
 
     if (path === '/api/esession/seed' && req.method === 'POST') {
+      let changed = false;
+      if (!state.calendarSeeded && Array.isArray(body.sessions)) {
+        const seededSessions = body.sessions.slice(0, MAX_SEED_SESSIONS).map(toSession).filter(Boolean);
+        // Anything scheduled in the moment before the seed arrived is kept.
+        const sessions = [...seededSessions, ...state.sessions.filter((entry) => !seededSessions.some((seed) => seed.id === entry.id))];
+        state = { ...state, calendarSeeded: true, sessions };
+        changed = true;
+      }
       if (!state.seeded) {
         const rsvps = {};
         Object.entries(body.rsvps ?? {}).forEach(([key, value]) => {
           const rsvp = toRsvp(value);
           if (rsvp && key.length <= 130) rsvps[key] = rsvp;
         });
-        state = { ...state, seeded: true, rsvps };
-        publish();
+        state = { ...state, seeded: true, rsvps: { ...rsvps, ...state.rsvps } };
+        changed = true;
       }
+      if (changed) publish();
       sendJson(res, 200, state);
       return;
     }
@@ -270,9 +305,50 @@ export function createESessionSyncHandler() {
       return;
     }
 
-    const cancelMatch = path.match(/^\/api\/esession\/sessions\/([A-Za-z0-9:_-]{1,64})$/);
-    if (cancelMatch && req.method === 'DELETE') {
-      const id = cancelMatch[1];
+    const sessionMatch = path.match(/^\/api\/esession\/sessions\/([A-Za-z0-9:_-]{1,64})$/);
+    if (sessionMatch && req.method === 'PUT') {
+      const session = toSession(body.session);
+      const at = typeof body.at === 'string' && STAMP_PATTERN.test(body.at) ? body.at : null;
+      const from = text(body.from, 120);
+      const changes = text(body.changes, 300);
+      const previous = state.sessions.find((entry) => entry.id === sessionMatch[1]);
+      if (!session || session.id !== sessionMatch[1] || !at || !from || !changes) {
+        sendJson(res, 400, { error: 'invalid_session' });
+        return;
+      }
+      if (!previous) {
+        sendJson(res, 404, { error: 'session_not_found' });
+        return;
+      }
+      if (state.started.includes(session.id)) {
+        sendJson(res, 409, { error: 'already_started' });
+        return;
+      }
+      // The kind of session and its committee are fixed once it is scheduled.
+      if (previous.type !== session.type || previous.committeeId !== session.committeeId) {
+        sendJson(res, 400, { error: 'invalid_session' });
+        return;
+      }
+      // A new date or time clears the responses: everyone confirms again for the new schedule.
+      const prefix = `${session.id}|`;
+      const rescheduled = previous.date !== session.date || previous.time !== session.time;
+      state = {
+        ...state,
+        sessions: state.sessions.map((entry) => (entry.id === session.id ? session : entry)),
+        rsvps: rescheduled ? Object.fromEntries(Object.entries(state.rsvps).filter(([key]) => !key.startsWith(prefix))) : state.rsvps,
+      };
+      addNotice({ kind: 'updated', sessionId: session.id, text: changes, at, from });
+      publish();
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (sessionMatch && req.method === 'DELETE') {
+      const id = sessionMatch[1];
+      if (state.started.includes(id)) {
+        sendJson(res, 409, { error: 'already_started' });
+        return;
+      }
       const prefix = `${id}|`;
       state = {
         ...state,
@@ -350,5 +426,13 @@ export function createESessionSyncHandler() {
     }
 
     sendJson(res, 404, { error: 'not_found' });
+  }
+
+  /** Called by the rooms server when a session's e-session starts: from then on it stays as scheduled. */
+  eSessionSyncHandler.markStarted = (sessionId) => {
+    if (typeof sessionId !== 'string' || state.started.includes(sessionId)) return;
+    state = { ...state, started: [...state.started, sessionId] };
+    publish();
   };
+  return eSessionSyncHandler;
 }

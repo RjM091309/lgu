@@ -1,8 +1,9 @@
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { LGU_PROFILE, mockPastSessions, mockSessions, type Session } from '@/lib/mock-data';
 import { buildAgenda, formatLongDate } from '@/lib/sessions';
 import { createPdf, type PdfLine } from '@/lib/pdf';
 import { STORES, requestPersistentStorage, runTransaction, storageErrorMessage } from '@/lib/app-db';
+import { useCalendarSessions } from '@/lib/esession-sync';
 
 export type FileKind = 'pdf' | 'audio' | 'video' | 'image' | 'other';
 
@@ -156,12 +157,30 @@ const HELD_SESSIONS = ['ps37', 'ps36', 'ps35']
   .map((id) => mockPastSessions.find((session) => session.id === id))
   .filter((session): session is Session => session !== undefined);
 
-/** Sessions that have a folder in Session Files, latest date first. */
-export const FILE_SESSIONS: Session[] = [...mockSessions, ...HELD_SESSIONS].sort((a, b) => b.date.localeCompare(a.date));
+// Folders kept whatever the calendar says: the sample sessions and the recently held ones.
+const KEPT_FOLDERS = new Set([...mockSessions, ...HELD_SESSIONS].map((session) => session.id));
+
+/**
+ * Sessions that have a folder in Session Files, latest date first: the folders kept above, every session and
+ * meeting still to come on the shared calendar (so one scheduled in the app or in /es gets its folder at once),
+ * and any session that has files (an e-session's recording or attendance record).
+ */
+export const fileSessionsOf = (calendar: Session[], files: SessionFile[], today: string) => {
+  const withFiles = new Set(files.map((file) => file.sessionId));
+  return calendar.filter((session) => KEPT_FOLDERS.has(session.id) || session.date >= today || withFiles.has(session.id)).sort((a, b) => b.date.localeCompare(a.date));
+};
+
+/** The Session Files folders, following the calendar shared with LIMS Mobile and the E-Session app. */
+export const useFileSessions = () => {
+  const calendar = useCalendarSessions();
+  const files = useSessionFiles();
+  const today = todayInManila();
+  return useMemo(() => fileSessionsOf(calendar, files, today), [calendar, files, today]);
+};
 
 /** The folder opened first: the next session to be held, or the latest one when none is upcoming. */
-export const DEFAULT_FILE_SESSION_ID =
-  [...FILE_SESSIONS].reverse().find((session) => session.date >= todayInManila())?.id ?? FILE_SESSIONS[0]?.id ?? '';
+export const defaultFileSessionId = (sessions: Session[]) =>
+  [...sessions].reverse().find((session) => session.date >= todayInManila())?.id ?? sessions[0]?.id ?? '';
 
 const daysBefore = (iso: string, days: number) => {
   const date = new Date(`${iso}T00:00:00`);

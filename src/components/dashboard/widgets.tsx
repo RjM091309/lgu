@@ -9,6 +9,7 @@ export const SESSION_TYPE_TONE: Record<string, string> = {
   Regular: 'bg-primary/10 text-primary',
   Special: 'bg-orange-50 text-orange-800',
   'Committee Hearing': 'bg-violet-50 text-violet-800',
+  Meeting: 'bg-teal-50 text-teal-800',
 };
 
 /** What a complete session folder holds (same list as the Session Files checklist). */

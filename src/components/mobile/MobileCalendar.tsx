@@ -94,7 +94,7 @@ export function MobileCalendar() {
           })}
         </div>
         <div className="mt-3 flex flex-wrap justify-center gap-x-3 gap-y-1 border-t border-border pt-2.5 text-[10px] text-text-muted">
-          {(['Regular', 'Committee Hearing', 'Special'] as const).map((type) => (
+          {(['Regular', 'Committee Hearing', 'Special', 'Meeting'] as const).map((type) => (
             <span key={type} className="inline-flex items-center gap-1">
               <span className={cn('h-2 w-2 rounded-full', SESSION_TONE[type].split(' ')[0])} />
               {type === 'Committee Hearing' ? 'Hearing' : type}

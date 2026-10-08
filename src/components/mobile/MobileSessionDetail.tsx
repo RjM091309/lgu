@@ -1,18 +1,19 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BellRing, CalendarPlus, Clock, FileText, MapPin, Trash2, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BellRing, CalendarPlus, Clock, FileText, MapPin, Pencil, Trash2, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { useUsers } from '@/lib/access-store';
 import { QUORUM, committeeNameOf, inviteesFor, rsvpOf, useAttendance } from '@/lib/attendance';
-import { cancelScheduledSession, isScheduledInApp, nowInManila, sendReminder, useCalendarSessions } from '@/lib/esession-sync';
+import { CHANGE_REFUSED, canChangeSession, cancelScheduledSession, nowInManila, sendReminder, useCalendarSessions, useStartedSessions } from '@/lib/esession-sync';
 import { SESSION_TONE, addSessionToCalendar, buildAgenda, formatLongDate } from '@/lib/sessions';
 import { useHolidays } from '@/lib/holidays';
 import { todayInManila } from '@/lib/session-files';
 import { useMobile } from '@/components/mobile/mobile-context';
 import { RsvpButtons } from '@/components/mobile/mobile-sessions';
-import { StatusChip, relativeDay, typeLabel, type MyStatus } from '@/components/mobile/mobile-ui';
+import { BottomSheet, StatusChip, relativeDay, typeLabel, type MyStatus } from '@/components/mobile/mobile-ui';
+import { ScheduleSessionForm } from '@/components/esession/ScheduleSessionForm';
 import { cn } from '@/lib/utils';
 import { isNativeApp } from '@/lib/native';
 
@@ -31,6 +32,8 @@ export function MobileSessionDetail() {
   const { byDate: holidaysByDate } = useHolidays(Number((session?.date ?? today).slice(0, 4)));
   const [agendaOpen, setAgendaOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
+  const [editOpen, setEditOpen] = useState(false);
+  const started = useStartedSessions();
 
   const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/m'));
 
@@ -80,7 +83,7 @@ export function MobileSessionDetail() {
       tone: 'destructive',
     });
     if (!confirmed) return;
-    cancelScheduledSession(session.id);
+    if (!(await cancelScheduledSession(session.id))) return toast('Not cancelled', `${session.title}: ${CHANGE_REFUSED}`, 'error');
     toast('Session cancelled', `${session.title} was removed from the calendar.`);
     navigate('/m', { replace: true });
   };
@@ -183,7 +186,7 @@ export function MobileSessionDetail() {
                 <span className="bg-green-600" style={{ width: `${(counts.attending / Math.max(invitees.length, 1)) * 100}%` }} />
                 <span className="bg-red-500" style={{ width: `${(counts.declined / Math.max(invitees.length, 1)) * 100}%` }} />
               </div>
-              {session.type !== 'Committee Hearing' ? (
+              {session.type === 'Regular' || session.type === 'Special' ? (
                 <p className={cn('mt-2 text-xs font-medium', membersAttending >= QUORUM ? 'text-green-700' : 'text-amber-700')}>
                   {membersAttending >= QUORUM ? 'Quorum expected' : 'Quorum not yet assured'}: {membersAttending} of {QUORUM} members needed have confirmed.
                 </p>
@@ -234,14 +237,35 @@ export function MobileSessionDetail() {
               })}
               {visible.length === 0 ? <li className="px-4 py-6 text-center text-xs text-text-muted">No one in this list.</li> : null}
             </ul>
-            {isScheduledInApp(session.id) ? (
-              <div className="border-t border-border p-4">
-                <Button variant="outline" className="h-10 w-full border-red-200 text-sm text-red-700 hover:bg-red-50" onClick={cancel}>
+            {/* The same rule as the calendar and the /es lobby: editable sessions only, before their e-session starts. */}
+            {canChangeSession(session, started, today) ? (
+              <div className="flex gap-2 border-t border-border p-4">
+                <Button variant="outline" className="h-10 flex-1 text-sm" onClick={() => setEditOpen(true)}>
+                  <Pencil className="mr-1.5 h-4 w-4" />
+                  Edit
+                </Button>
+                <Button variant="outline" className="h-10 flex-1 border-red-200 text-sm text-red-700 hover:bg-red-50" onClick={cancel}>
                   <Trash2 className="mr-1.5 h-4 w-4" />
-                  Cancel session
+                  Cancel {session.type === 'Meeting' ? 'meeting' : 'session'}
                 </Button>
               </div>
             ) : null}
+            <BottomSheet open={editOpen} onClose={() => setEditOpen(false)} title={`Edit ${session.type === 'Meeting' ? 'meeting' : 'session'}`}>
+              {editOpen ? (
+                <ScheduleSessionForm
+                  touch
+                  key={session.id}
+                  session={session}
+                  scheduledBy={account.name}
+                  scheduledById={account.inviteeId}
+                  onCancel={() => setEditOpen(false)}
+                  onScheduled={(entry) => {
+                    setEditOpen(false);
+                    toast('Changes saved', `${entry.title} · invitees were notified.`);
+                  }}
+                />
+              ) : null}
+            </BottomSheet>
           </section>
         ) : null}
       </div>

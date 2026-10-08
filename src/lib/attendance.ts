@@ -19,6 +19,8 @@ export interface Invitee {
 
 /** Roles invited as Secretariat staff; committee hearings add committee staff. */
 const SECRETARIAT_ROLES = ['Administrator', 'Records Officer'];
+/** Staff who can be picked for a meeting: the ones with a LIMS Mobile sign-in (see mobile-accounts.ts). */
+const MEETING_STAFF_ROLES = [...SECRETARIAT_ROLES, 'Committee Staff'];
 
 const initialsOf = (name: string) =>
   name
@@ -31,6 +33,7 @@ const initialsOf = (name: string) =>
 
 /** Members of the body (from the master listing) plus the staff accounts expected at the session. */
 export const inviteesFor = (session: Session, users: UserAccount[]): Invitee[] => {
+  if (session.type === 'Meeting') return chosenInvitees(session.invitees ?? [], users);
   const assignment = session.committeeId ? mockCommitteeAssignments[session.committeeId] : undefined;
   const members = assignment
     ? [
@@ -46,10 +49,29 @@ export const inviteesFor = (session: Session, users: UserAccount[]): Invitee[] =
   const staffRoles = assignment ? [...SECRETARIAT_ROLES, 'Committee Staff'] : SECRETARIAT_ROLES;
   const staff = users.filter((user) => user.status === 'Active' && staffRoles.includes(user.role));
 
-  return [
-    ...members.map(({ member, detail }) => ({ id: `member:${member.id}`, name: member.name, detail, abbr: member.abbr, group: 'member' as const })),
-    ...staff.map((user) => ({ id: `user:${user.id}`, name: user.name, detail: `${user.office} · ${user.role}`, abbr: initialsOf(user.name), group: 'staff' as const, userId: user.id })),
-  ];
+  return [...members.map(({ member, detail }) => memberInvitee(member, detail)), ...staff.map(staffInvitee)];
+};
+
+const memberInvitee = (member: (typeof mockMembers)[number], detail = member.seat === 'Presiding Officer' ? 'Presiding Officer' : member.role): Invitee => ({
+  id: `member:${member.id}`,
+  name: member.name,
+  detail,
+  abbr: member.abbr,
+  group: 'member',
+});
+
+const staffInvitee = (user: UserAccount): Invitee => ({ id: `user:${user.id}`, name: user.name, detail: `${user.office} · ${user.role}`, abbr: initialsOf(user.name), group: 'staff', userId: user.id });
+
+/** Members of the body and active staff who can be invited to a meeting (everyone with a LIMS Mobile sign-in). */
+export const inviteePool = (users: UserAccount[]): Invitee[] => [
+  ...mockMembers.map((member) => memberInvitee(member)),
+  ...users.filter((user) => user.status === 'Active' && MEETING_STAFF_ROLES.includes(user.role)).map(staffInvitee),
+];
+
+/** A meeting's invitees, in the pool's order; anyone no longer in the pool (a deactivated account) drops off. */
+const chosenInvitees = (ids: string[], users: UserAccount[]) => {
+  const chosen = new Set(ids);
+  return inviteePool(users).filter((invitee) => chosen.has(invitee.id));
 };
 
 export const committeeNameOf = (session: Session) => mockCommittees.find((committee) => committee.id === session.committeeId)?.name;

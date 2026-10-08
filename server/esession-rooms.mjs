@@ -40,7 +40,7 @@ const ID_PATTERN = /^[A-Za-z0-9:_-]{1,64}$/;
 const ROOM_ID_PATTERN = /^es-[A-Za-z0-9_-]{8,32}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_PATTERN = /^(0[1-9]|1[0-2]):[0-5]\d (AM|PM)$/;
-const SESSION_TYPES = ['Regular', 'Special', 'Committee Hearing'];
+const SESSION_TYPES = ['Regular', 'Special', 'Committee Hearing', 'Meeting'];
 const GROUPS = ['member', 'staff'];
 
 const sendJson = (res, status, body) => {
@@ -113,7 +113,12 @@ const toSession = (value) => {
 const person = (account) => ({ inviteeId: account.inviteeId, name: account.name });
 
 /** @returns connect/express-style middleware handling /api/es/* (and security headers for the /es pages). */
-export function createESessionRoomsHandler(env = {}) {
+/**
+ * @param {object} [options]
+ * @param {(sessionId: string) => void} [options.onSessionStarted] told when a session's e-session starts, so the
+ *   calendar (esession-sync.mjs) stops it from being edited or cancelled.
+ */
+export function createESessionRoomsHandler(env = {}, { onSessionStarted } = {}) {
   const iceServers = (() => {
     // Optional STUN/TURN servers (JSON array of RTCIceServer) for devices on different networks.
     // Not needed on one local network, where devices reach each other directly.
@@ -436,6 +441,7 @@ export function createESessionRoomsHandler(env = {}) {
       queued: false,
     };
     rooms.set(room.roomId, room);
+    onSessionStarted?.(session.sessionId);
     audit(room, 'started', { actor: account, detail: `${session.title} · ${session.type}` });
     broadcastLobby();
     return sendJson(res, 200, { roomId: room.roomId });
@@ -632,6 +638,8 @@ export function createESessionRoomsHandler(env = {}) {
       }
       case 'roll-call': {
         if (!canModerate(p)) return forbidden();
+        // A meeting is not a session of the body: there is no quorum to call the roll for.
+        if (room.type === 'Meeting') return sendJson(res, 400, { error: 'not_a_session' });
         const present = joined(room).filter((other) => other.account.group === 'member');
         const call = {
           at: Date.now(),

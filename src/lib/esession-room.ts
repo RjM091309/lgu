@@ -220,8 +220,9 @@ export const signInESession = (users: UserAccount[], username: string, password:
 
 // ---- Roles --------------------------------------------------------------------------------------
 
-/** The Vice Mayor presides over regular and special sessions; the committee chair over a hearing. */
+/** The Vice Mayor presides over regular and special sessions; the committee chair over a hearing. Hosts run meetings. */
 export const presidingIdFor = (session: Pick<Session, 'type' | 'committeeId'>) => {
+  if (session.type === 'Meeting') return null;
   const assignment = session.type === 'Committee Hearing' && session.committeeId ? mockCommitteeAssignments[session.committeeId] : undefined;
   return `member:${assignment?.chair ?? 'm1'}`;
 };

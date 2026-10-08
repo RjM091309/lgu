@@ -21,8 +21,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { mockBills, mockCommitteeHearings, mockMonthlyActivity, mockSessions, mockYearlyActivity, type Bill } from '@/lib/mock-data';
-import { FILE_SESSIONS, latestVersions, todayInManila, useSessionFiles } from '@/lib/session-files';
+import { mockBills, mockCommitteeHearings, mockMonthlyActivity, mockYearlyActivity, type Bill, type Session } from '@/lib/mock-data';
+import { latestVersions, todayInManila, useFileSessions, useSessionFiles } from '@/lib/session-files';
 import { useActivityLog } from '@/lib/activity-log';
 import { ADMIN_ROLE, useAccess, useRoles, useSecuritySettings, useUsers } from '@/lib/access-store';
 import { inviteesFor, rsvpOf, setRsvp, useAttendance } from '@/lib/attendance';
@@ -31,7 +31,18 @@ import { logActivity } from '@/lib/activity-log';
 import { LEGISLATIVE_PHASES, LEGISLATIVE_STAGES, StatusBadge } from '@/components/ui/status-badge';
 import { BarList, DonutChart, GroupedBarChart, PHASE_COLORS, PipelineChart, SERIES_COLORS, SegmentMeter } from '@/components/dashboard/charts';
 import { CHECKLIST_CATEGORIES, Card, EmptyNote, LinkButton, SESSION_TYPE_TONE, StatTiles, dayMonth, formatShortDate, relativeDays, type Tile } from '@/components/dashboard/widgets';
+import { isOfficial } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
+
+/** How many of the next sessions the folder checklists follow: the ones being prepared now. */
+const CHECKLIST_WINDOW = 3;
+
+/** Sessions and hearings still to come on the shared calendar (meetings have no required documents). */
+const useUpcomingSessions = (): Session[] => {
+  const today = todayInManila();
+  const calendar = useCalendarSessions();
+  return useMemo(() => calendar.filter((session) => session.date >= today && isOfficial(session)), [calendar, today]);
+};
 
 interface DashboardProps {
   onNavigate: (tab: string) => void;
@@ -268,7 +279,7 @@ export function AdminPanel({ onNavigate }: DashboardProps) {
 function SessionChecklistCard({ onNavigate, title = 'Session Files Checklist', subtitle = 'Documents and recordings still needed per session' }: DashboardProps & { title?: string; subtitle?: string }) {
   const { can } = useAccess();
   const files = useSessionFiles();
-  const rows = mockSessions.map((session) => {
+  const rows = useUpcomingSessions().slice(0, CHECKLIST_WINDOW).map((session) => {
     const missing = CHECKLIST_CATEGORIES.filter((category) => !files.some((file) => file.sessionId === session.id && file.category === category && (file.blob || file.src)));
     return { session, missing, done: CHECKLIST_CATEGORIES.length - missing.length };
   });
@@ -328,23 +339,25 @@ export function RecordsDashboard({ onNavigate }: DashboardProps) {
   const files = useSessionFiles();
   const newFilings = mockBills.filter((bill) => bill.status === 'Draft' || bill.status === 'First Reading');
   const awaitingSignature = mockBills.filter((bill) => bill.status === 'Passed');
-  const completeSessions = mockSessions.filter((session) =>
+  const upcoming = useUpcomingSessions();
+  const preparing = upcoming.slice(0, CHECKLIST_WINDOW);
+  const completeSessions = preparing.filter((session) =>
     CHECKLIST_CATEGORIES.every((category) => files.some((file) => file.sessionId === session.id && file.category === category && (file.blob || file.src)))
   ).length;
-  const next = mockSessions[0];
+  const next = upcoming[0];
 
   const tiles: Tile[] = [
     { label: 'New filings', period: 'Draft and first reading', value: newFilings.length, icon: FileText, tab: 'manage-legislation' },
     { label: 'Awaiting signature', period: 'Passed, for e-signature', value: awaitingSignature.length, icon: PenLine, tab: 'esig-electronic-signature' },
     {
       label: 'Session folders complete',
-      period: `Out of ${mockSessions.length} scheduled sessions`,
+      period: `Of the next ${preparing.length} sessions`,
       value: completeSessions,
       icon: FolderOpen,
       tab: 'esig-session-files',
-      footer: <SegmentMeter segments={[{ label: 'complete', value: completeSessions, color: PHASE_COLORS[2] }, { label: 'incomplete', value: mockSessions.length - completeSessions, color: '#d1d5db' }]} />,
+      footer: <SegmentMeter segments={[{ label: 'complete', value: completeSessions, color: PHASE_COLORS[2] }, { label: 'incomplete', value: preparing.length - completeSessions, color: '#d1d5db' }]} />,
     },
-    { label: 'Upcoming sessions', period: next ? `Next: ${dayMonth(next.date)} · ${next.time}` : 'None scheduled', value: mockSessions.length, icon: CalendarDays, tab: 'esig-calendar-sessions' },
+    { label: 'Upcoming sessions', period: next ? `Next: ${dayMonth(next.date)} · ${next.time}` : 'None scheduled', value: upcoming.length, icon: CalendarDays, tab: 'esig-calendar-sessions' },
   ];
 
   return (
@@ -376,7 +389,7 @@ export function CommitteeDashboard({ onNavigate }: DashboardProps) {
   const { can } = useAccess();
   const inCommittee = mockBills.filter((bill) => bill.status === 'Committee');
   const deliberation = mockBills.filter((bill) => bill.status === 'Second Reading' || bill.status === 'Third Reading');
-  const hearings = mockSessions.filter((session) => session.type === 'Committee Hearing');
+  const hearings = useUpcomingSessions().filter((session) => session.type === 'Committee Hearing');
   const hearingsThisMonth = mockCommitteeHearings.reduce((sum, row) => sum + row.monthly[row.monthly.length - 1], 0);
   const hearingsLastMonth = mockCommitteeHearings.reduce((sum, row) => sum + row.monthly[row.monthly.length - 2], 0);
 
@@ -440,16 +453,18 @@ export function EncoderDashboard({ onNavigate }: DashboardProps) {
   const files = useSessionFiles();
   const myUploads = files.filter((file) => file.uploadedBy === user.name && file.source === 'upload').sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt));
   const awaiting = files.filter((file) => (file.kind === 'audio' || file.kind === 'video') && !file.blob && !file.src);
-  const missingCount = mockSessions.reduce(
+  const fileSessions = useFileSessions();
+  const preparing = useUpcomingSessions().slice(0, CHECKLIST_WINDOW);
+  const missingCount = preparing.reduce(
     (sum, session) => sum + CHECKLIST_CATEGORIES.filter((category) => !files.some((file) => file.sessionId === session.id && file.category === category && (file.blob || file.src))).length,
     0
   );
   const scannedOrdinances = latestVersions(files).filter((file) => file.category === 'Enacted Ordinance').length;
-  const sessionTitle = (id: string) => FILE_SESSIONS.find((session) => session.id === id)?.title ?? 'Other files';
+  const sessionTitle = (id: string) => fileSessions.find((session) => session.id === id)?.title ?? 'Other files';
 
   const tiles: Tile[] = [
     { label: 'My uploads', period: 'Files you added', value: myUploads.length, icon: Upload, tab: 'esig-session-files' },
-    { label: 'Items still needed', period: 'Missing from session folders', value: missingCount, icon: ClipboardCheck, tab: 'esig-session-files' },
+    { label: 'Items still needed', period: `Missing for the next ${preparing.length} sessions`, value: missingCount, icon: ClipboardCheck, tab: 'esig-session-files' },
     { label: 'Recordings to attach', period: 'Listed, no audio or video yet', value: awaiting.length, icon: FileVideo, tab: 'esig-session-files' },
     { label: 'Scanned ordinances', period: 'Enacted ordinances on file', value: scannedOrdinances, icon: FileText, tab: 'esig-session-files' },
   ];

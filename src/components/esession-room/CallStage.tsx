@@ -548,9 +548,11 @@ function TopBar({
       ) : null}
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{room?.title ?? session?.title ?? 'E-Session'}</p>
-        <p className="hidden truncate text-[11px] text-white/60 sm:block">{room ? `${room.type} · started by ${room.startedBy.name}` : 'Connecting…'}</p>
+        <p className="hidden truncate text-[11px] text-white/60 sm:block">
+          {room ? `${room.type === 'Meeting' ? 'Meeting · not an official session' : room.type} · started by ${room.startedBy.name}` : 'Connecting…'}
+        </p>
       </div>
-      {room ? (
+      {room && room.type !== 'Meeting' ? (
         <span
           className={cn('inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset', quorumMet ? 'bg-green-500/15 text-green-300 ring-green-400/30' : 'bg-amber-400/15 text-amber-200 ring-amber-400/30')}
           title={`Quorum: ${room.quorum} of ${room.memberTotal} members`}
@@ -919,7 +921,8 @@ function ControlBar({
           },
         ]
       : []),
-    ...(moderator
+    // A meeting is not a session of the body: no quorum, so no roll to call.
+    ...(moderator && room?.type !== 'Meeting'
       ? [
           {
             key: 'roll',

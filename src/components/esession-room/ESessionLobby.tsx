@@ -1,12 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, ChevronDown, Clock, EyeOff, Headphones, Lock, MapPin, Play, ShieldCheck, Users, Video, Wifi, XCircle } from 'lucide-react';
+import { CalendarClock, CalendarPlus, CheckCircle2, ChevronDown, Clock, EyeOff, Headphones, Lock, MapPin, Pencil, Play, ShieldCheck, Trash2, Users, Video, Wifi, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { confirmAction } from '@/components/ui/confirm';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { toast } from '@/components/ui/toast';
+import { ScheduleSessionForm } from '@/components/esession/ScheduleSessionForm';
 import { useUsers } from '@/lib/access-store';
 import { logActivity } from '@/lib/activity-log';
 import { committeeNameOf, rsvpOf, useAttendance } from '@/lib/attendance';
-import { useCalendarSessions } from '@/lib/esession-sync';
+import { CHANGE_REFUSED, canChangeSession, cancelScheduledSession, useCalendarSessions, useStartedSessions } from '@/lib/esession-sync';
 import { isInvited, type MobileAccount } from '@/lib/mobile-accounts';
 import type { Session } from '@/lib/mock-data';
 import { formatLongDate } from '@/lib/sessions';
@@ -27,10 +30,15 @@ const dayParts = (iso: string) => {
   return { day: date.getDate(), month: date.toLocaleDateString('en-PH', { month: 'short' }), weekday: date.toLocaleDateString('en-PH', { weekday: 'short' }) };
 };
 
+/** What the schedule dialog is open for: a new session, a meeting starting now, or changes to one already set. */
+type Planning = { mode: 'schedule' } | { mode: 'start-now' } | { mode: 'edit'; session: Session };
+
 export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; onSignOut: () => void }) {
   const users = useUsers();
   const sessions = useCalendarSessions();
   const { live, status } = useLobby();
+  const started = useStartedSessions();
+  const [planning, setPlanning] = useState<Planning | null>(null);
   const rsvps = useAttendance();
   const navigate = useNavigate();
   const today = todayInManila();
@@ -63,20 +71,70 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
 
   const open = (session: Session) => navigate(`/es/session/${encodeURIComponent(session.id)}`);
 
+  // The same rule as the calendar and LIMS Mobile: editable sessions only, before their e-session starts.
+  const editable = (session: Session) => account.canManage && canChangeSession(session, started, today);
+  const noun = (session: Session) => (session.type === 'Meeting' ? 'meeting' : 'session');
+
+  const cancel = async (session: Session) => {
+    const confirmed = await confirmAction({
+      title: `Cancel ${session.title}?`,
+      description: `The ${noun(session)} is removed from the calendar of everyone invited, together with their responses.`,
+      confirmLabel: `Cancel ${noun(session)}`,
+      cancelLabel: 'Keep',
+      tone: 'destructive',
+    });
+    if (!confirmed) return;
+    if (!(await cancelScheduledSession(session.id))) return toast('Not cancelled', `${session.title}: ${CHANGE_REFUSED}`, 'error');
+    toast(session.type === 'Meeting' ? 'Meeting cancelled' : 'Session cancelled', `${session.title} was removed from the calendar.`);
+    logActivity({ module: 'E-Session', action: 'Deleted', summary: `Cancelled ${session.title}`, detail: `${formatLongDate(session.date)}, ${session.time}` });
+  };
+
+  const planned = (session: Session) => {
+    const mode = planning?.mode;
+    setPlanning(null);
+    if (mode === 'edit') {
+      toast('Changes saved', `${session.title}: invitees were notified in the mobile app.`);
+      logActivity({ module: 'E-Session', action: 'Updated', summary: `Changed ${session.title}`, detail: `${formatLongDate(session.date)}, ${session.time} · ${session.location}` });
+      return;
+    }
+    if (mode === 'start-now') {
+      logActivity({ module: 'E-Session', action: 'Created', summary: `Started a meeting: ${session.title}`, detail: `${session.invitees?.length ?? 0} invitees · ${session.location}` });
+      // Straight to the camera and microphone check; the meeting goes live as the host enters.
+      navigate(`/es/session/${encodeURIComponent(session.id)}`);
+      return;
+    }
+    toast(`${session.type === 'Meeting' ? 'Meeting' : 'Session'} scheduled`, `${session.title} on ${formatLongDate(session.date)}. Invitees were notified in the mobile app.`);
+    logActivity({ module: 'E-Session', action: 'Created', summary: `Scheduled ${session.title}`, detail: `${formatLongDate(session.date)}, ${session.time} · ${session.location}` });
+  };
+
   return (
     <>
       <EsHeader account={account} onSignOut={onSignOut} />
       <main className="mx-auto max-w-6xl space-y-6 px-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-6 md:px-8">
-        <div>
-          <p className="text-sm font-semibold text-text-muted">{formatLongDate(today)}</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary sm:text-3xl">
-            {greeting()}, {account.name}
-          </h1>
-          <p className="mt-1 text-sm text-text-muted">
-            {account.canManage
-              ? 'You host e-sessions: start them, admit participants, and keep the record.'
-              : 'Join the e-sessions you are invited to. Your joining and leaving times are recorded.'}
-          </p>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-text-muted">{formatLongDate(today)}</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary sm:text-3xl">
+              {greeting()}, {account.name}
+            </h1>
+            <p className="mt-1 text-sm text-text-muted">
+              {account.canManage
+                ? 'You host e-sessions: schedule and start them, admit participants, and keep the record.'
+                : 'Join the e-sessions you are invited to. Your joining and leaving times are recorded.'}
+            </p>
+          </div>
+          {account.canManage ? (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => setPlanning({ mode: 'schedule' })} disabled={status === 'offline'} className="h-11 bg-white px-4 font-semibold">
+                <CalendarPlus className="mr-2 h-4 w-4" />
+                Schedule
+              </Button>
+              <Button onClick={() => setPlanning({ mode: 'start-now' })} disabled={status === 'offline'} className="h-11 px-4 font-semibold">
+                <Video className="mr-2 h-4 w-4" />
+                Start a meeting
+              </Button>
+            </div>
+          ) : null}
         </div>
 
         <BeforeYouJoin />
@@ -132,6 +190,8 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
                   rsvp={rsvpOf(rsvps, session.id, account.inviteeId)?.status}
                   onStart={() => void start(session)}
                   onOpen={() => open(session)}
+                  onEdit={editable(session) ? () => setPlanning({ mode: 'edit', session }) : undefined}
+                  onCancel={editable(session) ? () => void cancel(session) : undefined}
                 />
               ))
             ) : (
@@ -163,6 +223,8 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
                   rsvp={rsvpOf(rsvps, session.id, account.inviteeId)?.status}
                   onStart={() => void start(session)}
                   onOpen={() => open(session)}
+                  onEdit={editable(session) ? () => setPlanning({ mode: 'edit', session }) : undefined}
+                  onCancel={editable(session) ? () => void cancel(session) : undefined}
                 />
               ))
             ) : (
@@ -186,6 +248,36 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
             </div>
           </section>
         ) : null}
+
+        <Dialog open={planning !== null} onOpenChange={(value) => !value && setPlanning(null)}>
+          <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="text-xl text-primary">
+                {planning?.mode === 'start-now' ? 'Start a meeting' : planning?.mode === 'edit' ? `Edit ${noun(planning.session)}` : 'Schedule'}
+              </DialogTitle>
+              <DialogDescription>
+                {planning?.mode === 'start-now'
+                  ? 'An informal meeting that starts now. Invitees are notified in the mobile app and can join from their lobby.'
+                  : planning?.mode === 'edit'
+                    ? 'Invitees are notified of the change in the mobile app.'
+                    : 'Everyone it concerns is invited and notified in the mobile app.'}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="mt-5">
+              {planning ? (
+                <ScheduleSessionForm
+                  key={planning.mode === 'edit' ? planning.session.id : planning.mode}
+                  scheduledBy={account.name}
+                  scheduledById={account.inviteeId}
+                  session={planning.mode === 'edit' ? planning.session : undefined}
+                  startNow={planning.mode === 'start-now'}
+                  onCancel={() => setPlanning(null)}
+                  onScheduled={planned}
+                />
+              ) : null}
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </>
   );
@@ -237,6 +329,8 @@ function SessionCard({
   wide = false,
   onStart,
   onOpen,
+  onEdit,
+  onCancel,
 }: {
   session: Session;
   account: MobileAccount;
@@ -247,6 +341,9 @@ function SessionCard({
   wide?: boolean;
   onStart: () => void;
   onOpen: () => void;
+  /** Set for sessions set up in the app that have not started: hosts can change or cancel them. */
+  onEdit?: () => void;
+  onCancel?: () => void;
 }) {
   const role = roleIn(account, session);
   const { day, month, weekday } = dayParts(session.date);
@@ -291,7 +388,7 @@ function SessionCard({
           ) : account.canManage ? (
             <Button onClick={onStart} variant={compact ? 'outline' : 'default'} className={cn('h-11 px-5 font-semibold', compact && 'bg-white')}>
               <Play className="mr-2 h-4 w-4 fill-current" />
-              {compact ? 'Start early' : 'Start e-session'}
+              {compact ? 'Start early' : session.type === 'Meeting' ? 'Start meeting' : 'Start e-session'}
             </Button>
           ) : (
             <>
@@ -302,6 +399,22 @@ function SessionCard({
               <span className="text-xs text-text-muted">{compact ? 'Not started yet' : 'The Secretariat will start it at the scheduled time.'}</span>
             </>
           )}
+          {onEdit || onCancel ? (
+            <div className="flex gap-1">
+              {onEdit ? (
+                <Button variant="ghost" size="sm" onClick={onEdit} className="h-9 px-2.5 text-xs font-semibold text-text-muted" aria-label={`Edit ${session.title}`}>
+                  <Pencil className="mr-1.5 h-3.5 w-3.5" />
+                  Edit
+                </Button>
+              ) : null}
+              {onCancel ? (
+                <Button variant="ghost" size="sm" onClick={onCancel} className="h-9 px-2.5 text-xs font-semibold text-red-700 hover:bg-red-50" aria-label={`Cancel ${session.title}`}>
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Cancel
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
     </article>

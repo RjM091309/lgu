@@ -6,12 +6,17 @@ export const SESSION_TONE: Record<Session['type'], string> = {
   Regular: 'bg-primary text-white',
   'Committee Hearing': 'bg-violet-600 text-white',
   Special: 'bg-orange-500 text-white',
+  Meeting: 'bg-teal-600 text-white',
 };
+
+/** Sessions and hearings are official proceedings of the body; meetings are not. */
+export const isOfficial = (session: Pick<Session, 'type'>) => session.type !== 'Meeting';
 
 export const formatLongDate = (iso: string, locale = 'en-PH') =>
   new Date(`${iso}T00:00:00`).toLocaleDateString(locale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
 export const buildAgenda = (session: Session) => {
+  if (session.type === 'Meeting') return session.agenda?.length ? session.agenda : ['Open discussion'];
   if (session.type === 'Committee Hearing') {
     return [
       'Call to Order',
@@ -28,7 +33,7 @@ export const buildAgenda = (session: Session) => {
     'Roll Call and Declaration of Quorum',
   ];
   if (session.type === 'Special') {
-    return [...opening, 'Consideration of the Proposed 2027 Annual Budget of the Municipality of Capas', 'Adjournment'];
+    return [...opening, session.purpose || session.title, 'Adjournment'];
   }
   const firstReading = mockBills
     .filter((bill) => ['Draft', 'First Reading'].includes(bill.status))

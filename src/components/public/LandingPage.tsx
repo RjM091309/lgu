@@ -6,7 +6,9 @@ import { Select, type SelectOption } from '@/components/ui/select';
 import { DataTable } from '@/components/ui/DataTable';
 import { LGU_PROFILE, mockBills, mockCommitteeHearings, mockCommittees, mockMembers, mockSessions, mockYearlyActivity } from '@/lib/mock-data';
 import { openPrintWindow, saveCsv, saveFile } from '@/lib/files';
-import { addSessionToCalendar, buildAgenda, formatLongDate, printAgenda } from '@/lib/sessions';
+import { addSessionToCalendar, buildAgenda, formatLongDate, isOfficial, printAgenda } from '@/lib/sessions';
+import { todayInManila } from '@/lib/session-files';
+import { useCalendarSessions } from '@/lib/esession-sync';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -151,7 +153,14 @@ const NEWS: NewsItem[] = [
   },
 ];
 
+/** How many coming sessions the public schedule lists. */
+const PUBLIC_SESSIONS = 4;
+
 export function LandingPage({ onLogin }: LandingPageProps) {
+  // The next sessions and hearings on the Sanggunian's calendar (meetings are internal and not listed).
+  const calendar = useCalendarSessions();
+  const publicToday = todayInManila();
+  const publicSessions = useMemo(() => calendar.filter((session) => session.date >= publicToday && isOfficial(session)).slice(0, PUBLIC_SESSIONS), [calendar, publicToday]);
   const [lang, setLang] = useState<Lang>('EN');
   const t = LANDING_COPY[lang];
   const [now, setNow] = useState(() => new Date());
@@ -876,9 +885,9 @@ export function LandingPage({ onLogin }: LandingPageProps) {
   }
 
   const activePublicDoc = activePublicDocId ? allRecords.find((r) => r.id === activePublicDocId) ?? null : null;
-  const agendaSession = agendaSessionId ? mockSessions.find((s) => s.id === agendaSessionId) ?? null : null;
+  const agendaSession = agendaSessionId ? publicSessions.find((s) => s.id === agendaSessionId) ?? null : null;
   const activeNews = activeNewsId ? NEWS.find((n) => n.id === activeNewsId) ?? null : null;
-  const nextSession = mockSessions[0];
+  const nextSession = publicSessions[0];
 
   const watermarkText = 'SB CAPAS - PUBLIC COPY';
 
@@ -1692,7 +1701,7 @@ export function LandingPage({ onLogin }: LandingPageProps) {
 
             <div className="grid gap-8 lg:grid-cols-[1.5fr_1fr]">
               <div className="space-y-3">
-                {mockSessions.map((session) => {
+                {publicSessions.map((session) => {
                   const date = new Date(`${session.date}T00:00:00`);
                   return (
                     <article

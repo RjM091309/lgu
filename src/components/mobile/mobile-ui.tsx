@@ -19,12 +19,14 @@ export function StatusChip({ status, className }: { status: MyStatus; className?
   return <span className={cn('inline-flex h-6 shrink-0 items-center rounded-full border px-2 text-[11px] font-semibold', chip.tone, className)}>{chip.label}</span>;
 }
 
-export const noticeText = (notice: Notice, title: string) =>
+export const noticeText = (notice: Notice, title: string, meeting = false) =>
   notice.kind === 'reminder'
     ? { heading: 'Please confirm your attendance', body: `${title} · reminder from ${notice.from}` }
     : notice.kind === 'announcement'
       ? { heading: notice.text ?? 'Notice from the Secretariat', body: `${title} · ${notice.from}` }
-      : { heading: 'New session scheduled', body: `${title} · by ${notice.from}` };
+      : notice.kind === 'updated'
+        ? { heading: `Schedule changed: ${title}`, body: `${notice.text ?? 'Details were updated'} · by ${notice.from}` }
+        : { heading: meeting ? 'New meeting scheduled' : 'New session scheduled', body: `${title} · by ${notice.from}` };
 
 /** Short label for a session type on small screens. */
 export const typeLabel = (type: Session['type']) => (type === 'Committee Hearing' ? 'Hearing' : type);

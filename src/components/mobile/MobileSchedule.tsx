@@ -135,6 +135,7 @@ export function MobileSchedule() {
             <ScheduleSessionForm
               touch
               scheduledBy={account.name}
+              scheduledById={account.inviteeId}
               onCancel={() => setScheduleOpen(false)}
               onScheduled={(session) => {
                 setScheduleOpen(false);
