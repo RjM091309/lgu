@@ -1,4 +1,5 @@
 {
+  "id": "/es",
   "name": "LIMS E-Session",
   "short_name": "E-Session",
   "description": "Live video sittings of the Sanggunian for members and staff",
@@ -9,6 +10,24 @@
   "background_color": "#1a237e",
   "theme_color": "#1a237e",
   "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
     {
       "src": "/lims-logo.svg",
       "sizes": "any",

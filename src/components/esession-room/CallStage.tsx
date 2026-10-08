@@ -1,9 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
 import {
   Check,
+  ChevronLeft,
+  ChevronRight,
   ChevronUp,
   Circle,
   ClipboardCheck,
+  FileText,
   Hand,
   LayoutGrid,
   ListOrdered,
@@ -118,7 +121,8 @@ export interface CallStageProps {
   panel: Panel | null;
   setPanel: (panel: Panel | null) => void;
   screenStream: MediaStream | null;
-  canShare: boolean;
+  /** Set while this device presents a file: its page controls. */
+  presentation: Presentation | null;
   recordingHere: boolean;
   streamReconnecting: boolean;
   floorPrompt: boolean;
@@ -130,6 +134,46 @@ export interface CallStageProps {
   onOpenSettings: () => void;
   onLeave: () => void;
   fullscreen: Fullscreen;
+}
+
+export interface Presentation {
+  name: string;
+  page: number;
+  pages: number;
+  onPage: (page: number) => void;
+  onStop: () => void;
+}
+
+/** The presenter's page controls, over the stage while presenting a file. */
+function PresenterBar({ presentation }: { presentation: Presentation }) {
+  const { name, page, pages, onPage, onStop } = presentation;
+  const button = 'inline-flex h-11 min-w-11 items-center justify-center rounded-full text-white hover:bg-white/15 disabled:opacity-35 disabled:hover:bg-transparent';
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
+      <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full bg-[#0a0f2b]/90 py-1 pl-4 pr-1 text-white shadow-xl ring-1 ring-white/15 backdrop-blur">
+        <FileText className="mr-1 h-4 w-4 shrink-0 text-[#f1d27a]" />
+        <span className="min-w-0 max-w-[40vw] truncate text-xs font-semibold sm:max-w-xs" title={name}>
+          {name}
+        </span>
+        {pages > 1 ? (
+          <>
+            <button type="button" className={cn(button, 'ml-1')} onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page">
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <span className="whitespace-nowrap text-xs font-semibold tabular-nums" aria-live="polite">
+              {page} / {pages}
+            </span>
+            <button type="button" className={button} onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="Next page">
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </>
+        ) : null}
+        <button type="button" className="ml-1 inline-flex h-11 items-center rounded-full bg-red-600 px-4 text-xs font-bold hover:bg-red-700" onClick={onStop}>
+          Stop presenting
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function CallStage(props: CallStageProps) {
@@ -212,6 +256,29 @@ export function CallStage(props: CallStageProps) {
     });
     if (confirmed) void act('roll-call');
   };
+
+  // Everyone is told when a recording starts (the device recording knows already), for 10 seconds.
+  const recordingSince = room?.recordingBy?.since ?? null;
+  const seenRecording = useRef<number | null | undefined>(undefined);
+  const [recordingNotice, setRecordingNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!room) return;
+    if (seenRecording.current === undefined) {
+      // Joining while it is already recording also deserves the notice.
+      seenRecording.current = recordingSince;
+      if (recordingSince && room.recordingBy && room.recordingBy.pid !== selfPid) setRecordingNotice(room.recordingBy.name);
+      return;
+    }
+    if (recordingSince !== seenRecording.current) {
+      seenRecording.current = recordingSince;
+      setRecordingNotice(recordingSince && room.recordingBy && room.recordingBy.pid !== selfPid ? room.recordingBy.name : null);
+    }
+  }, [room, recordingSince, selfPid]);
+  useEffect(() => {
+    if (!recordingNotice) return;
+    const timer = window.setTimeout(() => setRecordingNotice(null), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [recordingNotice]);
 
   // Everyone hears about a new roll call for 20 seconds. Roll calls from before I joined stay in the People panel.
   const latestCall = room?.rollCalls.at(-1) ?? null;
@@ -374,6 +441,14 @@ export function CallStage(props: CallStageProps) {
                 )}
               </Banner>
             ) : null}
+            {recordingNotice ? (
+              <Banner tone="warning" onClose={() => setRecordingNotice(null)}>
+                <Circle className="mr-2 h-3 w-3 shrink-0 fill-red-500 text-red-500" />
+                <span>
+                  <span className="font-semibold">This e-session is being recorded</span> by {recordingNotice}. The audio of everyone in it is saved to Session Files.
+                </span>
+              </Banner>
+            ) : null}
             {callNotice ? (
               <Banner tone={callNotice.hasQuorum ? 'success' : 'warning'} onClose={() => setCallNotice(null)}>
                 <ClipboardCheck className="mr-2 h-4 w-4 shrink-0" />
@@ -405,7 +480,7 @@ export function CallStage(props: CallStageProps) {
             {mode === 'speaker' && hiddenByPin ? (
               <Banner tone="info">
                 <span>
-                  <span className="font-semibold">{hiddenByPin.name}</span> {hiddenByPin.screen ? 'is sharing a screen' : 'has the floor'}. You pinned {pinnedPerson?.pid === selfPid ? 'yourself' : pinnedPerson?.name}.
+                  <span className="font-semibold">{hiddenByPin.name}</span> {hiddenByPin.screen ? 'is presenting' : 'has the floor'}. You pinned {pinnedPerson?.pid === selfPid ? 'yourself' : pinnedPerson?.name}.
                 </span>
                 <button type="button" onClick={() => setPinned(null)} className="pointer-events-auto ml-2 inline-flex h-9 items-center rounded-lg bg-white/15 px-3 text-xs font-bold text-white">
                   Unpin
@@ -458,6 +533,7 @@ export function CallStage(props: CallStageProps) {
                 ) : null}
               </div>
             ) : null}
+            {props.presentation ? <PresenterBar presentation={props.presentation} /> : null}
           </div>
         </main>
 
@@ -541,9 +617,15 @@ function TopBar({
         <span className="font-mono tabular-nums">{room ? elapsedClock(now - (room.liveSince ?? room.startedAt)) : '--:--'}</span>
       </span>
       {room?.recordingBy ? (
-        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-red-300 ring-1 ring-inset ring-red-400/40" title={`Recorded by ${room.recordingBy.name}`}>
-          <Circle className="h-2.5 w-2.5 animate-pulse fill-red-500 text-red-500 motion-reduce:animate-none" />
-          {recordingHere ? 'Recording' : 'Rec'}
+        // Solid red with how long it has been recording, so it reads at a glance on a phone too.
+        <span
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-white ring-2 ring-red-400/50"
+          title={`Recorded by ${room.recordingBy.name}`}
+          aria-label={`Recording, ${elapsedClock(now - room.recordingBy.since)}, by ${room.recordingBy.name}`}
+        >
+          <Circle className="h-2.5 w-2.5 animate-pulse fill-white text-white motion-reduce:animate-none" />
+          <span className="hidden sm:inline">{recordingHere ? 'Recording' : 'Rec'}</span>
+          <span className="font-mono tabular-nums">{elapsedClock(now - room.recordingBy.since)}</span>
         </span>
       ) : null}
       <div className="min-w-0 flex-1">
@@ -748,7 +830,6 @@ function ControlBar({
   unread,
   waitingCount,
   screenStream,
-  canShare,
   recordingHere,
   act,
   mode,
@@ -848,17 +929,14 @@ function ControlBar({
       ),
       menu: { key: 'cam', icon: media.camOn ? Video : VideoOff, label: media.camOn ? 'Stop video' : 'Start video', onClick: () => media.setCamOn(!media.camOn) },
     },
-    ...(canShare
-      ? [
-          {
-            key: 'share',
-            group: 0 as const,
-            priority: 6,
-            node: <ControlButton key="share" icon={MonitorUp} label={sharing ? 'Stop share' : 'Share'} active={sharing} onClick={onToggleShare} pressed={sharing} />,
-            menu: { key: 'share', icon: MonitorUp, label: sharing ? 'Stop sharing screen' : 'Share screen', onClick: onToggleShare },
-          },
-        ]
-      : []),
+    // Every device can present: a computer its screen or a file, a phone or tablet a file.
+    {
+      key: 'share',
+      group: 0 as const,
+      priority: 6,
+      node: <ControlButton key="share" icon={MonitorUp} label={sharing ? 'Stop' : 'Present'} active={sharing} onClick={onToggleShare} pressed={sharing} />,
+      menu: { key: 'share', icon: MonitorUp, label: sharing ? 'Stop presenting' : 'Present', onClick: onToggleShare },
+    },
     // Hosts and presiding officers rarely ask for the floor, so their Raise hand lives in More (and on the bar
     // while their hand is up, to lower it in one tap).
     ...(!moderator || handUp

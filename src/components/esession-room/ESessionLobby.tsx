@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarClock, CalendarPlus, CheckCircle2, ChevronDown, Clock, EyeOff, Headphones, Lock, MapPin, Pencil, Play, ShieldCheck, Trash2, Users, Video, Wifi, XCircle } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CalendarPlus, CheckCircle2, ChevronDown, Clock, EyeOff, Headphones, Lock, MapPin, Pencil, Play, ShieldCheck, Trash2, Users, Video, Wifi, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { confirmAction } from '@/components/ui/confirm';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/components/ui/toast';
 import { ScheduleSessionForm } from '@/components/esession/ScheduleSessionForm';
+import { recordingFileName, saveToSessionFiles } from '@/lib/esession-records';
+import { recordingExtension } from '@/lib/esession-rtc';
+import { assembleBackup, discardBackup, findAbandonedBackups, type RecordingBackup } from '@/lib/recording-backup';
 import { useUsers } from '@/lib/access-store';
 import { logActivity } from '@/lib/activity-log';
 import { committeeNameOf, rsvpOf, useAttendance } from '@/lib/attendance';
@@ -136,6 +139,8 @@ export function ESessionLobby({ account, onSignOut }: { account: MobileAccount; 
             </div>
           ) : null}
         </div>
+
+        {account.canManage ? <RecordingRecovery account={account} /> : null}
 
         <BeforeYouJoin />
 
@@ -462,6 +467,70 @@ function OtherSessionCard({ session, room, today, wide = false }: { session: Ses
         </p>
       </div>
     </article>
+  );
+}
+
+/** Recordings on this device that stopped without being saved (a crash, a reload, a dead battery): save or discard. */
+function RecordingRecovery({ account }: { account: MobileAccount }) {
+  const sessions = useCalendarSessions();
+  const [backups, setBackups] = useState<RecordingBackup[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    void findAbandonedBackups().then(setBackups);
+  }, []);
+  if (!backups.length) return null;
+
+  const drop = (id: string) => setBackups((list) => list.filter((entry) => entry.id !== id));
+  const save = async (backup: RecordingBackup) => {
+    setBusy(backup.id);
+    const blob = await assembleBackup(backup);
+    const name = recordingFileName(backup.title, backup.startedAt, recordingExtension(backup.mimeType));
+    const error = await saveToSessionFiles({ name, blob, kind: 'audio', category: 'Audio Recording', sessionId: backup.sessionId }, account);
+    setBusy(null);
+    if (error) return toast('Recording not saved', error, 'error');
+    await discardBackup(backup.id);
+    drop(backup.id);
+    toast('Recording saved', `${name} is in Session Files.`);
+    logActivity({ user: account.username, module: 'E-Session', action: 'Uploaded', summary: `Saved an unfinished e-session recording of the ${backup.title}`, detail: 'Recovered from the recording device after it stopped unexpectedly.' });
+  };
+  const discard = async (backup: RecordingBackup) => {
+    const confirmed = await confirmAction({ title: 'Discard this recording?', description: 'What was recorded is deleted from this device and cannot be recovered.', confirmLabel: 'Discard', tone: 'destructive' });
+    if (!confirmed) return;
+    await discardBackup(backup.id);
+    drop(backup.id);
+  };
+
+  return (
+    <section className="space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4 text-amber-900" role="status">
+      <p className="flex items-center gap-2 text-sm font-semibold">
+        <AlertTriangle className="h-4 w-4 shrink-0" />
+        {backups.length === 1 ? 'A recording on this device was not saved' : `${backups.length} recordings on this device were not saved`}
+      </p>
+      <p className="text-xs">E-Session closed while recording (the tab crashed, was reloaded, or the device turned off). What was recorded until then can still be saved.</p>
+      <ul className="space-y-2">
+        {backups.map((backup) => {
+          const title = sessions.find((entry) => entry.id === backup.sessionId)?.title ?? backup.title;
+          return (
+            <li key={backup.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white/70 px-3 py-2">
+              <span className="min-w-0 text-sm">
+                <span className="block truncate font-semibold">{title}</span>
+                <span className="text-xs">
+                  Started {new Date(backup.startedAt).toLocaleString('en-PH', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · about {Math.max(1, Math.round((backup.lastChunkAt - backup.startedAt) / 60_000))} min
+                </span>
+              </span>
+              <span className="flex gap-2">
+                <Button variant="outline" onClick={() => void discard(backup)} disabled={busy === backup.id} className="h-10 bg-white">
+                  Discard
+                </Button>
+                <Button onClick={() => void save(backup)} disabled={busy === backup.id} className="h-10">
+                  {busy === backup.id ? 'Saving…' : 'Save to Session Files'}
+                </Button>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }
 

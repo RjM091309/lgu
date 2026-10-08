@@ -112,9 +112,9 @@ export const eventText = (event: AuditEvent) => {
     case 'chat':
       return `${actor} sent a message`;
     case 'screen-started':
-      return `${actor} started sharing their screen`;
+      return `${actor} started presenting`;
     case 'screen-stopped':
-      return `${actor} stopped sharing their screen`;
+      return `${actor} stopped presenting`;
     case 'recording-started':
       return `${actor} started recording`;
     case 'recording-stopped':
@@ -270,7 +270,7 @@ export const exportAuditCsv = (audit: RoomAudit) => {
   return saveCsv(safeName(`${audit.room.title} - E-Session Record ${fileStamp(audit.room.startedAt)}.csv`), ['Section', 'Time', 'Person', 'Kind', 'Details', 'Device'], rows);
 };
 
-/** Saves a file into the session's folder in Session Files (in this browser, like every upload). */
+/** Saves a file into the session's folder in Session Files, on the LIMS server, where every device sees it. */
 export const saveToSessionFiles = (file: { name: string; blob: Blob; kind: 'audio' | 'pdf'; category: 'Audio Recording' | 'Supporting Document'; sessionId: string }, account: MobileAccount) =>
   addSessionFiles([
     {

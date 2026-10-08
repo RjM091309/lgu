@@ -1,16 +1,19 @@
-// Shared IndexedDB for data the app keeps in the browser: uploaded session files and their transcripts.
-// IndexedDB holds large binary files (recordings), unlike localStorage.
+// Shared IndexedDB for data the app keeps in the browser: transcripts, and the running backup of an e-session
+// recording (so a crash or a dead battery does not lose it). IndexedDB holds large binary data, unlike
+// localStorage. Session Files themselves are kept on the LIMS server.
 
 export const STORES = {
   sessionFiles: 'session-files',
   transcripts: 'transcripts',
+  recordings: 'recordings',
+  recordingChunks: 'recording-chunks',
 } as const;
 
 type StoreName = (typeof STORES)[keyof typeof STORES];
 
 const DB_NAME = 'sb-capas-lmis';
-// Version 2 added the transcripts store.
-const DB_VERSION = 2;
+// Version 2 added the transcripts store; version 3 the recording backup.
+const DB_VERSION = 3;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 

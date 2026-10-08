@@ -714,7 +714,9 @@ export function createESessionRoomsHandler(env = {}, { onSessionStarted } = {}) 
       case 'recording-saved': {
         const name = text(body.name, 200);
         if (!isHost || !name) return sendJson(res, 400, { error: 'invalid_file' });
-        audit(room, 'recording-saved', { actor: p.account, detail: name });
+        // e.g. how long E-Session was in the background on the recording phone, when audio may be missing.
+        const note = text(body.note, 200);
+        audit(room, 'recording-saved', { actor: p.account, detail: note ? `${name} · ${note}` : name });
         return sendJson(res, 200, { ok: true });
       }
       case 'end': {

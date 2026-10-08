@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { Toaster } from '@/components/ui/toast';
 import { ConfirmDialogHost, confirmAction } from '@/components/ui/confirm';
@@ -11,37 +11,15 @@ import { ESessionLogin } from '@/components/esession-room/ESessionLogin';
 import { ESessionLobby } from '@/components/esession-room/ESessionLobby';
 import { ESessionHistory, ESessionRecord } from '@/components/esession-room/ESessionHistory';
 import { ESessionRoom } from '@/components/esession-room/ESessionRoom';
+import { useAppHead } from '@/lib/app-head';
 
 // LIMS E-Session (/es): live sittings of the Sanggunian by video, for members of the body and the
 // Secretariat, built for tablets first. Signed in separately from the Staff Portal, with the same
 // accounts as LIMS Mobile. See server/esession-rooms.mjs for the room server.
 
-/** Lets tablets add E-Session to the home screen and open it full screen, like an app. */
-function useESessionHead() {
-  useEffect(() => {
-    const added: HTMLElement[] = [];
-    const add = (tag: 'link' | 'meta', attrs: Record<string, string>) => {
-      const element = document.createElement(tag);
-      Object.entries(attrs).forEach(([name, value]) => element.setAttribute(name, value));
-      document.head.appendChild(element);
-      added.push(element);
-    };
-    add('link', { rel: 'manifest', href: '/esession.webmanifest' });
-    add('meta', { name: 'theme-color', content: '#1a237e' });
-    add('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
-    add('meta', { name: 'apple-mobile-web-app-title', content: 'E-Session' });
-    add('link', { rel: 'apple-touch-icon', href: '/lims-logo.svg' });
-    const title = document.title;
-    document.title = 'LIMS E-Session';
-    return () => {
-      added.forEach((element) => element.remove());
-      document.title = title;
-    };
-  }, []);
-}
-
 export function ESessionApp() {
-  useESessionHead();
+  // Its own home-screen shortcut and full-screen app on tablets.
+  useAppHead({ manifest: '/esession.webmanifest', homeScreenName: 'E-Session', title: 'LIMS E-Session' });
   // The dark theme (chosen on the Staff Portal or here) applies to the signed-in screens, as on the portal.
   useLayoutEffect(() => setStaffArea(true), []);
 

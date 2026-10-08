@@ -1,12 +1,12 @@
 {
-  "id": "/m",
-  "name": "LIMS Mobile",
+  "id": "/",
+  "name": "LIMS · SB Capas",
   "short_name": "LIMS",
-  "description": "Session schedule and attendance for members and staff",
-  "start_url": "/m",
-  "scope": "/m",
+  "description": "Legislative Information Management System: the public site and the Staff Portal dashboard",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "orientation": "portrait",
+  "orientation": "any",
   "background_color": "#1a237e",
   "theme_color": "#1a237e",
   "icons": [

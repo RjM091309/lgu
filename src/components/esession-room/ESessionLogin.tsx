@@ -12,7 +12,8 @@ import { InsecureNotice } from '@/components/esession-room/es-ui';
 /** Sign-in for opening /es directly (a bookmark or the home-screen icon). The landing page's Staff Login does the same. */
 export function ESessionLogin({ onSignIn }: { onSignIn: (account: MobileAccount, remember: boolean) => void }) {
   const users = useUsers();
-  const [username, setUsername] = useState('');
+  // Opened from the dashboard's E-Session button on another address: the username comes filled in.
+  const [username, setUsername] = useState(() => new URLSearchParams(window.location.search).get('user') ?? '');
   const [password, setPassword] = useState('');
   const [remember, setRemember] = useState(false);
   const [error, setError] = useState('');

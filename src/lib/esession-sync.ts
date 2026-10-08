@@ -51,6 +51,29 @@ export interface MobileDevice {
   lastSeen: number;
 }
 
+/**
+ * A Session File added during the demo, as the server lists it (contents at `src` on the server). An entry with
+ * the id of a sample file replaces it; `deleted` hides one.
+ */
+export interface ServerFile {
+  id: string;
+  deleted?: boolean;
+  name?: string;
+  category?: string;
+  kind?: string;
+  sessionId?: string;
+  size?: number;
+  uploadedAt?: string;
+  uploadedBy?: string;
+  uploadedByRole?: string;
+  source?: 'system' | 'upload';
+  versionOf?: string;
+  version?: number;
+  changeNote?: string;
+  note?: string;
+  src?: string;
+}
+
 export type PresenceReport = Pick<MobileDevice, 'platform' | 'model' | 'os' | 'account'> & { deviceId: string };
 
 interface ESessionState {
@@ -59,6 +82,7 @@ interface ESessionState {
   scheduled: Session[];
   /** Sessions whose e-session has started: they stay as scheduled. */
   started: string[];
+  files: ServerFile[];
   notices: Notice[];
   devices: MobileDevice[];
   status: SyncStatus;
@@ -73,6 +97,7 @@ interface ServerState {
   notices: Notice[];
   devices?: MobileDevice[];
   started?: string[];
+  files?: ServerFile[];
 }
 
 export const rsvpKey = (sessionId: string, inviteeId: string) => `${sessionId}|${inviteeId}`;
@@ -125,7 +150,7 @@ function pastSessionRsvps() {
   return rsvps;
 }
 
-const INITIAL: Omit<ESessionState, 'status'> = { rsvps: SAMPLE_RSVPS, scheduled: mockSeededSessions, started: [], notices: [], devices: [] };
+const INITIAL: Omit<ESessionState, 'status'> = { rsvps: SAMPLE_RSVPS, scheduled: mockSeededSessions, started: [], files: [], notices: [], devices: [] };
 
 let state: ESessionState = { ...INITIAL, status: 'connecting' };
 
@@ -194,7 +219,7 @@ const applyServer = (server: ServerState) => {
     setState({ status: 'live' });
     return;
   }
-  setState({ rsvps: server.rsvps, scheduled: server.sessions, started: server.started ?? [], notices: server.notices, devices: server.devices ?? [], status: 'live' });
+  setState({ rsvps: server.rsvps, scheduled: server.sessions, started: server.started ?? [], files: server.files ?? [], notices: server.notices, devices: server.devices ?? [], status: 'live' });
 };
 
 const poll = async () => {
@@ -333,6 +358,59 @@ export const cancelScheduledSession = async (id: string) => {
     notices: state.notices.filter((notice) => notice.sessionId !== id),
   });
   return send('DELETE', `/api/esession/sessions/${encodeURIComponent(id)}`);
+};
+
+// ---- Session Files kept on the server ------------------------------------------------------------
+
+const serverFiles = () => state.files;
+export const useServerFiles = () => useSyncExternalStore(subscribe, serverFiles);
+/** The same list, read outside a React subscription. */
+export const getServerFiles = serverFiles;
+
+/** A server path (`/api/...`) as this app reaches it: the Android app talks to the address saved on the phone. */
+export const serverUrl = (path: string) => `${serverBase}${path}`;
+
+const OFFLINE_MESSAGE = 'The LIMS server cannot be reached, so this was not saved. Check the connection and try again.';
+const UPLOAD_ERRORS: Record<string, string> = {
+  too_large: 'The file is larger than the server accepts (250 MB).',
+  store_full: 'The server has no room for more files during this demo. Remove some files and try again.',
+  empty: 'The file is empty.',
+};
+
+const applyFile = (entry: ServerFile) => setState({ files: [entry, ...state.files.filter((file) => file.id !== entry.id)] });
+
+/**
+ * Sends a file to Session Files on the server; `targetId` gives an existing row (a listed recording) new contents.
+ * Resolves to an error message, or null once every device can see it.
+ */
+export const uploadServerFile = async (meta: Omit<ServerFile, 'id' | 'src' | 'size' | 'deleted'>, blob: Blob, targetId?: string): Promise<string | null> => {
+  if (state.status !== 'live') return OFFLINE_MESSAGE;
+  try {
+    const res = await fetch(serverUrl(`/api/esession/files${targetId ? `?id=${encodeURIComponent(targetId)}` : ''}`), {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type || 'application/octet-stream', 'X-File-Meta': encodeURIComponent(JSON.stringify(meta)) },
+      body: blob,
+    });
+    const body = (await res.json().catch(() => null)) as (ServerFile & { error?: string }) | null;
+    if (!res.ok || !body) return UPLOAD_ERRORS[body?.error ?? ''] ?? 'The file could not be saved on the server. Please try again.';
+    applyFile(body);
+    return null;
+  } catch {
+    return OFFLINE_MESSAGE;
+  }
+};
+
+/** Removes a file from Session Files on every device (a sample file is hidden until the server restarts). */
+export const deleteServerFile = async (id: string): Promise<string | null> => {
+  if (state.status !== 'live') return OFFLINE_MESSAGE;
+  try {
+    const res = await fetch(serverUrl(`/api/esession/files/${encodeURIComponent(id)}`), { method: 'DELETE' });
+    if (!res.ok) return 'The file could not be removed. Please try again.';
+    applyFile({ id, deleted: true });
+    return null;
+  } catch {
+    return OFFLINE_MESSAGE;
+  }
 };
 
 /** Shown when the server turns down an edit or a cancellation. */

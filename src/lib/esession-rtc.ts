@@ -428,14 +428,22 @@ export class CallRecorder {
   readonly mimeType: string;
   readonly startedAt = Date.now();
 
-  constructor(private readonly ctx: AudioContext) {
+  private seq = 0;
+
+  /** `onChunk` gets each second of the recording as it is written (for the backup on this device). */
+  constructor(
+    private readonly ctx: AudioContext,
+    onChunk?: (blob: Blob, seq: number) => void
+  ) {
     const mimeType = recordingMimeType();
     if (!mimeType) throw new Error('Recording is not supported on this browser.');
     this.mimeType = mimeType;
     this.destination = ctx.createMediaStreamDestination();
     this.recorder = new MediaRecorder(this.destination.stream, { mimeType, audioBitsPerSecond: 64_000 });
     this.recorder.ondataavailable = (event) => {
-      if (event.data.size) this.chunks.push(event.data);
+      if (!event.data.size) return;
+      this.chunks.push(event.data);
+      onChunk?.(event.data, this.seq++);
     };
     this.recorder.start(1_000);
   }
@@ -486,9 +494,11 @@ export const VIDEO_CONSTRAINTS: MediaTrackConstraints = { width: { ideal: 960 },
 
 export const mediaAvailable = () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
 
-/** Screen sharing works on computers; iPads and phones cannot share their screen from a browser. */
-export const canShareScreen = () =>
-  typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia && !/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) && !isIpad();
+/** A phone or tablet (iPads included, which report themselves as Macs). */
+export const isMobileDevice = () => typeof navigator !== 'undefined' && (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || isIpad());
+
+/** Screen sharing works on computers; iPads and phones cannot share their screen from a browser (they present a file). */
+export const canShareScreen = () => typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getDisplayMedia && !isMobileDevice();
 
 export const supportsSpeakerChoice = () => typeof HTMLMediaElement !== 'undefined' && 'setSinkId' in HTMLMediaElement.prototype;
 

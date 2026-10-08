@@ -20,6 +20,7 @@ import { MobileAlerts } from '@/components/mobile/MobileAlerts';
 import { MobileAccountPage } from '@/components/mobile/MobileAccountPage';
 import { MobileSessionDetail } from '@/components/mobile/MobileSessionDetail';
 import { cn } from '@/lib/utils';
+import { useAppHead } from '@/lib/app-head';
 
 // LIMS Mobile (/m): each member's and staff member's session schedule, attendance replies, and
 // reminders. Shares its data with the web calendar through the E-Session sync.
@@ -45,32 +46,9 @@ const writeStored = (key: string, value: string | null) => {
   }
 };
 
-/** Adds the web app manifest and phone chrome colour while the mobile app is open, so it can be added to the home screen. */
-function useMobileHead() {
-  useEffect(() => {
-    const added: HTMLElement[] = [];
-    const add = (tag: 'link' | 'meta', attrs: Record<string, string>) => {
-      const element = document.createElement(tag);
-      Object.entries(attrs).forEach(([name, value]) => element.setAttribute(name, value));
-      document.head.appendChild(element);
-      added.push(element);
-    };
-    add('link', { rel: 'manifest', href: '/manifest.webmanifest' });
-    add('meta', { name: 'theme-color', content: '#1a237e' });
-    add('meta', { name: 'apple-mobile-web-app-capable', content: 'yes' });
-    add('meta', { name: 'apple-mobile-web-app-title', content: 'LIMS' });
-    add('link', { rel: 'apple-touch-icon', href: '/lims-logo.svg' });
-    const title = document.title;
-    document.title = 'LIMS Mobile';
-    return () => {
-      added.forEach((element) => element.remove());
-      document.title = title;
-    };
-  }, []);
-}
-
 export function MobileApp() {
-  useMobileHead();
+  // Its own home-screen shortcut, opening like an app on phones.
+  useAppHead({ manifest: '/manifest.webmanifest', homeScreenName: 'LIMS Mobile', title: 'LIMS Mobile' });
   const users = useUsers();
   const [accountId, setAccountId] = useState(() => readStored(ACCOUNT_KEY));
   const account = useMemo(() => mobileAccounts(users).find((entry) => entry.inviteeId === accountId) ?? null, [users, accountId]);

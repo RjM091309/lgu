@@ -2,8 +2,7 @@ import { useMemo, useSyncExternalStore } from 'react';
 import { LGU_PROFILE, mockPastSessions, mockSessions, type Session } from '@/lib/mock-data';
 import { buildAgenda, formatLongDate } from '@/lib/sessions';
 import { createPdf, type PdfLine } from '@/lib/pdf';
-import { STORES, requestPersistentStorage, runTransaction, storageErrorMessage } from '@/lib/app-db';
-import { useCalendarSessions } from '@/lib/esession-sync';
+import { deleteServerFile, serverUrl, uploadServerFile, useCalendarSessions, useServerFiles, getServerFiles, type ServerFile } from '@/lib/esession-sync';
 
 export type FileKind = 'pdf' | 'audio' | 'video' | 'image' | 'other';
 
@@ -24,7 +23,7 @@ export interface SessionFile {
   source: 'system' | 'upload';
   // Recordings listed by the system can exist before the actual media is attached.
   blob: Blob | null;
-  // Media shipped with the app in public/ (served as a static file) instead of stored in the browser.
+  // Media shipped with the app in public/, or a file added during the demo and kept on the LIMS server.
   src?: string;
   // A prepared WebVTT transcript shipped with the app, so captions show without transcribing in the browser.
   transcriptSrc?: string;
@@ -259,63 +258,50 @@ const seedFiles = (): SessionFile[] => {
   ];
 };
 
-// Module-level store shared by every page. Uploaded files and attached recordings are also saved in the
-// browser's IndexedDB (it holds large binary files, unlike localStorage), so they survive a page refresh.
-// System-generated documents are rebuilt from session data on every load and are not stored.
-let files: SessionFile[] | null = null;
-const listeners = new Set<() => void>();
+// Session Files as every device sees them: the sample files built into the app, merged with the files added
+// during the demo, which the LIMS server keeps and lists through the E-Session sync (see esession-sync.ts and
+// server/session-file-store.mjs). A restart of the server brings back just the sample files.
+let seeded: SessionFile[] | null = null;
+const seed = () => (seeded ??= seedFiles());
 const urls = new Map<string, { blob: Blob; url: string }>();
 
-const idNumber = (file: SessionFile) => Number(file.id.replace(/\D/g, '')) || 0;
+const fromServer = (entry: ServerFile, base?: SessionFile): SessionFile => ({
+  ...(base ?? {}),
+  id: entry.id,
+  name: entry.name ?? base?.name ?? 'File',
+  category: (entry.category ?? base?.category ?? 'Supporting Document') as FileCategory,
+  sessionId: entry.sessionId ?? base?.sessionId ?? '',
+  kind: (entry.kind ?? base?.kind ?? 'other') as FileKind,
+  size: entry.size ?? null,
+  uploadedAt: entry.uploadedAt ?? base?.uploadedAt ?? '',
+  uploadedBy: entry.uploadedBy ?? base?.uploadedBy ?? '',
+  uploadedByRole: entry.uploadedByRole,
+  source: entry.source ?? 'upload',
+  versionOf: entry.versionOf,
+  version: entry.version,
+  changeNote: entry.changeNote,
+  blob: null,
+  src: entry.src ? serverUrl(entry.src) : undefined,
+  // A sample recording keeps its prepared captions when its media is attached.
+  transcriptSrc: base?.transcriptSrc,
+});
 
-const setFiles = (next: SessionFile[]) => {
-  files = next;
-  listeners.forEach((listener) => listener());
-};
-
-let loadPromise: Promise<void> | null = null;
-
-// Merges saved files into the list: saved uploads go first (newest first), saved attachments replace their system row.
-const loadSavedFiles = () => {
-  loadPromise ??= (async () => {
-    try {
-      const saved = ((await runTransaction(STORES.sessionFiles, 'readonly', (store) => store.getAll())) ?? []) as SessionFile[];
-      if (saved.length === 0) return;
-      const savedById = new Map(saved.map((file) => [file.id, file]));
-      const current = files ?? seedFiles();
-      const uploads = saved.filter((file) => file.source === 'upload' && !current.some((entry) => entry.id === file.id));
-      // A saved attachment replaces its system row. Rows that ship their own media with the app can't take an
-      // attachment, so a saved copy of one is left over from before the media shipped: the shipped file wins
-      // (otherwise a replaced recording would keep playing the old copy), and the leftover is removed.
-      const stale = current.filter((file) => file.src && savedById.has(file.id)).map((file) => file.id);
-      const merge = (file: SessionFile) => {
-        const saved = savedById.get(file.id);
-        return saved && !file.src ? { ...saved, transcriptSrc: file.transcriptSrc } : file;
-      };
-      setFiles([...uploads.sort((a, b) => idNumber(b) - idNumber(a)), ...current.map(merge)]);
-      if (stale.length > 0) {
-        void runTransaction(STORES.sessionFiles, 'readwrite', (store) => {
-          stale.forEach((id) => store.delete(id));
-        }).catch(() => undefined);
-      }
-    } catch {
-      // Storage unavailable: the page still works with the built-in files.
-    }
-  })();
-  return loadPromise;
-};
-
+let merged: { from: ServerFile[]; files: SessionFile[] } | null = null;
 const getFiles = () => {
-  if (!files) {
-    files = seedFiles();
-    void loadSavedFiles();
-  }
-  return files;
-};
-
-const subscribe = (listener: () => void) => {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  const server = getServerFiles();
+  if (merged?.from === server) return merged.files;
+  const byId = new Map(server.map((entry) => [entry.id, entry]));
+  const samples = seed();
+  // Files added during the demo first, newest first (the server lists them that way); then the sample files,
+  // each replaced by the server's copy when it was given new contents, or left out when it was removed.
+  const added = server.filter((entry) => !entry.deleted && !samples.some((file) => file.id === entry.id)).map((entry) => fromServer(entry));
+  const kept = samples.flatMap((file) => {
+    const entry = byId.get(file.id);
+    if (!entry) return [file];
+    return entry.deleted ? [] : [fromServer(entry, file)];
+  });
+  merged = { from: server, files: [...added, ...kept] };
+  return merged.files;
 };
 
 const releaseUrl = (id: string) => {
@@ -324,54 +310,50 @@ const releaseUrl = (id: string) => {
   urls.delete(id);
 };
 
-export const useSessionFiles = () => useSyncExternalStore(subscribe, getFiles);
+export const useSessionFiles = () => {
+  useServerFiles();
+  return getFiles();
+};
 
-// Each mutation saves first and only updates the list when saving worked. Resolves to an error message, or null on success.
+const metaOf = (file: Omit<SessionFile, 'id'>) => ({
+  name: file.name,
+  category: file.category,
+  kind: file.kind,
+  sessionId: file.sessionId,
+  uploadedAt: file.uploadedAt,
+  uploadedBy: file.uploadedBy,
+  uploadedByRole: file.uploadedByRole,
+  source: file.source,
+  versionOf: file.versionOf,
+  version: file.version,
+  changeNote: file.changeNote,
+});
+
+// Each change goes to the server first and shows on every device once it is saved there. Resolves to an error
+// message, or null on success.
 export const addSessionFiles = async (added: Omit<SessionFile, 'id'>[]): Promise<string | null> => {
-  getFiles();
-  await loadSavedFiles();
-  const firstId = Math.max(0, ...getFiles().map(idNumber)) + 1;
-  const withIds = added.map((file, index) => ({ ...file, id: `sf-${firstId + index}` }));
-  try {
-    await runTransaction(STORES.sessionFiles, 'readwrite', (store) => {
-      withIds.forEach((file) => store.put(file));
-    });
-  } catch (error) {
-    return storageErrorMessage(error);
+  for (const file of added) {
+    if (!file.blob) return `${file.name} has no contents to save.`;
+    const error = await uploadServerFile(metaOf(file), file.blob);
+    if (error) return added.length > 1 ? `${file.name}: ${error}` : error;
   }
-  requestPersistentStorage();
-  setFiles([...withIds.reverse(), ...getFiles()]);
   return null;
 };
 
+/** New contents (and details) for a file already listed, such as a recording attached to its row. */
 export const updateSessionFile = async (id: string, changes: Partial<SessionFile>): Promise<string | null> => {
-  getFiles();
-  await loadSavedFiles();
   const target = getFiles().find((file) => file.id === id);
   if (!target) return 'This file could not be found.';
-  const updated = { ...target, ...changes };
-  try {
-    await runTransaction(STORES.sessionFiles, 'readwrite', (store) => store.put(updated));
-  } catch (error) {
-    return storageErrorMessage(error);
-  }
-  requestPersistentStorage();
-  if ('blob' in changes) releaseUrl(id);
-  setFiles(getFiles().map((file) => (file.id === id ? updated : file)));
-  return null;
+  if (!changes.blob) return 'Choose the file to attach.';
+  const error = await uploadServerFile(metaOf({ ...target, ...changes }), changes.blob, id);
+  if (!error) releaseUrl(id);
+  return error;
 };
 
 export const removeSessionFile = async (id: string): Promise<string | null> => {
-  getFiles();
-  await loadSavedFiles();
-  try {
-    await runTransaction(STORES.sessionFiles, 'readwrite', (store) => store.delete(id));
-  } catch {
-    return 'The file could not be removed from this browser. Please try again.';
-  }
-  releaseUrl(id);
-  setFiles(getFiles().filter((file) => file.id !== id));
-  return null;
+  const error = await deleteServerFile(id);
+  if (!error) releaseUrl(id);
+  return error;
 };
 
 // One object URL per file, reused until the file is replaced or removed.

@@ -7,6 +7,7 @@
 import { createReadStream, statSync } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
+import { createFileStore, isFileId, toFileMeta } from './session-file-store.mjs';
 
 const MAX_BODY_BYTES = 64 * 1024;
 // The first browser hands over the sample responses and the editable sample calendar in one request.
@@ -127,7 +128,11 @@ export function createESessionSyncHandler() {
   // no longer be edited or cancelled.
   // `calendarSeeded` is kept apart, so a browser still running an older copy of the app (which seeds only the
   // responses) cannot leave the calendar empty.
-  let state = { seeded: false, calendarSeeded: false, version: 0, rsvps: {}, sessions: [], notices: [], devices: [], started: [] };
+  // `files`: Session Files added during the demo (contents in session-file-store.mjs). An entry whose id is one of
+  // the sample files replaces it; `deleted: true` hides a sample file.
+  let state = { seeded: false, calendarSeeded: false, version: 0, rsvps: {}, sessions: [], notices: [], devices: [], started: [], files: [] };
+  const fileStore = createFileStore();
+  let fileSeq = 0;
   const clients = new Set();
 
   const publish = () => {
@@ -180,7 +185,7 @@ export function createESessionSyncHandler() {
     if (origin && APP_ORIGINS.includes(origin)) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-File-Meta');
       res.setHeader('Vary', 'Origin');
     }
     if (req.method === 'OPTIONS') {
@@ -230,6 +235,60 @@ export function createESessionSyncHandler() {
         'Cache-Control': 'no-store',
       });
       createReadStream(APK_FILE).pipe(res);
+      return;
+    }
+
+    // ---- Session Files ----
+    const contentMatch = path.match(/^\/api\/esession\/files\/([A-Za-z0-9_-]{1,64})\/content$/);
+    if (contentMatch && (req.method === 'GET' || req.method === 'HEAD')) {
+      const entry = state.files.find((file) => file.id === contentMatch[1] && !file.deleted);
+      if (!entry) {
+        sendJson(res, 404, { error: 'not_found' });
+        return;
+      }
+      fileStore.send(req, res, entry.id, entry.name);
+      return;
+    }
+
+    // A new file, or new contents for an existing one (`?id=`: a recording attached to a listed row).
+    if (path === '/api/esession/files' && req.method === 'POST') {
+      let meta = null;
+      try {
+        meta = toFileMeta(JSON.parse(decodeURIComponent(String(req.headers['x-file-meta'] ?? ''))));
+      } catch {
+        meta = null;
+      }
+      const target = new URL(req.url, 'http://localhost').searchParams.get('id');
+      if (!meta || (target !== null && !isFileId(target))) {
+        req.resume();
+        sendJson(res, 400, { error: 'invalid_file' });
+        return;
+      }
+      const id = target ?? `up-${++fileSeq}`;
+      try {
+        const size = await fileStore.save(req, id);
+        const previous = state.files.find((file) => file.id === id);
+        const revision = (previous?.revision ?? 0) + 1;
+        const entry = { ...meta, id, size, revision, src: `/api/esession/files/${id}/content?r=${revision}` };
+        state = { ...state, files: [entry, ...state.files.filter((file) => file.id !== id)] };
+        publish();
+        sendJson(res, 200, entry);
+      } catch (error) {
+        sendJson(res, error.message === 'too_large' ? 413 : error.message === 'store_full' ? 507 : 400, { error: error.message });
+      }
+      return;
+    }
+
+    const fileMatch = path.match(/^\/api\/esession\/files\/([A-Za-z0-9_-]{1,64})$/);
+    if (fileMatch && req.method === 'DELETE') {
+      const id = fileMatch[1];
+      const previous = state.files.find((file) => file.id === id);
+      fileStore.remove(id);
+      // A file added here goes away; a sample file (or a sample row given new contents) stays hidden.
+      const isUpload = previous?.source === 'upload' && id.startsWith('up-');
+      state = { ...state, files: [...(isUpload ? [] : [{ id, deleted: true }]), ...state.files.filter((file) => file.id !== id)] };
+      publish();
+      sendJson(res, 200, { ok: true });
       return;
     }
 

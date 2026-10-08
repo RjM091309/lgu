@@ -36,6 +36,7 @@ import {
   CallRecorder,
   MeshCall,
   canShareScreen,
+  isMobileDevice,
   describeDevice,
   recordingExtension,
   recordingMimeType,
@@ -45,6 +46,9 @@ import {
   type PeerInfo,
 } from '@/lib/esession-rtc';
 import { attendanceRecordName, attendanceRecordPdf, recordingFileName, saveToSessionFiles } from '@/lib/esession-records';
+import { backupChunk, discardBackup, startBackup, type RecordingBackup } from '@/lib/recording-backup';
+import { FilePresenter } from '@/lib/file-presenter';
+import { PresentDialog } from '@/components/esession-room/PresentDialog';
 import { useLocalMedia, type LocalMedia } from '@/components/esession-room/use-local-media';
 import { DeviceSelects, MicMeter } from '@/components/esession-room/DeviceControls';
 import { CallStage, type Panel } from '@/components/esession-room/CallStage';
@@ -96,6 +100,10 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
   const [peers, setPeers] = useState<Map<string, PeerInfo>>(new Map());
   const [speaking, setSpeaking] = useState<Set<string>>(new Set());
   const [screenTrack, setScreenTrack] = useState<MediaStreamTrack | null>(null);
+  // Presenting a file: the presenter draws it, and its picture goes out as this device's screen (screenTrack).
+  const presenter = useRef<FilePresenter | null>(null);
+  const [presentation, setPresentation] = useState<{ name: string; page: number; pages: number } | null>(null);
+  const [presentOpen, setPresentOpen] = useState(false);
   const [recordingHere, setRecordingHere] = useState(false);
   const [streamReconnecting, setStreamReconnecting] = useState(false);
   const [floorPrompt, setFloorPrompt] = useState(false);
@@ -107,6 +115,10 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
   const mesh = useRef<MeshCall | null>(null);
   const levels = useRef<AudioLevels | null>(null);
   const recorder = useRef<CallRecorder | null>(null);
+  // The running copy of the recording on this device (see recording-backup.ts), and how long E-Session was in
+  // the background while recording: phones pause the microphone then, so that stretch may be silent.
+  const backup = useRef<RecordingBackup | null>(null);
+  const hidden = useRef<{ since: number | null; total: number }>({ since: null, total: 0 });
   const endingByMe = useRef(false);
   const panelRef = useRef(panel);
   panelRef.current = panel;
@@ -156,12 +168,20 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
       const active = recorder.current;
       if (!active) return;
       recorder.current = null;
+      const copy = backup.current;
+      backup.current = null;
+      const away = hidden.current.total + (hidden.current.since ? Date.now() - hidden.current.since : 0);
+      hidden.current = { since: null, total: 0 };
+      const gapNote = away >= 2_000 ? `about ${elapsedClock(away)} recorded while E-Session was in the background may be silent` : null;
       setRecordingHere(false);
       if (tellServer) void conn.current?.send('recording', { on: false });
       const blob = await active.stop();
       const title = room?.title ?? session?.title ?? 'E-Session';
       const targetSession = room?.sessionId ?? sessionId;
-      if (blob.size === 0) return;
+      if (blob.size === 0) {
+        if (copy) void discardBackup(copy.id);
+        return;
+      }
       const name = recordingFileName(title, active.startedAt, recordingExtension(active.mimeType));
       const error = await saveToSessionFiles({ name, blob, kind: 'audio', category: 'Audio Recording', sessionId: targetSession }, account);
       if (error) {
@@ -172,12 +192,14 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
         link.download = name;
         link.click();
         setTimeout(() => URL.revokeObjectURL(url), 30_000);
+        if (copy) void discardBackup(copy.id);
         toast('Recording downloaded instead', `${error} The recording was downloaded to this device.`, 'error');
         return;
       }
-      void conn.current?.send('recording-saved', { name });
+      if (copy) void discardBackup(copy.id);
+      void conn.current?.send('recording-saved', { name, ...(gapNote ? { note: gapNote } : {}) });
       logActivity({ user: account.username, module: 'E-Session', action: 'Uploaded', summary: `Saved the e-session audio recording of the ${title}`, detail: 'Added to Session Files under Audio Recording.' });
-      toast('Recording saved', `${name} is in Session Files, ready to play and transcribe.`);
+      toast('Recording saved', `${name} is in Session Files, ready to play and transcribe.${gapNote ? ` Note: ${gapNote}.` : ''}`, gapNote ? 'info' : undefined);
     },
     [account, room, session, sessionId]
   );
@@ -411,6 +433,25 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     if (recorder.current && room && !room.recordingBy && Date.now() - recorder.current.startedAt > 3_000) void stopRecording(false);
   }, [room, stopRecording]);
 
+  // While recording here, note how long E-Session is in the background (phones pause the microphone then).
+  useEffect(() => {
+    if (!recordingHere) return;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hidden.current.since ??= Date.now();
+        return;
+      }
+      const since = hidden.current.since;
+      if (since === null) return;
+      hidden.current = { since: null, total: hidden.current.total + (Date.now() - since) };
+      if (isMobileDevice() && Date.now() - since >= 2_000) {
+        toast('Still recording', `E-Session was in the background for ${elapsedClock(Date.now() - since)}; audio from that time may be missing. Keep it in front while recording.`, 'info');
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [recordingHere]);
+
   // Keep the screen on, and leave cleanly if the tab closes.
   useEffect(() => {
     if (!connected) return;
@@ -456,14 +497,58 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
 
   const sendChat = useCallback((text: string) => act('chat', { text }), [act]);
 
-  const toggleShare = useCallback(async () => {
+  // When the presentation ends however it ends (Stop, leaving, the track ending), let go of the file.
+  useEffect(() => {
+    if (presenter.current && presenter.current.track !== screenTrack) {
+      presenter.current.stop();
+      presenter.current = null;
+      setPresentation(null);
+    }
+  }, [screenTrack]);
+  useEffect(() => () => presenter.current?.stop(), []);
+
+  const someoneElsePresenting = useCallback(() => {
+    const other = room?.participantsList.find((p) => p.screen && p.pid !== self.current?.pid);
+    if (other) toast('Someone is already presenting', `${other.name} is presenting. Ask them to stop first.`, 'info');
+    return Boolean(other);
+  }, [room]);
+
+  const toggleShare = useCallback(() => {
     if (screenTrack) {
       screenTrack.stop();
       setScreenTrack(null);
       return;
     }
-    const other = room?.participantsList.find((p) => p.screen && p.pid !== self.current?.pid);
-    if (other) return toast('Someone is already sharing', `${other.name} is sharing their screen. Ask them to stop first.`, 'info');
+    if (!someoneElsePresenting()) setPresentOpen(true);
+  }, [screenTrack, someoneElsePresenting]);
+
+  const presentFile = useCallback(
+    async (file: Blob, name: string) => {
+      if (someoneElsePresenting()) return;
+      try {
+        const opened = await FilePresenter.open(file, name);
+        screenTrack?.stop();
+        presenter.current = opened;
+        setPresentation({ name, page: opened.page, pages: opened.pages });
+        setScreenTrack(opened.track);
+        setPresentOpen(false);
+      } catch (error) {
+        toast('Could not present the file', error instanceof Error ? error.message : 'Please try another file.', 'error');
+      }
+    },
+    [screenTrack, someoneElsePresenting]
+  );
+
+  const turnPage = useCallback((page: number) => {
+    const active = presenter.current;
+    if (!active || page < 1 || page > active.pages) return;
+    void active.show(page);
+    setPresentation((current) => (current ? { ...current, page } : current));
+  }, []);
+
+  const shareScreen = useCallback(async () => {
+    setPresentOpen(false);
+    if (someoneElsePresenting()) return;
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 15 } }, audio: false });
       const track = stream.getVideoTracks()[0];
@@ -473,7 +558,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     } catch {
       // Cancelled in the browser's picker.
     }
-  }, [room, screenTrack]);
+  }, [someoneElsePresenting]);
 
   const toggleRecording = useCallback(async () => {
     if (recorder.current) {
@@ -496,27 +581,34 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     if (!ctx || !recordingMimeType()) return toast('Recording is not available', 'This browser cannot record audio. Try Chrome, Edge, or Safari on another device.', 'error');
     const confirmed = await confirmAction({
       title: 'Record this e-session?',
-      description: 'Everyone sees that the e-session is being recorded. The audio of all participants is recorded on this device and saved to Session Files when you stop.',
+      description: `Everyone sees that the e-session is being recorded. The audio of all participants is recorded on this device and saved to Session Files when you stop; a copy is kept on this device as it records, so a crash does not lose it.${
+        isMobileDevice() ? ' Keep this screen on and E-Session in front until you stop: switching apps or locking the screen pauses the microphone, and that part of the recording may be silent.' : ''
+      }`,
       confirmLabel: 'Start recording',
     });
     if (!confirmed) return;
     resumeAudio();
+    const copy = startBackup({ sessionId: room?.sessionId ?? sessionId, title: room?.title ?? session?.title ?? 'E-Session', mimeType: recordingMimeType() ?? 'audio/webm', startedAt: Date.now() });
     let active: CallRecorder;
     try {
-      active = new CallRecorder(ctx);
+      active = new CallRecorder(ctx, (blob, seq) => backupChunk(copy, seq, blob));
     } catch (error) {
+      void discardBackup(copy.id);
       return toast('Recording could not start', error instanceof Error ? error.message : 'Please try again.', 'error');
     }
     if (!(await act('recording', { on: true }))) {
       await active.stop();
+      void discardBackup(copy.id);
       return;
     }
     recorder.current = active;
+    backup.current = copy;
+    hidden.current = { since: null, total: 0 };
     const selfPid = self.current?.pid;
     if (selfPid && media.audioTrack) active.set(selfPid, new MediaStream([media.audioTrack]));
     peers.forEach((peer, pid) => active.set(pid, peer.stream));
     setRecordingHere(true);
-  }, [act, media.audioTrack, peers, room, stopRecording]);
+  }, [act, media.audioTrack, peers, room, session, sessionId, stopRecording]);
 
   const leave = async () => {
     await stopRecording(true);
@@ -610,20 +702,28 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
           panel={panel}
           setPanel={setPanel}
           screenStream={screenStream}
-          canShare={canShareScreen()}
+          presentation={presentation ? { ...presentation, onPage: turnPage, onStop: () => toggleShare() } : null}
           recordingHere={recordingHere}
           streamReconnecting={streamReconnecting}
           floorPrompt={floorPrompt}
           onDismissFloorPrompt={() => setFloorPrompt(false)}
           act={act}
           onSendChat={sendChat}
-          onToggleShare={() => void toggleShare()}
+          onToggleShare={toggleShare}
           onToggleRecording={() => void toggleRecording()}
           onOpenSettings={() => setSettingsOpen(true)}
           onLeave={() => void onLeaveClick()}
           fullscreen={fullscreen.state}
         />
         {settingsDialog}
+        <PresentDialog
+          open={presentOpen}
+          onOpenChange={setPresentOpen}
+          sessionId={room?.sessionId ?? sessionId}
+          canShareScreen={canShareScreen()}
+          onShareScreen={() => void shareScreen()}
+          onPresentFile={presentFile}
+        />
         <Dialog open={leaveOpen} onOpenChange={setLeaveOpen}>
           <DialogContent className="max-w-md">
             <DialogHeader>

@@ -32,6 +32,7 @@ import {
   Sun,
   User,
   UserPlus,
+  Video,
   X,
 } from 'lucide-react';
 import { LGU_PROFILE, mockBills, mockMembers } from '@/lib/mock-data';
@@ -41,7 +42,9 @@ import { cn } from '@/lib/utils';
 import { toast } from '@/components/ui/toast';
 import { confirmAction } from '@/components/ui/confirm';
 import { logActivity } from '@/lib/activity-log';
-import { ADMIN_ROLE, ALL_PAGES, canOpenPage, initials, useAccess } from '@/lib/access-store';
+import { ADMIN_ROLE, ALL_PAGES, canOpenPage, initials, useAccess, useUsers } from '@/lib/access-store';
+import { fetchServerInfo, writeESessionAccount } from '@/lib/esession-room';
+import { mobileAccounts } from '@/lib/mobile-accounts';
 import { useTheme } from '@/lib/theme';
 
 interface NavbarProps {
@@ -441,6 +444,8 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
 
         <span className="hidden whitespace-nowrap text-xs text-white/60 2xl:inline">{today}</span>
 
+        <OpenESessionButton />
+
         <Button variant="ghost" size="icon" className="hidden hover:bg-white/10 sm:inline-flex" onClick={() => setDialog('help')} aria-label="Help" title="Help">
           <CircleHelp className="h-5 w-5 text-white/70" />
         </Button>
@@ -768,5 +773,38 @@ export function Navbar({ activeTab, onMenuClick, onLogout, onNavigate }: NavbarP
         </DialogContent>
       </Dialog>
     </header>
+  );
+}
+
+/**
+ * Opens E-Session in its own window next to the dashboard, for staff who take part in sessions, so a document
+ * here can be presented there (Present → Share your screen → this tab). It opens on the server's https address,
+ * where the camera and microphone work. On that same address the window is signed in already as this person;
+ * coming from the http address it asks for the password, with the username filled in.
+ */
+function OpenESessionButton() {
+  const { user } = useAccess();
+  const account = mobileAccounts(useUsers()).find((entry) => entry.inviteeId === `user:${user.id}`);
+  const [httpsPort, setHttpsPort] = useState<number | null>(null);
+  React.useEffect(() => {
+    void fetchServerInfo().then((info) => setHttpsPort(info.httpsPort));
+  }, []);
+  if (!account) return null;
+
+  const open = () => {
+    const sameAddress = window.location.protocol === 'https:' || !httpsPort;
+    const url = sameAddress ? `${window.location.origin}/es` : `https://${window.location.hostname}:${httpsPort}/es?user=${encodeURIComponent(account.username)}`;
+    // The new window starts with a copy of this tab's session sign-in (same address only).
+    if (sameAddress) writeESessionAccount(account.inviteeId);
+    const win = window.open(url, 'lims-esession');
+    if (!win) return toast('E-Session did not open', 'The browser blocked the new window. Allow pop-ups for this site, or open /es in a new tab.', 'error');
+    win.focus();
+  };
+
+  return (
+    <Button variant="ghost" className="hidden h-10 shrink-0 gap-2 px-3 text-sm font-semibold text-white/85 hover:bg-white/10 hover:text-white md:inline-flex" onClick={open} title="Open E-Session in its own window">
+      <Video className="h-4 w-4 text-[#e8c766]" />
+      E-Session
+    </Button>
   );
 }

@@ -214,7 +214,7 @@ export function ShareStage({ sharer, stream, chrome, insetTop, insetBottom }: { 
       <div className={cn('pointer-events-none absolute left-3 transition-[opacity,top] duration-300', chrome ? 'opacity-100' : 'opacity-0')} style={{ top: insetTop + 12 }}>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#3949ab] px-2.5 py-1 text-xs font-bold text-white shadow-lg">
           <MonitorUp className="h-3.5 w-3.5" />
-          {sharer.name} is sharing
+          {sharer.name} is presenting
         </span>
       </div>
 

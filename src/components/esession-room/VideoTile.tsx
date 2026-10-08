@@ -117,12 +117,12 @@ export function VideoTile({
           <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-white @[260px]:text-sm">
             <MonitorUp className="h-4 w-4 shrink-0 text-[#9fa8ff]" />
             <span>
-              You are sharing<span className="hidden @[260px]:inline"> your screen</span>
+              You are presenting
             </span>
           </p>
           <p className="hidden text-xs text-white/60 @[360px]:block">Everyone else sees it full screen.</p>
           <button type="button" onClick={presenter.onStop} className="inline-flex h-8 items-center rounded-lg bg-red-600 px-3 text-xs font-bold text-white hover:bg-red-500 @[260px]:h-9">
-            Stop sharing
+            Stop presenting
           </button>
         </div>
       ) : showVideo ? (
@@ -172,7 +172,7 @@ export function VideoTile({
         {participant.screen && !presenter ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-[#3949ab] px-2 py-0.5 text-[11px] font-bold text-white">
             <MonitorUp className="h-3 w-3" />
-            Sharing screen
+            Presenting
           </span>
         ) : null}
       </div>
