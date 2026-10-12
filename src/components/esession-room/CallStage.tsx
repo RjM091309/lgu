@@ -41,7 +41,7 @@ import type { LocalMedia } from '@/components/esession-room/use-local-media';
 import { RemoteAudio, VideoTile, type TileActions } from '@/components/esession-room/VideoTile';
 import { AgendaPanel, ChatPanel, PeoplePanel } from '@/components/esession-room/CallPanels';
 import { useNow } from '@/components/esession-room/es-ui';
-import { PeopleFloat, ShareStage, useAutoHide } from '@/components/esession-room/PresentationStage';
+import { PeopleFloat, ShareStage, quietKeys, useAutoHide } from '@/components/esession-room/PresentationStage';
 import type { Fullscreen, FullscreenNotice } from '@/components/esession-room/use-fullscreen';
 
 export type Panel = 'people' | 'chat' | 'agenda';
@@ -121,6 +121,8 @@ export interface CallStageProps {
   panel: Panel | null;
   setPanel: (panel: Panel | null) => void;
   screenStream: MediaStream | null;
+  /** What this device is presenting, if anything. */
+  shareKind: ShareKind | null;
   /** Set while this device presents a file: its page controls. */
   presentation: Presentation | null;
   recordingHere: boolean;
@@ -136,6 +138,13 @@ export interface CallStageProps {
   fullscreen: Fullscreen;
 }
 
+/** A file drawn here, or what the browser's share picker shared: a window, a browser tab or the entire screen. */
+export type ShareKind = 'file' | 'window' | 'tab' | 'screen';
+
+const SHARE_LABEL: Record<Exclude<ShareKind, 'file'>, string> = { window: 'Sharing a window', tab: 'Sharing a browser tab', screen: 'Sharing your entire screen' };
+/** Height of the presenter bar plus a gap, which the people box keeps clear of. */
+const PRESENTER_BAR_SPACE = 60;
+
 export interface Presentation {
   name: string;
   page: number;
@@ -144,34 +153,91 @@ export interface Presentation {
   onStop: () => void;
 }
 
-/** The presenter's page controls, over the stage while presenting a file. */
-function PresenterBar({ presentation }: { presentation: Presentation }) {
-  const { name, page, pages, onPage, onStop } = presentation;
+/** Whether a key press is meant for something else on the page (typing, a dialog, a menu or a panel). */
+const keyIsForSomethingElse = (event: KeyboardEvent) =>
+  event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || !!(event.target as Element | null)?.closest?.('input, textarea, select, [contenteditable="true"], [role="dialog"], [role="menu"], aside');
+
+/**
+ * The presenter's own controls: the file and its page controls, or what kind of screen is shared. `onShrink` puts
+ * an entire-screen share back into my tile (it was enlarged by hand).
+ */
+function PresenterBar({
+  kind,
+  presentation,
+  onStop,
+  onShrink,
+  stayProps,
+}: {
+  kind: ShareKind;
+  presentation: Presentation | null;
+  onStop: () => void;
+  onShrink?: () => void;
+  stayProps: ReturnType<typeof useAutoHide>['stayProps'];
+}) {
   const button = 'inline-flex h-11 min-w-11 items-center justify-center rounded-full text-white hover:bg-white/15 disabled:opacity-35 disabled:hover:bg-transparent';
+  const page = presentation?.page ?? 1;
+  const pages = presentation?.pages ?? 1;
+  const onPage = presentation?.onPage;
+  // The page last asked for, so a held-down key keeps counting from it before the bar catches up.
+  const current = useRef(page);
+  current.current = page;
+
+  // Arrow keys, Page Up/Down and Space turn the pages, as in a slide show, without bringing the bars back. Heard
+  // while the key is on its way down, so the mark is there before the bars hear the key.
+  useEffect(() => {
+    if (!onPage || pages < 2) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (keyIsForSomethingElse(event)) return;
+      const space = event.key === ' ' && !(event.target as Element | null)?.closest?.('button, a');
+      const step = event.key === 'ArrowRight' || event.key === 'PageDown' || (space && !event.shiftKey) ? 1 : event.key === 'ArrowLeft' || event.key === 'PageUp' || (space && event.shiftKey) ? -1 : 0;
+      if (!step) return;
+      event.preventDefault();
+      quietKeys.add(event);
+      const next = Math.min(pages, Math.max(1, current.current + step));
+      current.current = next;
+      onPage(next);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onPage, pages]);
+
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">
-      <div className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full bg-[#0a0f2b]/90 py-1 pl-4 pr-1 text-white shadow-xl ring-1 ring-white/15 backdrop-blur">
-        <FileText className="mr-1 h-4 w-4 shrink-0 text-[#f1d27a]" />
-        <span className="min-w-0 max-w-[40vw] truncate text-xs font-semibold sm:max-w-xs" title={name}>
-          {name}
-        </span>
-        {pages > 1 ? (
-          <>
-            <button type="button" className={cn(button, 'ml-1')} onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page">
-              <ChevronLeft className="h-5 w-5" />
+    <div {...stayProps} className="pointer-events-auto flex max-w-full items-center gap-1 rounded-full bg-[#0a0f2b]/90 py-1 pl-4 pr-1 text-white shadow-xl ring-1 ring-white/15 backdrop-blur">
+      {presentation ? (
+        <>
+          <FileText className="mr-1 h-4 w-4 shrink-0 text-[#f1d27a]" />
+          <span className="min-w-0 max-w-[40vw] truncate text-xs font-semibold sm:max-w-xs" title={presentation.name}>
+            {presentation.name}
+          </span>
+          {pages > 1 && onPage ? (
+            <>
+              <button type="button" className={cn(button, 'ml-1')} onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page" title="Previous page (←)">
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <span className="whitespace-nowrap text-xs font-semibold tabular-nums" aria-live="polite">
+                {page} / {pages}
+              </span>
+              <button type="button" className={button} onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="Next page" title="Next page (→)">
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <MonitorUp className="mr-1 h-4 w-4 shrink-0 text-[#9fa8ff]" />
+          <span className="min-w-0 truncate text-xs font-semibold">{kind === 'file' ? 'Presenting' : SHARE_LABEL[kind]}</span>
+          {onShrink ? (
+            <button type="button" className="ml-2 inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-bold hover:bg-white/15" onClick={onShrink} title="Show the people again, with your screen in your own tile">
+              <Minimize className="h-4 w-4" />
+              <span className="hidden sm:inline">Smaller preview</span>
             </button>
-            <span className="whitespace-nowrap text-xs font-semibold tabular-nums" aria-live="polite">
-              {page} / {pages}
-            </span>
-            <button type="button" className={button} onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="Next page">
-              <ChevronRight className="h-5 w-5" />
-            </button>
-          </>
-        ) : null}
-        <button type="button" className="ml-1 inline-flex h-11 items-center rounded-full bg-red-600 px-4 text-xs font-bold hover:bg-red-700" onClick={onStop}>
-          Stop presenting
-        </button>
-      </div>
+          ) : null}
+        </>
+      )}
+      <button type="button" className="ml-1 inline-flex h-11 shrink-0 items-center rounded-full bg-red-600 px-4 text-xs font-bold hover:bg-red-700" onClick={onStop}>
+        Stop presenting
+      </button>
     </div>
   );
 }
@@ -193,6 +259,12 @@ export function CallStage(props: CallStageProps) {
   const sharer = participants.find((p) => p.screen);
   const floorHolder = participants.find((p) => p.pid === room?.floor);
   const pinnedPerson = participants.find((p) => p.inviteeId === pinned);
+  // My own presentation takes my stage too, so I see what everyone sees. Not an entire-screen share, unless I ask:
+  // with this window on the shared screen, the picture would repeat inside itself.
+  const { shareKind } = props;
+  const [showOwnScreen, setShowOwnScreen] = useState(false);
+  useEffect(() => setShowOwnScreen(false), [shareKind]);
+  const selfOnStage = !!shareKind && sharer?.pid === selfPid && (shareKind !== 'screen' || showOwnScreen);
   // A new screen share or a new floor holder brings everyone back to the automatic view, even after picking one by hand.
   const sharerId = sharer?.inviteeId ?? null;
   const floorId = floorHolder?.inviteeId ?? null;
@@ -206,11 +278,12 @@ export function CallStage(props: CallStageProps) {
   const lastSpeaker = useRef<string | null>(null);
   const loudOther = [...speaking].find((pid) => pid !== selfPid && participants.some((p) => p.pid === pid));
   if (loudOther) lastSpeaker.current = loudOther;
-  // Who takes the stage: my own pin, then a screen share, then the floor. Someone sharing or holding the floor sees
-  // the next one down (or the last speaker, or the presiding officer) instead of themselves; a pin on myself is honoured.
+  // Who takes the stage: my own pin, then a screen share, then the floor. Someone holding the floor sees the next one
+  // down (or the last speaker, or the presiding officer) instead of themselves, and so does someone sharing their
+  // entire screen (see selfOnStage); a pin on myself is honoured.
   const spotlight = pinnedPerson ?? sharer ?? floorHolder ?? null;
-  const mode: 'gallery' | 'speaker' = layout === 'auto' ? (spotlight && participants.length > 1 ? 'speaker' : 'gallery') : layout;
-  const shown = pinnedPerson ?? [sharer, floorHolder].find((p) => p && p.pid !== selfPid) ?? null;
+  const mode: 'gallery' | 'speaker' = layout === 'auto' ? (spotlight && (participants.length > 1 || selfOnStage) ? 'speaker' : 'gallery') : layout;
+  const shown = pinnedPerson ?? [sharer, floorHolder].find((p) => p && (p.pid !== selfPid || (p === sharer && selfOnStage))) ?? null;
   const main =
     mode === 'speaker'
       ? (shown ??
@@ -226,9 +299,27 @@ export function CallStage(props: CallStageProps) {
   const rank = (p: Participant) => (p === pinnedPerson ? 0 : p === sharer ? 1 : p === floorHolder ? 2 : 3);
   const ordered = [...participants].sort((a, b) => rank(a) - rank(b));
 
-  // Presentation layout: someone else's screen share is on my stage, so it fills the screen, the others float in a
-  // corner, and the bars hide while idle. The presenter keeps the normal layout with a "you are sharing" tile.
-  const presenting = mode === 'speaker' && !!main && main.screen && main.pid !== selfPid;
+  // Presentation layout: a presentation is on my stage, so it fills the screen, the others float in a corner, and the
+  // bars hide while idle. The presenter gets the same, plus their controls, unless their entire screen is shared.
+  const presenting = mode === 'speaker' && !!main && main.screen && (main.pid !== selfPid || selfOnStage);
+  const ownStage = presenting && main.pid === selfPid;
+  // Only an open panel keeps the bars up; banners show on their own, over the share if the bars are hidden.
+  const bars = useAutoHide(presenting, !!panel);
+  const presenterBar = shareKind ? (
+    <PresenterBar
+      kind={shareKind}
+      presentation={props.presentation}
+      onStop={props.onToggleShare}
+      onShrink={ownStage && shareKind === 'screen' ? () => setShowOwnScreen(false) : undefined}
+      stayProps={bars.stayProps}
+    />
+  ) : null;
+  // Brings my own presentation onto my stage from my tile.
+  const showOwnPresentation = () => {
+    setShowOwnScreen(true);
+    setPinned(null);
+    setLayout('auto');
+  };
   const floatPeople = presenting ? ordered.filter((p) => p.pid !== main.pid) : [];
   const floatFocus =
     floatPeople.find((p) => p.pid === room?.floor) ??
@@ -353,7 +444,7 @@ export function CallStage(props: CallStageProps) {
           roleLabel={roleLabelOf(p)}
           actions={actionsFor(p)}
           large={large}
-          presenter={p.pid === selfPid && p.screen ? { onStop: props.onToggleShare } : undefined}
+          presenter={p.pid === selfPid && p.screen ? { onStop: props.onToggleShare, onExpand: showOwnPresentation, mirrorRisk: shareKind === 'screen' } : undefined}
           className="h-full w-full"
         />
       </div>
@@ -379,8 +470,6 @@ export function CallStage(props: CallStageProps) {
     if (!unstable) setUnstableDismissed(false);
   }, [unstable]);
   const reconnecting = useSteady(props.streamReconnecting, 2000, 0);
-  // Only an open panel keeps the bars up; banners show on their own, over the share if the bars are hidden.
-  const bars = useAutoHide(presenting, !!panel);
   // While presenting the bars float over the share, so things placed on the stage keep clear of them.
   const insetTop = presenting && bars.visible ? topBars.height : 0;
   const insetBottom = presenting && bars.visible ? bottomBar.height : 0;
@@ -516,8 +605,14 @@ export function CallStage(props: CallStageProps) {
               </div>
             ) : presenting ? (
               <>
-                <ShareStage key={main.pid} sharer={main} stream={streamOf(main)} chrome={bars.visible} insetTop={insetTop} insetBottom={insetBottom} />
-                <PeopleFloat people={floatPeople} focus={floatFocus} renderTile={(p, className, style) => tile(p, className, style)} insetTop={insetTop} insetBottom={insetBottom} />
+                <ShareStage key={main.pid} sharer={main} isSelf={ownStage} stream={streamOf(main)} chrome={bars.visible} insetTop={insetTop} insetBottom={insetBottom} footer={ownStage ? presenterBar : null} />
+                <PeopleFloat
+                  people={floatPeople}
+                  focus={floatFocus}
+                  renderTile={(p, className, style) => tile(p, className, style)}
+                  insetTop={insetTop}
+                  insetBottom={insetBottom + (ownStage ? PRESENTER_BAR_SPACE : 0)}
+                />
               </>
             ) : mode === 'gallery' ? (
               <div className={cn('flex flex-wrap justify-center gap-2', scrollGallery ? 'content-start' : 'h-full content-center')}>
@@ -533,7 +628,8 @@ export function CallStage(props: CallStageProps) {
                 ) : null}
               </div>
             ) : null}
-            {props.presentation ? <PresenterBar presentation={props.presentation} /> : null}
+            {/* A file I present while my stage shows something else keeps its page controls in view. */}
+            {props.presentation && shareKind && !ownStage ? <div className="pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-3">{presenterBar}</div> : null}
           </div>
         </main>
 

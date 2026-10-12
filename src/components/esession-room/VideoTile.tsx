@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { Crown, Hand, Loader2, MicOff, MonitorUp, MoreVertical, Pin, PinOff, UserMinus, VolumeX, Mic as MicIcon } from 'lucide-react';
+import { Crown, Hand, Loader2, Maximize2, MicOff, MonitorUp, MoreVertical, Pin, PinOff, UserMinus, VolumeX, Mic as MicIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { LinkQuality, PeerLink } from '@/lib/esession-rtc';
 import type { Participant } from '@/lib/esession-room';
@@ -91,8 +91,11 @@ export function VideoTile({
   roleLabel: string | null;
   actions?: TileActions;
   large?: boolean;
-  /** Set on my own tile while I share: a small preview and a stop button instead of my screen at full size. */
-  presenter?: { onStop: () => void };
+  /**
+   * Set on my own tile while I present and my stage shows something else: a preview of what I present, with a way to
+   * show it full size (`mirrorRisk`: my entire screen is shared, so showing it here can repeat the picture) and to stop.
+   */
+  presenter?: { onStop: () => void; onExpand: () => void; mirrorRisk: boolean };
   className?: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -110,21 +113,7 @@ export function VideoTile({
       )}
     >
       {presenter ? (
-        <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-[#1b2453] to-[#0e1433] px-3 pb-11 pt-3 text-center">
-          <div className="hidden aspect-video max-h-[55%] min-h-0 w-full max-w-md overflow-hidden rounded-lg bg-black ring-1 ring-white/15 @[260px]:block">
-            <VideoView stream={stream} contain />
-          </div>
-          <p className="inline-flex items-center gap-1.5 text-xs font-semibold text-white @[260px]:text-sm">
-            <MonitorUp className="h-4 w-4 shrink-0 text-[#9fa8ff]" />
-            <span>
-              You are presenting
-            </span>
-          </p>
-          <p className="hidden text-xs text-white/60 @[360px]:block">Everyone else sees it full screen.</p>
-          <button type="button" onClick={presenter.onStop} className="inline-flex h-8 items-center rounded-lg bg-red-600 px-3 text-xs font-bold text-white hover:bg-red-500 @[260px]:h-9">
-            Stop presenting
-          </button>
-        </div>
+        <VideoView stream={stream} contain />
       ) : showVideo ? (
         <VideoView stream={stream} mirrored={isSelf && !participant.screen} contain={participant.screen} />
       ) : (
@@ -150,7 +139,7 @@ export function VideoTile({
       ) : null}
 
       {/* Top: what is happening with this person */}
-      <div className="pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-1.5">
+      <div className={cn('pointer-events-none absolute inset-x-2 top-2 flex flex-wrap items-start gap-1.5', presenter && 'right-[92px]')}>
         {actions?.pinned ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[11px] font-bold text-white backdrop-blur-sm">
             <Pin className="h-3 w-3" />
@@ -169,13 +158,30 @@ export function VideoTile({
             Hand raised
           </span>
         ) : null}
-        {participant.screen && !presenter ? (
+        {participant.screen ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-[#3949ab] px-2 py-0.5 text-[11px] font-bold text-white">
             <MonitorUp className="h-3 w-3" />
-            Presenting
+            {presenter ? 'You are presenting' : 'Presenting'}
           </span>
         ) : null}
       </div>
+
+      {presenter ? (
+        <div className="absolute right-2 top-2 flex items-center gap-1">
+          <button
+            type="button"
+            onClick={presenter.onExpand}
+            className="flex h-8 w-8 items-center justify-center rounded-lg bg-black/60 text-white backdrop-blur-sm hover:bg-black/80"
+            aria-label="Show full size"
+            title={presenter.mirrorRisk ? 'Show full size. Your entire screen is shared, so while this window is on it the picture repeats inside itself.' : 'Show full size'}
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={presenter.onStop} className="inline-flex h-8 items-center rounded-lg bg-red-600 px-2.5 text-xs font-bold text-white hover:bg-red-500" title="Stop presenting">
+            Stop
+          </button>
+        </div>
+      ) : null}
 
       {/* Bottom: name, position, mic */}
       <div className="absolute inset-x-2 bottom-2 flex items-end justify-between gap-2">

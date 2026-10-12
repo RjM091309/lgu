@@ -51,7 +51,7 @@ import { FilePresenter } from '@/lib/file-presenter';
 import { PresentDialog } from '@/components/esession-room/PresentDialog';
 import { useLocalMedia, type LocalMedia } from '@/components/esession-room/use-local-media';
 import { DeviceSelects, MicMeter } from '@/components/esession-room/DeviceControls';
-import { CallStage, type Panel } from '@/components/esession-room/CallStage';
+import { CallStage, type Panel, type ShareKind } from '@/components/esession-room/CallStage';
 import { useFullscreen } from '@/components/esession-room/use-fullscreen';
 import { VideoView } from '@/components/esession-room/VideoTile';
 import { InsecureNotice, LiveBadge, RoleBadge, TypeBadge, useNow } from '@/components/esession-room/es-ui';
@@ -124,6 +124,9 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
   panelRef.current = panel;
 
   const screenStream = useMemo(() => (screenTrack ? new MediaStream([screenTrack]) : null), [screenTrack]);
+  // What this device is presenting, which decides what its own stage shows (see CallStage). A browser that does not
+  // say what was picked counts as the entire screen, the case where showing it back can repeat the picture.
+  const shareKind: ShareKind | null = !screenTrack ? null : presentation ? 'file' : screenTrack.getSettings().displaySurface === 'window' ? 'window' : screenTrack.getSettings().displaySurface === 'browser' ? 'tab' : 'screen';
 
   const invited = session ? account.canManage || isInvited(session, users, account.inviteeId) : false;
   const myRole = session ? roleIn(account, session) : 'participant';
@@ -550,7 +553,9 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     setPresentOpen(false);
     if (someoneElsePresenting()) return;
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 15, max: 15 } }, audio: false });
+      // Leaves this tab out of the picker (where supported): sharing the e-session itself only shows the call back.
+      const options = { video: { frameRate: { ideal: 15, max: 15 } }, audio: false, selfBrowserSurface: 'exclude' };
+      const stream = await navigator.mediaDevices.getDisplayMedia(options as DisplayMediaStreamOptions);
       const track = stream.getVideoTracks()[0];
       track.contentHint = 'detail';
       track.addEventListener('ended', () => setScreenTrack((current) => (current === track ? null : current)));
@@ -702,6 +707,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
           panel={panel}
           setPanel={setPanel}
           screenStream={screenStream}
+          shareKind={shareKind}
           presentation={presentation ? { ...presentation, onPage: turnPage, onStop: () => toggleShare() } : null}
           recordingHere={recordingHere}
           streamReconnecting={streamReconnecting}

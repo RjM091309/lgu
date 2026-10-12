@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Minus, MonitorUp, Plus, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Participant } from '@/lib/esession-room';
 import { VideoView } from '@/components/esession-room/VideoTile';
 
-// The call screen while someone else's screen share is on stage: the share fills the screen and can be zoomed,
-// the others sit in a small floating box, and the bars get out of the way until the pointer moves.
+// The call screen while a presentation is on stage: it fills the screen and can be zoomed, the others sit in a small
+// floating box, and the bars get out of the way until the pointer moves. The presenter sees their own presentation
+// the same way, with their controls in `footer`.
 
 const IDLE_MS = 3000;
 const MAX_ZOOM = 3;
@@ -26,10 +27,15 @@ const GRABBING_CURSOR = handCursor(
   'grabbing'
 );
 
+/** Key presses that should leave the bars as they are (a page turn); marked before the bars hear of them. */
+export const quietKeys = new WeakSet<Event>();
+
 /**
  * True while the bars should show. When `active`, they hide after a few seconds without pointer or key activity,
  * unless `hold` (an open panel needs them) or the pointer or focus is on them. Activity inside an element marked
- * `data-no-wake` (the banners) does not count, so reading or dismissing a banner leaves the bars where they are.
+ * `data-no-wake` (the banners) does not count, so reading or dismissing a banner leaves the bars where they are; nor
+ * does a key press in `quietKeys`. `data-no-wake="pointer"` covers only the pointer, so a shortcut typed while a button
+ * there has focus still counts.
  */
 export function useAutoHide(active: boolean, hold: boolean) {
   const [awake, setAwake] = useState(true);
@@ -54,7 +60,9 @@ export function useAutoHide(active: boolean, hold: boolean) {
     wake();
     let last = { x: -1, y: -1 };
     const onActivity = (event: Event) => {
-      if ((event.target as Element | null)?.closest?.('[data-no-wake]')) return;
+      if (quietKeys.has(event)) return;
+      const quiet = (event.target as Element | null)?.closest?.('[data-no-wake]');
+      if (quiet && (event.type !== 'keydown' || quiet.getAttribute('data-no-wake') !== 'pointer')) return;
       if (event.type === 'pointermove') {
         // Browsers send a move without motion when the page changes under a still pointer (a banner closing).
         const { clientX: x, clientY: y } = event as PointerEvent;
@@ -78,13 +86,43 @@ export function useAutoHide(active: boolean, hold: boolean) {
     onFocus: () => (keep.current = true),
     onBlur: () => (keep.current = false),
   };
-  return { visible: !active || hold || awake, barProps };
+  // Spread onto the presenter's controls: using them neither brings the bars back nor lets them hide, so the controls
+  // (which move with the bars) stay under the finger or pointer.
+  const stayProps = {
+    'data-no-wake': 'pointer',
+    onPointerEnter: () => (keep.current = true),
+    onPointerLeave: () => (keep.current = false),
+    // Pressing one of the controls from the keyboard is using them too.
+    onKeyDown: (event: ReactKeyboardEvent) => {
+      if (event.key === 'Enter' || event.key === ' ') quietKeys.add(event.nativeEvent);
+    },
+  };
+  return { visible: !active || hold || awake, barProps, stayProps };
 }
 
 type View = { s: number; x: number; y: number };
 
-/** The shared screen, fitted to the space, with zoom (double-click, Ctrl + scroll, pinch) and pan (drag). */
-export function ShareStage({ sharer, stream, chrome, insetTop, insetBottom }: { sharer: Participant; stream: MediaStream | null; chrome: boolean; insetTop: number; insetBottom: number }) {
+/**
+ * The shared screen, fitted to the space, with zoom (double-click, Ctrl + scroll, pinch) and pan (drag). Zoom is for
+ * this viewer only. `footer` (the presenter's controls) stays in view while the bars are hidden.
+ */
+export function ShareStage({
+  sharer,
+  isSelf = false,
+  stream,
+  chrome,
+  insetTop,
+  insetBottom,
+  footer,
+}: {
+  sharer: Participant;
+  isSelf?: boolean;
+  stream: MediaStream | null;
+  chrome: boolean;
+  insetTop: number;
+  insetBottom: number;
+  footer?: ReactNode;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<View>({ s: 1, x: 0, y: 0 });
   const viewRef = useRef(view);
@@ -202,7 +240,7 @@ export function ShareStage({ sharer, stream, chrome, insetTop, insetBottom }: { 
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onDoubleClick={(event) => (zoomed ? setView({ s: 1, x: 0, y: 0 }) : zoomAt(2, event.clientX, event.clientY))}
-        aria-label={`${sharer.name}'s shared screen. Double-click to zoom.`}
+        aria-label={`${isSelf ? 'Your presentation, as everyone sees it' : `${sharer.name}'s shared screen`}. Double-click to zoom.`}
         role="img"
       >
         <div className="h-full w-full origin-center will-change-transform" style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.s})` }}>
@@ -214,29 +252,38 @@ export function ShareStage({ sharer, stream, chrome, insetTop, insetBottom }: { 
       <div className={cn('pointer-events-none absolute left-3 transition-[opacity,top] duration-300', chrome ? 'opacity-100' : 'opacity-0')} style={{ top: insetTop + 12 }}>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-[#3949ab] px-2.5 py-1 text-xs font-bold text-white shadow-lg">
           <MonitorUp className="h-3.5 w-3.5" />
-          {sharer.name} is presenting
+          {isSelf ? 'You are presenting · everyone sees this' : `${sharer.name} is presenting`}
         </span>
       </div>
 
-      {/* Zoom controls; stay up while zoomed in so the way back is always visible. */}
+      {/* Zoom controls on the left, the presenter's controls in the middle (on narrow screens: zoom, then the controls). */}
       <div
-        className={cn('absolute left-3 flex items-center gap-1 rounded-xl bg-black/70 p-1 text-white shadow-lg ring-1 ring-white/15 transition-[opacity,bottom] duration-300', chrome || zoomed ? 'opacity-100' : 'pointer-events-none opacity-0')}
+        className="pointer-events-none absolute inset-x-3 z-20 flex flex-col items-start gap-2 transition-[bottom] duration-300 lg:grid lg:grid-cols-[1fr_auto_1fr] lg:items-end"
         style={{ bottom: insetBottom + 12 }}
       >
-        <button type="button" onClick={() => step(1 / 1.25)} disabled={!zoomed} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-white/15 disabled:opacity-40" aria-label="Zoom out">
-          <Minus className="h-4 w-4" />
-        </button>
-        <span className="w-12 text-center text-xs font-semibold tabular-nums" aria-live="polite">
-          {Math.round(view.s * 100)}%
-        </span>
-        <button type="button" onClick={() => step(1.25)} disabled={view.s >= MAX_ZOOM} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-white/15 disabled:opacity-40" aria-label="Zoom in">
-          <Plus className="h-4 w-4" />
-        </button>
-        {zoomed ? (
-          <button type="button" onClick={() => setView({ s: 1, x: 0, y: 0 })} className="ml-1 h-9 rounded-lg bg-white/15 px-3 text-xs font-bold hover:bg-white/25">
-            Fit
+        {/* Zoom controls; stay up while zoomed in so the way back is always visible. */}
+        <div
+          className={cn(
+            'flex items-center gap-1 rounded-xl bg-black/70 p-1 text-white shadow-lg ring-1 ring-white/15 transition-opacity duration-300 lg:justify-self-start',
+            chrome || zoomed ? 'pointer-events-auto opacity-100' : 'opacity-0'
+          )}
+        >
+          <button type="button" onClick={() => step(1 / 1.25)} disabled={!zoomed} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-white/15 disabled:opacity-40" aria-label="Zoom out">
+            <Minus className="h-4 w-4" />
           </button>
-        ) : null}
+          <span className="w-12 text-center text-xs font-semibold tabular-nums" aria-live="polite">
+            {Math.round(view.s * 100)}%
+          </span>
+          <button type="button" onClick={() => step(1.25)} disabled={view.s >= MAX_ZOOM} className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-white/15 disabled:opacity-40" aria-label="Zoom in">
+            <Plus className="h-4 w-4" />
+          </button>
+          {zoomed ? (
+            <button type="button" onClick={() => setView({ s: 1, x: 0, y: 0 })} className="ml-1 h-9 rounded-lg bg-white/15 px-3 text-xs font-bold hover:bg-white/25">
+              Fit
+            </button>
+          ) : null}
+        </div>
+        {footer ? <div className="flex w-full justify-center lg:w-auto">{footer}</div> : null}
       </div>
     </div>
   );
