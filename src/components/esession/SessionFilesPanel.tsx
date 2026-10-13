@@ -768,6 +768,13 @@ export function SessionFilesPanel() {
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-text-muted" />
                   <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search this session" aria-label="Search this session's files" className="h-9 pl-8 text-sm" />
                 </div>
+                {/* Always here, so files can be added after the first upload or after the session is held. */}
+                {currentSession ? (
+                  <Button size="sm" className="h-9 shrink-0" onClick={() => openUpload(currentSession.id)}>
+                    <Upload className="mr-1.5 h-4 w-4" />
+                    Upload
+                  </Button>
+                ) : null}
               </div>
             </div>
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
