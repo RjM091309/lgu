@@ -94,10 +94,13 @@ const toSession = (value) => {
   const committeeId = type === 'Committee Hearing' && typeof value.committeeId === 'string' && ID_PATTERN.test(value.committeeId) ? value.committeeId : undefined;
   if (type === 'Committee Hearing' && !committeeId) return null;
   const purpose = type === 'Special' ? text(value.purpose, 300) : null;
-  // A meeting's invitees are chosen when it is set up; sessions and hearings invite by type.
-  const invitees =
-    type === 'Meeting' && Array.isArray(value.invitees) ? [...new Set(value.invitees.filter((entry) => typeof entry === 'string' && ID_PATTERN.test(entry)))].slice(0, MAX_INVITEES) : null;
-  if (type === 'Meeting' && !invitees?.length) return null;
+  // A meeting's invitees are chosen when it is set up. Regular and special sessions may have theirs chosen too
+  // (none sent: everyone their type invites); hearings invite the committee.
+  const choosable = type === 'Meeting' || type === 'Regular' || type === 'Special';
+  const listed =
+    choosable && Array.isArray(value.invitees) ? [...new Set(value.invitees.filter((entry) => typeof entry === 'string' && ID_PATTERN.test(entry)))].slice(0, MAX_INVITEES) : [];
+  const invitees = listed.length ? listed : null;
+  if (type === 'Meeting' && !invitees) return null;
   const agenda = type === 'Meeting' && Array.isArray(value.agenda) ? value.agenda.map((item) => text(item, 300)).filter(Boolean).slice(0, MAX_AGENDA_ITEMS) : [];
   return {
     id,

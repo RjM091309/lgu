@@ -3,7 +3,8 @@ import { AlertTriangle, CalendarPlus, Check, Info, Save, Users, Video } from 'lu
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { LGU_PROFILE, mockCommitteeAssignments, mockCommittees, type Session } from '@/lib/mock-data';
-import { inviteePool, inviteesFor, type Invitee } from '@/lib/attendance';
+import { QUORUM, defaultInviteesFor, inviteePool, inviteesFor, type Invitee } from '@/lib/attendance';
+import { presidingIdFor } from '@/lib/esession-room';
 import { useUsers } from '@/lib/access-store';
 import { useHolidays } from '@/lib/holidays';
 import { todayInManila } from '@/lib/session-files';
@@ -90,7 +91,9 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
   const [time, setTime] = useState(editing ? toInputTime(editing.time) : '09:00');
   const [location, setLocation] = useState(editing?.location ?? LGU_PROFILE.sessionHall);
   const [purpose, setPurpose] = useState(editing?.purpose ?? '');
-  const [chosen, setChosen] = useState<string[]>(() => editing?.invitees ?? (scheduledById ? [scheduledById] : []));
+  const [chosen, setChosen] = useState<string[]>(() => (editing?.type === 'Meeting' ? editing.invitees : undefined) ?? (scheduledById ? [scheduledById] : []));
+  // A regular or special session's invitees; null until changed, which means everyone its type invites.
+  const [sessionChosen, setSessionChosen] = useState<string[] | null>(() => (editing?.type !== 'Meeting' && editing?.invitees?.length ? editing.invitees : null));
   const [agendaText, setAgendaText] = useState((editing?.agenda ?? []).join('\n'));
   const [error, setError] = useState('');
 
@@ -100,7 +103,14 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
   const sameDay = date && !startNow ? sessions.filter((entry) => entry.date === date && entry.id !== editing?.id) : [];
 
   const meeting = type === 'Meeting';
+  const choosable = meeting || type === 'Regular' || type === 'Special';
   const pool = inviteePool(users);
+  const inPoolOrder = (ids: string[]) => pool.filter((invitee) => ids.includes(invitee.id)).map((invitee) => invitee.id);
+  const defaultIds = defaultInviteesFor({ ...(editing ?? { id: '', title: '', date: '', time: '', location: '' }), type } as Session, users).map((invitee) => invitee.id);
+  const sessionIds = sessionChosen ?? defaultIds;
+  // Only a list that differs from the default is kept, so the default keeps up with new staff accounts.
+  const sessionList = sessionChosen && inPoolOrder(sessionChosen).join() !== inPoolOrder(defaultIds).join() ? inPoolOrder(sessionChosen) : null;
+  const presidingId = presidingIdFor({ type });
   const agenda = agendaText
     .split('\n')
     .map((line) => line.trim())
@@ -116,11 +126,14 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
     ...(type === 'Committee Hearing' ? { committeeId } : {}),
     ...(type === 'Special' && purpose.trim() ? { purpose: purpose.trim() } : {}),
     // Kept in the pool's order, so an edit that only re-ticks the same people changes nothing.
-    ...(meeting ? { invitees: pool.filter((invitee) => chosen.includes(invitee.id)).map((invitee) => invitee.id) } : {}),
+    ...(meeting ? { invitees: inPoolOrder(chosen) } : choosable && sessionList ? { invitees: sessionList } : {}),
     ...(meeting && agenda.length ? { agenda } : {}),
   };
   const invitees = inviteesFor(draft, users);
   const memberCount = invitees.filter((invitee) => invitee.group === 'member').length;
+  const memberTotal = defaultIds.filter((id) => id.startsWith('member:')).length;
+  const membersLeftOut = choosable && !meeting ? memberTotal - memberCount : 0;
+  const belowQuorum = membersLeftOut > 0 && memberCount < QUORUM;
 
   const changeType = (next: Session['type']) => {
     setType(next);
@@ -252,9 +265,19 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
         <Input value={location} onChange={(e) => setLocation(e.target.value)} className={cn('mt-1.5', fieldHeight)} maxLength={160} />
       </label>
 
+      {choosable && !meeting ? (
+        <InviteePicker
+          pool={pool}
+          chosen={sessionIds}
+          setChosen={setSessionChosen}
+          locked={presidingId ? { id: presidingId, note: 'presides' } : undefined}
+          touch={touch}
+        />
+      ) : null}
+
       {meeting ? (
         <>
-          <InviteePicker pool={pool} chosen={chosen} setChosen={setChosen} locked={scheduledById} touch={touch} />
+          <InviteePicker pool={pool} chosen={chosen} setChosen={setChosen} locked={scheduledById ? { id: scheduledById, note: 'you' } : undefined} touch={touch} />
           <label className="block">
             <span className={label}>Agenda (optional, one item per line)</span>
             <textarea
@@ -269,7 +292,8 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
         </>
       ) : null}
 
-      {holiday || weekday === 0 || weekday === 6 || sameDay.length || (shortNotice) ? (
+      {/* Every message below must be counted here, or the box shows up empty. */}
+      {holiday || weekday === 0 || weekday === 6 || sameDay.length || shortNotice || membersLeftOut > 0 ? (
         <div className="space-y-1 rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
           {holiday ? (
             <p className="flex items-start gap-1.5">
@@ -287,6 +311,19 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
             <p className="flex items-start gap-1.5">
               <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
               Members must be served written notice at least 24 hours before a special session (LGC Sec. 52). Check that this date allows it.
+            </p>
+          ) : null}
+          {belowQuorum ? (
+            <p className="flex items-start gap-1.5">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+              Only {memberCount} {memberCount === 1 ? 'member is' : 'members are'} invited. A quorum is {QUORUM} of all {memberTotal} members, so this session could not take up any business.
+            </p>
+          ) : null}
+          {membersLeftOut > 0 ? (
+            <p className="flex items-start gap-1.5">
+              <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+              {membersLeftOut} {membersLeftOut === 1 ? 'member is' : 'members are'} not invited and will not be notified in the mobile app.
+              {type === 'Special' ? ' Notice of a special session is served on every member (LGC Sec. 52).' : ''}
             </p>
           ) : null}
           {sameDay.map((entry) => (
@@ -326,7 +363,7 @@ export function ScheduleSessionForm({ scheduledBy, scheduledById, session: editi
   );
 }
 
-/** Ticks who is invited to a meeting, with shortcuts for the usual groups. `locked`: whoever sets it up, always in. */
+/** Ticks who is invited, with shortcuts for the usual groups. `locked`: always in (a meeting's organizer, a session's presiding officer). */
 function InviteePicker({
   pool,
   chosen,
@@ -337,13 +374,13 @@ function InviteePicker({
   pool: Invitee[];
   chosen: string[];
   setChosen: (next: string[]) => void;
-  locked?: string;
+  locked?: { id: string; note: string };
   touch: boolean;
 }) {
   const members = pool.filter((invitee) => invitee.group === 'member');
   const staff = pool.filter((invitee) => invitee.group === 'staff');
   const add = (ids: string[]) => setChosen([...new Set([...chosen, ...ids])]);
-  const toggle = (id: string) => (id === locked ? undefined : setChosen(chosen.includes(id) ? chosen.filter((entry) => entry !== id) : [...chosen, id]));
+  const toggle = (id: string) => (id === locked?.id ? undefined : setChosen(chosen.includes(id) ? chosen.filter((entry) => entry !== id) : [...chosen, id]));
   const committeeIds = (committeeId: string) => {
     const assignment = mockCommitteeAssignments[committeeId];
     return assignment ? [assignment.chair, assignment.viceChair, ...assignment.members].map((id) => `member:${id}`) : [];
@@ -362,9 +399,9 @@ function InviteePicker({
                 type="button"
                 role="checkbox"
                 aria-checked={on}
-                aria-disabled={invitee.id === locked}
+                aria-disabled={invitee.id === locked?.id}
                 onClick={() => toggle(invitee.id)}
-                className={cn('flex w-full items-center gap-2 rounded-md px-1.5 text-left hover:bg-muted', touch ? 'min-h-11' : 'min-h-8', invitee.id === locked && 'cursor-default hover:bg-transparent')}
+                className={cn('flex w-full items-center gap-2 rounded-md px-1.5 text-left hover:bg-muted', touch ? 'min-h-11' : 'min-h-8', invitee.id === locked?.id && 'cursor-default hover:bg-transparent')}
               >
                 <span className={cn('flex h-4 w-4 shrink-0 items-center justify-center rounded border', on ? 'border-primary bg-primary text-white' : 'border-input bg-white')}>
                   {on ? <Check className="h-3 w-3" strokeWidth={3} /> : null}
@@ -372,7 +409,7 @@ function InviteePicker({
                 <span className="min-w-0">
                   <span className="block truncate text-xs font-semibold text-text-main">
                     {invitee.name}
-                    {invitee.id === locked ? <span className="font-normal text-text-muted"> (you)</span> : null}
+                    {invitee.id === locked?.id ? <span className="font-normal text-text-muted"> ({locked.note})</span> : null}
                   </span>
                   <span className="block truncate text-[11px] text-text-muted">{invitee.detail}</span>
                 </span>
@@ -410,7 +447,7 @@ function InviteePicker({
           ))}
         </select>
         {chosen.length > (locked ? 1 : 0) ? (
-          <button type="button" className={cn(chip, 'text-text-muted')} onClick={() => setChosen(locked ? [locked] : [])}>
+          <button type="button" className={cn(chip, 'text-text-muted')} onClick={() => setChosen(locked ? [locked.id] : [])}>
             Clear
           </button>
         ) : null}

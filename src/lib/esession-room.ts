@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { UserAccount } from '@/lib/access-store';
-import { inviteesFor } from '@/lib/attendance';
+import { defaultInviteesFor, inviteesFor } from '@/lib/attendance';
 import type { MobileAccount } from '@/lib/mobile-accounts';
 import { mockCommitteeAssignments, type Session } from '@/lib/mock-data';
 import { buildAgenda } from '@/lib/sessions';
@@ -222,9 +222,13 @@ export const roleLabelFor = (role: RoomRole, session: Pick<Session, 'type'>) =>
 
 export const canModerate = (role: RoomRole) => role === 'host' || role === 'presiding';
 
-/** Members expected at the session and the majority of them needed to transact business. */
+/**
+ * The members the quorum is counted from, and the majority of them needed to transact business: all the members of
+ * the body for a regular or special session (however many were invited), the committee for a hearing.
+ */
 export const quorumFor = (session: Session, users: UserAccount[]) => {
-  const memberTotal = inviteesFor(session, users).filter((invitee) => invitee.group === 'member').length;
+  // A meeting has no quorum; its total is just the members invited.
+  const memberTotal = (session.type === 'Meeting' ? inviteesFor : defaultInviteesFor)(session, users).filter((invitee) => invitee.group === 'member').length;
   return { memberTotal, quorum: Math.floor(memberTotal / 2) + 1 };
 };
 

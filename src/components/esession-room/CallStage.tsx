@@ -342,10 +342,12 @@ export function CallStage(props: CallStageProps) {
 
   // Calling the roll is one tap and is kept in the record for good, so it asks first.
   const membersPresent = participants.filter((p) => p.group === 'member').length;
+  const membersInvited = room?.invitees.filter((id) => id.startsWith('member:')).length ?? 0;
+  const quorumOutOfReach = !!room && membersInvited < room.quorum;
   const callRoll = async () => {
     const confirmed = await confirmAction({
       title: 'Call the roll now?',
-      description: `${membersPresent} of ${room?.memberTotal ?? 0} members are in the e-session. The result is kept in the e-session's record and shown to everyone.`,
+      description: `${membersPresent} of ${room?.memberTotal ?? 0} members are in the e-session.${quorumOutOfReach ? ` Only ${membersInvited} members were invited, so the roll call will record no quorum.` : ''} The result is kept in the e-session's record and shown to everyone.`,
       confirmLabel: 'Call the roll',
     });
     if (confirmed) void act('roll-call');

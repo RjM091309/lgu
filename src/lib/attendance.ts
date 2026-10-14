@@ -31,9 +31,18 @@ const initialsOf = (name: string) =>
     .map((word) => word[0].toUpperCase())
     .join('');
 
-/** Members of the body (from the master listing) plus the staff accounts expected at the session. */
+/**
+ * Everyone invited to the session: a meeting's chosen invitees; a regular or special session's chosen ones when
+ * they were chosen, else the default below; for a hearing, the committee.
+ */
 export const inviteesFor = (session: Session, users: UserAccount[]): Invitee[] => {
-  if (session.type === 'Meeting') return chosenInvitees(session.invitees ?? [], users);
+  if (session.type === 'Meeting' || ((session.type === 'Regular' || session.type === 'Special') && session.invitees?.length)) return chosenInvitees(session.invitees ?? [], users);
+  return defaultInviteesFor(session, users);
+};
+
+/** Who a session invites unless invitees are chosen: members of the body (or the committee) and the staff expected. */
+export const defaultInviteesFor = (session: Session, users: UserAccount[]): Invitee[] => {
+  if (session.type === 'Meeting') return [];
   const assignment = session.committeeId ? mockCommitteeAssignments[session.committeeId] : undefined;
   const members = assignment
     ? [
@@ -62,13 +71,13 @@ const memberInvitee = (member: (typeof mockMembers)[number], detail = member.sea
 
 const staffInvitee = (user: UserAccount): Invitee => ({ id: `user:${user.id}`, name: user.name, detail: `${user.office} · ${user.role}`, abbr: initialsOf(user.name), group: 'staff', userId: user.id });
 
-/** Members of the body and active staff who can be invited to a meeting (everyone with a LIMS Mobile sign-in). */
+/** Members of the body and active staff who can be chosen as invitees (everyone with a LIMS Mobile sign-in). */
 export const inviteePool = (users: UserAccount[]): Invitee[] => [
   ...mockMembers.map((member) => memberInvitee(member)),
   ...users.filter((user) => user.status === 'Active' && MEETING_STAFF_ROLES.includes(user.role)).map(staffInvitee),
 ];
 
-/** A meeting's invitees, in the pool's order; anyone no longer in the pool (a deactivated account) drops off. */
+/** Chosen invitees, in the pool's order; anyone no longer in the pool (a deactivated account) drops off. */
 const chosenInvitees = (ids: string[], users: UserAccount[]) => {
   const chosen = new Set(ids);
   return inviteePool(users).filter((invitee) => chosen.has(invitee.id));

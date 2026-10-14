@@ -22,7 +22,8 @@ function PanelButton({ children, onClick, tone = 'default', disabled, label }: {
       aria-label={label}
       title={label}
       className={cn(
-        'inline-flex h-10 min-w-10 items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors disabled:opacity-40',
+        // A fixed height, so the label stays on one line and the button keeps its width beside long text.
+        'inline-flex h-10 min-w-10 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3 text-xs font-semibold transition-colors disabled:opacity-40',
         tone === 'primary' ? 'bg-[#d4a72c] text-[#141b66] hover:bg-[#e0b743]' : tone === 'danger' ? 'bg-red-600/90 text-white hover:bg-red-600' : 'bg-white/10 text-white hover:bg-white/20'
       )}
     >
@@ -76,6 +77,9 @@ export function PeoplePanel({
   );
   const hands = room.participantsList.filter((p) => p.hand !== null).sort((a, b) => (a.hand ?? 0) - (b.hand ?? 0));
   const membersPresent = room.participantsList.filter((p) => p.group === 'member').length;
+  // Fewer members invited than a quorum needs: the roll can still be called, but it cannot find a quorum.
+  const membersInvited = room.invitees.filter((id) => id.startsWith('member:')).length;
+  const quorumOutOfReach = membersInvited < room.quorum;
   const lastCall = room.rollCalls.at(-1);
   const earlierCalls = room.rollCalls.slice(0, -1).reverse();
   const [showEarlier, setShowEarlier] = useState(false);
@@ -236,12 +240,16 @@ export function PeoplePanel({
       ) : (
       <section aria-label="Quorum" className="mx-3 mt-4 rounded-xl bg-white/5 p-4 ring-1 ring-inset ring-white/10">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-white">
               Members present: {membersPresent} of {room.memberTotal}
             </p>
             <p className={cn('text-xs', membersPresent >= room.quorum ? 'text-green-300' : 'text-amber-300')}>
-              {membersPresent >= room.quorum ? 'Enough for a quorum' : `${room.quorum - membersPresent} more needed for a quorum of ${room.quorum}`}
+              {membersPresent >= room.quorum
+                ? 'Enough for a quorum'
+                : quorumOutOfReach
+                  ? `Only ${membersInvited} ${membersInvited === 1 ? 'member was' : 'members were'} invited, so a quorum of ${room.quorum} cannot be reached.`
+                  : `${room.quorum - membersPresent} more needed for a quorum of ${room.quorum}`}
             </p>
           </div>
           {moderator ? (
