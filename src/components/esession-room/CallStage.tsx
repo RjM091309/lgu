@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react';
+import { flushSync } from 'react-dom';
 import {
   Check,
   ChevronLeft,
@@ -56,7 +57,9 @@ function useElementSize<T extends HTMLElement>() {
   useLayoutEffect(() => {
     const element = ref.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => setSize({ width: entry.contentRect.width, height: entry.contentRect.height }));
+    // Rendered at once (not on React's next tick) so the new size is laid out before the browser paints. Otherwise a
+    // panel opening shows one frame of the old, too-wide tiles wrapped into a single column.
+    const observer = new ResizeObserver(([entry]) => flushSync(() => setSize({ width: entry.contentRect.width, height: entry.contentRect.height })));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
