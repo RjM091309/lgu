@@ -248,12 +248,30 @@ export class RoomError extends Error {
   }
 }
 
+/**
+ * How long a room request may wait. Over HTTP/1.1 the browser opens at most 6 connections to a server, shared by
+ * every tab, and each LIMS tab holds 2 or 3 of them open for live updates; with enough tabs a request waits for a
+ * free one forever, so it gives up instead of leaving a spinner.
+ */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+/** fetch that gives up after REQUEST_TIMEOUT_MS (AbortSignal.timeout is missing on older iPads). */
+async function fetchWithTimeout(url: string, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 async function post<T>(url: string, body: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  } catch {
-    throw new RoomError('offline', 0);
+    res = await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } catch (error) {
+    throw new RoomError(error instanceof DOMException && error.name === 'AbortError' ? 'timeout' : 'offline', 0);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new RoomError(typeof data.error === 'string' ? data.error : `http_${res.status}`, res.status);
@@ -266,6 +284,8 @@ export const roomErrorMessage = (error: unknown) => {
   switch (code) {
     case 'offline':
       return 'The LIMS server could not be reached. Check the Wi-Fi connection and try again.';
+    case 'timeout':
+      return 'The LIMS server took too long to answer. If LIMS is open in other tabs or windows, close the ones you do not need and try again.';
     case 'not_invited':
       return 'You are not on the invitation list for this session.';
     case 'removed':
@@ -298,7 +318,7 @@ export interface ServerInfo {
 
 let infoPromise: Promise<ServerInfo> | null = null;
 export const fetchServerInfo = () => {
-  infoPromise ??= fetch('/api/es/info', { cache: 'no-store' })
+  infoPromise ??= fetchWithTimeout('/api/es/info', { cache: 'no-store' })
     .then((res) => (res.ok ? (res.json() as Promise<ServerInfo>) : { httpsPort: null, iceServers: [] }))
     .catch(() => {
       infoPromise = null;
