@@ -45,7 +45,7 @@ import {
   videoProfileFor,
   type PeerInfo,
 } from '@/lib/esession-rtc';
-import { attendanceRecordName, attendanceRecordPdf, recordingFileName, saveToSessionFiles } from '@/lib/esession-records';
+import { attendanceRecordName, attendanceRecordPdf, attendanceSummary, recordingFileName, saveToSessionFiles } from '@/lib/esession-records';
 import { backupChunk, discardBackup, startBackup, type RecordingBackup } from '@/lib/recording-backup';
 import { FilePresenter } from '@/lib/file-presenter';
 import { PresentDialog } from '@/components/esession-room/PresentDialog';
@@ -646,7 +646,7 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
       return toast('Attendance record not saved', `${roomErrorMessage(error)} It can still be downloaded from the e-session's record in History.`, 'error');
     }
     if (!audit) return;
-    const error = await saveToSessionFiles({ name: attendanceRecordName(audit), blob: attendanceRecordPdf(audit, session ? inviteesFor(session, users) : []), kind: 'pdf', category: 'Supporting Document', sessionId: audit.room.sessionId }, account);
+    const error = await saveToSessionFiles({ name: attendanceRecordName(audit), blob: attendanceRecordPdf(audit, session ? inviteesFor(session, users) : []), kind: 'pdf', category: 'Attendance Record', sessionId: audit.room.sessionId, attendance: attendanceSummary(audit) }, account);
     logActivity({ user: account.username, module: 'E-Session', action: 'Updated', summary: `Ended the e-session: ${audit.room.title}`, detail: `${audit.attendance.length} attendees` });
     if (error) toast('Attendance record not saved', error, 'error');
     else toast('E-session ended', 'The attendance record was saved to Session Files.');

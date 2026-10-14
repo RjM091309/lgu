@@ -1,14 +1,13 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, ClipboardCheck, Clock, Info, Megaphone, Newspaper, Printer, X } from 'lucide-react';
-import { Table, TableBody, TableCell, TableFooter, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { mockAttendanceMarks, mockAttendanceSessions, mockMembers, mockPublications, type AttendanceMark } from '@/lib/mock-data';
+import { AlertTriangle, ClipboardCheck, Clock, Info, Megaphone, Newspaper, Printer } from 'lucide-react';
+import { mockPublications } from '@/lib/mock-data';
 import { todayInManila } from '@/lib/session-files';
 import { cn } from '@/lib/utils';
+import { AttendanceRecordsPanel } from '@/components/reports/AttendanceRecordsPanel';
+import { useAttendanceRecords } from '@/lib/attendance-records';
 import { useModules } from '@/lib/modules';
 import { EFFECTIVITY_DAYS, POSTING_DEADLINE_DAYS, PUBLICATION_TONE, addDays, publicationStatus } from '@/lib/publication';
 
-// Quorum is a majority of all members of the Sanggunian.
-const QUORUM = Math.floor(mockMembers.length / 2) + 1;
 // Posting rules (deadline, effectivity) live in src/lib/publication.ts.
 const POSTING_PLACES = 3;
 
@@ -29,143 +28,6 @@ function Callout({ children, tone = 'info' }: { children: React.ReactNode; tone?
     >
       {tone === 'info' ? <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-700" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />}
       <div>{children}</div>
-    </div>
-  );
-}
-
-function Mark({ mark }: { mark: AttendanceMark }) {
-  if (mark === 'P') return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full bg-green-600 text-white" aria-label="Present"><Check className="h-3.5 w-3.5" strokeWidth={3} /></span>;
-  if (mark === 'L') return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full border-2 border-amber-500 bg-amber-50 text-[10px] font-bold text-amber-700" aria-label="Late">L</span>;
-  return <span className="mx-auto flex h-6 w-6 items-center justify-center rounded-full border-2 border-red-300 text-red-500" aria-label="Absent"><X className="h-3.5 w-3.5" strokeWidth={3} /></span>;
-}
-
-/* ------------------------------------------------------------- Attendance */
-
-function AttendancePanel() {
-  const rows = mockMembers.map((member) => {
-    const marks = (mockAttendanceMarks[member.id] ?? '').split('') as AttendanceMark[];
-    const attended = marks.filter((mark) => mark !== 'A').length;
-    return { member, marks, attended, rate: Math.round((attended / mockAttendanceSessions.length) * 100) };
-  });
-  const perSession = mockAttendanceSessions.map((_, i) => rows.filter((row) => row.marks[i] !== 'A').length);
-  const quorumCount = perSession.filter((count) => count >= QUORUM).length;
-  const averageRate = Math.round(rows.reduce((sum, row) => sum + row.rate, 0) / rows.length);
-
-  return (
-    <div className="space-y-6">
-      <Callout>
-        Quorum was reached in <b>{quorumCount} of {mockAttendanceSessions.length}</b> sessions from July to September 2026, with an average attendance of{' '}
-        <b>{averageRate}%</b>. A quorum requires a majority of all members: <b>{QUORUM} of {mockMembers.length}</b>.
-      </Callout>
-
-      {/* Session timeline */}
-      <section className="rounded-xl border border-border bg-white p-5 shadow-sm">
-        <h2 className="text-base font-semibold text-text-main">Session Timeline</h2>
-        <p className="text-xs text-text-muted">Each session with the number of members present</p>
-        <div className="overflow-x-auto">
-          <ol className="relative mt-5 flex min-w-[760px] justify-between px-2">
-            <span className="absolute left-8 right-8 top-[15px] h-0.5 bg-border" aria-hidden />
-            {mockAttendanceSessions.map((session, i) => {
-              const hasQuorum = perSession[i] >= QUORUM;
-              return (
-                <li key={session.id} className="relative flex w-20 flex-col items-center text-center">
-                  <span
-                    className={cn(
-                      'relative z-[1] flex h-8 w-8 items-center justify-center rounded-full ring-4 ring-white',
-                      hasQuorum ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-                    )}
-                    title={hasQuorum ? 'Quorum reached' : 'No quorum'}
-                  >
-                    {hasQuorum ? <Check className="h-4 w-4" strokeWidth={3} /> : <X className="h-4 w-4" strokeWidth={3} />}
-                  </span>
-                  <span className="mt-2 text-[12px] font-semibold text-text-main">{session.short}</span>
-                  <span className="text-[11px] text-text-muted">{shortDate(session.date)}</span>
-                  <span className={cn('mt-1 text-[11px] font-semibold tabular-nums', hasQuorum ? 'text-text-main' : 'text-red-700')}>
-                    {perSession[i]}/{mockMembers.length}
-                  </span>
-                </li>
-              );
-            })}
-          </ol>
-        </div>
-      </section>
-
-      {/* Roll-call register */}
-      <section className="overflow-hidden rounded-xl border border-border bg-white shadow-sm">
-        <header className="flex flex-col gap-3 border-b border-border px-5 py-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-text-main">Roll-Call Register</h2>
-            <p className="text-xs text-text-muted">Attendance of every member per session; shaded columns had no quorum</p>
-          </div>
-          <div className="flex items-center gap-4 text-[11px] text-text-muted">
-            {(['P', 'L', 'A'] as const).map((mark) => (
-              <span key={mark} className="inline-flex items-center gap-1.5">
-                <span className="scale-75">
-                  <Mark mark={mark} />
-                </span>
-                {mark === 'P' ? 'Present' : mark === 'L' ? 'Late' : 'Absent'}
-              </span>
-            ))}
-          </div>
-        </header>
-        <div className="overflow-x-auto">
-          <Table className="min-w-[980px]" mobileCards={false}>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="text-left">Member</TableHead>
-                {mockAttendanceSessions.map((session, i) => (
-                  <TableHead key={session.id} className={cn('px-1', perSession[i] < QUORUM && 'bg-red-50 text-red-800')}>
-                    <div>{session.short}</div>
-                    <div className="text-[10px] font-medium normal-case text-text-muted">{shortDate(session.date)}</div>
-                  </TableHead>
-                ))}
-                <TableHead>Attended</TableHead>
-                <TableHead>Rate</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.member.id}>
-                  <TableCell className="text-left">
-                    <div className="flex items-center gap-2.5">
-                      <span className="flex h-7 w-9 shrink-0 items-center justify-center rounded-md bg-primary/10 text-[10px] font-bold text-primary">{row.member.abbr}</span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-medium text-text-main">{row.member.name}</span>
-                        <span className="block text-[11px] text-text-muted">{row.member.seat}</span>
-                      </span>
-                    </div>
-                  </TableCell>
-                  {row.marks.map((mark, i) => (
-                    <TableCell key={mockAttendanceSessions[i].id} className={cn('px-1 py-2', perSession[i] < QUORUM && 'bg-red-50/60')}>
-                      <Mark mark={mark} />
-                    </TableCell>
-                  ))}
-                  <TableCell className="tabular-nums text-text-main">
-                    {row.attended}/{mockAttendanceSessions.length}
-                  </TableCell>
-                  <TableCell>
-                    <span className={cn('font-semibold tabular-nums', row.rate >= 90 ? 'text-green-700' : row.rate >= 75 ? 'text-amber-700' : 'text-red-700')}>{row.rate}%</span>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-            <TableFooter>
-              <TableRow className="hover:bg-transparent">
-                <TableCell className="text-left">Members present</TableCell>
-                {perSession.map((count, i) => (
-                  <TableCell key={mockAttendanceSessions[i].id} className={cn('px-1', count < QUORUM && 'bg-red-50 text-red-800')}>
-                    <div className="tabular-nums">{count}</div>
-                    <div className="text-[10px] font-medium">{count >= QUORUM ? 'Quorum' : 'No quorum'}</div>
-                  </TableCell>
-                ))}
-                <TableCell colSpan={2} className="tabular-nums">
-                  Avg. {averageRate}%
-                </TableCell>
-              </TableRow>
-            </TableFooter>
-          </Table>
-        </div>
-      </section>
     </div>
   );
 }
@@ -351,17 +213,21 @@ export function AttendancePublicationView({
   onDownload: (report: { title: string; type: string; date: string }) => void;
 }) {
   const [chosen, setTab] = useState<'attendance' | 'publication'>('attendance');
+  const attendanceCount = useAttendanceRecords().length;
   // Publication and posting is part of the Legislative Reports module.
   const withPublication = useModules().includes('reports');
   const tab = withPublication ? chosen : 'attendance';
   const tabs = [
-    { id: 'attendance' as const, label: 'Attendance & Quorum', icon: ClipboardCheck, count: mockAttendanceSessions.length, unit: 'sessions' },
+    { id: 'attendance' as const, label: 'Attendance Records', icon: ClipboardCheck, count: attendanceCount, unit: 'records' },
     ...(withPublication ? [{ id: 'publication' as const, label: 'Publication & Posting', icon: Clock, count: mockPublications.length, unit: 'ordinances' }] : []),
   ];
-  const tabReports = reports.filter((report) => (tab === 'attendance' ? report.type === 'Attendance' : report.type === 'Publication'));
+  // Attendance records are opened and downloaded in the library itself; publication keeps its printable reports.
+  const tabReports = tab === 'publication' ? reports.filter((report) => report.type === 'Publication') : [];
 
   return (
     <div className="space-y-6">
+      {/* A lone tab says nothing the page title does not. */}
+      {tabs.length > 1 ? (
       <div className="flex flex-col gap-3 border-b border-border xl:flex-row xl:items-end xl:justify-between">
         <div className="flex gap-1" role="tablist" aria-label="Report sections">
           {tabs.map((item) => (
@@ -400,7 +266,9 @@ export function AttendancePublicationView({
         </div>
       </div>
 
-      {tab === 'attendance' ? <AttendancePanel /> : <PublicationPanel />}
+      ) : null}
+
+      {tab === 'attendance' ? <AttendanceRecordsPanel /> : <PublicationPanel />}
     </div>
   );
 }

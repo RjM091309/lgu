@@ -12,7 +12,7 @@ const DIR = fileURLToPath(new URL('../node_modules/.cache/lims-session-files', i
 const MAX_FILE_BYTES = 250 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024;
 
-const CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Resolution', 'Supporting Document'];
+const CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Resolution', 'Attendance Record', 'Supporting Document'];
 const KINDS = ['pdf', 'audio', 'video', 'image', 'other'];
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,6 +36,20 @@ const TYPES = {
 };
 
 const text = (value, max) => (typeof value === 'string' && value.trim() && value.trim().length <= max ? value.trim() : null);
+const count = (value) => (Number.isInteger(value) && value >= 0 && value <= 1000 ? value : null);
+
+/** What an e-session's attendance record says, so the Attendance page can list it without opening the PDF. */
+const toAttendance = (value) => {
+  const title = text(value?.title, 160);
+  const date = typeof value?.date === 'string' && DATE_PATTERN.test(value.date) ? value.date : null;
+  const type = text(value?.type, 40);
+  const present = count(value?.present);
+  const total = count(value?.total);
+  const quorum = count(value?.quorum);
+  const heldAt = Number.isFinite(value?.heldAt) && value.heldAt > 0 ? value.heldAt : null;
+  if (!title || !date || !type || present === null || total === null || quorum === null || heldAt === null) return null;
+  return { title, date, type, present, total, quorum, heldAt };
+};
 
 /** The details of a file as the browser describes them; anything unexpected is dropped. */
 export const toFileMeta = (value) => {
@@ -52,6 +66,7 @@ export const toFileMeta = (value) => {
     version: Number.isInteger(value.version) && value.version > 0 && value.version < 1000 ? value.version : null,
     changeNote: text(value.changeNote, 500),
     note: text(value.note, 500),
+    attendance: value.category === 'Attendance Record' ? toAttendance(value.attendance) : null,
   };
   return {
     name,

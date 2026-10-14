@@ -200,13 +200,16 @@ export function ReportList({ activeTab }: ReportListProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-primary">{attendanceOnly ? 'Attendance Reports' : selected.title}</h1>
-          <p className="text-sm text-text-muted">{attendanceOnly ? 'Session attendance and whether each sitting had a quorum.' : selected.description}</p>
+          <h1 className="text-2xl font-bold tracking-tight text-primary">{attendanceOnly ? 'Attendance Records' : selected.title}</h1>
+          <p className="text-sm text-text-muted">{attendanceOnly ? 'The attendance record of every session, ready to read, print or download.' : selected.description}</p>
         </div>
-        <Button onClick={() => setGenerateOpen(true)}>
-          <BarChart3 className="mr-2 h-4 w-4" />
-          Generate New Report
-        </Button>
+        {/* The attendance records are kept, not generated: e-sessions save their own when they end. */}
+        {attendanceOnly ? null : (
+          <Button onClick={() => setGenerateOpen(true)}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Generate New Report
+          </Button>
+        )}
       </div>
 
       {activeTab !== 'report-statistical-performance' && activeTab !== 'report-attendance-publication' ? (

@@ -7,14 +7,15 @@ const MAX_SIDE = 1600;
 /** Frames per second sent. A page only changes on a page turn, but new arrivals need a fresh frame to start from. */
 const FPS = 5;
 
-type PdfDocument = { numPages: number; getPage: (n: number) => Promise<PdfPage>; destroy: () => Promise<void> };
+export type PdfDocument = { numPages: number; getPage: (n: number) => Promise<PdfPage>; destroy: () => Promise<void> };
 type PdfPage = {
   getViewport: (options: { scale: number }) => { width: number; height: number };
   render: (options: { canvasContext: CanvasRenderingContext2D; viewport: { width: number; height: number } }) => { promise: Promise<void> };
   cleanup: () => void;
 };
 
-const loadPdf = async (data: ArrayBuffer): Promise<PdfDocument> => {
+/** Opens a PDF with pdf.js, which loads on first use. */
+export const loadPdf = async (data: ArrayBuffer): Promise<PdfDocument> => {
   const pdfjs = await import('pdfjs-dist');
   const worker = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
   pdfjs.GlobalWorkerOptions.workerSrc = worker.default;

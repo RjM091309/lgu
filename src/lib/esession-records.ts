@@ -2,7 +2,7 @@ import { createPdf, type PdfBlock } from '@/lib/pdf';
 import type { Invitee } from '@/lib/attendance';
 import { saveCsv } from '@/lib/files';
 import { formatLongDate } from '@/lib/sessions';
-import { addSessionFiles, letterhead, todayInManila } from '@/lib/session-files';
+import { addSessionFiles, letterhead, todayInManila, type AttendanceSummary } from '@/lib/session-files';
 import type { MobileAccount } from '@/lib/mobile-accounts';
 import {
   ROLE_LABEL,
@@ -249,6 +249,17 @@ export const attendanceRecordPdf = (audit: RoomAudit, invitees: Invitee[] = []) 
   });
 };
 
+/** What the attendance record says, kept with the file so the Attendance page lists it without opening the PDF. */
+export const attendanceSummary = (audit: RoomAudit): AttendanceSummary => ({
+  title: audit.room.title,
+  date: audit.room.date,
+  type: audit.room.type,
+  present: audit.attendance.filter((entry) => entry.group === 'member').length,
+  total: audit.memberTotal,
+  quorum: audit.quorum,
+  heldAt: audit.room.startedAt,
+});
+
 export const attendanceRecordName = (audit: RoomAudit) => safeName(`${audit.room.title} - E-Session Attendance Record ${fileStamp(audit.room.startedAt)}.pdf`);
 
 /** Attendance, roll calls, the full audit trail, and the chat, in one spreadsheet-friendly file. */
@@ -271,7 +282,10 @@ export const exportAuditCsv = (audit: RoomAudit) => {
 };
 
 /** Saves a file into the session's folder in Session Files, on the LIMS server, where every device sees it. */
-export const saveToSessionFiles = (file: { name: string; blob: Blob; kind: 'audio' | 'pdf'; category: 'Audio Recording' | 'Supporting Document'; sessionId: string }, account: MobileAccount) =>
+export const saveToSessionFiles = (
+  file: { name: string; blob: Blob; kind: 'audio' | 'pdf'; category: 'Audio Recording' | 'Attendance Record'; sessionId: string; attendance?: AttendanceSummary },
+  account: MobileAccount
+) =>
   addSessionFiles([
     {
       name: file.name,
@@ -283,6 +297,7 @@ export const saveToSessionFiles = (file: { name: string; blob: Blob; kind: 'audi
       uploadedBy: account.name,
       uploadedByRole: account.canManage ? 'Administrator' : account.detail,
       source: 'upload',
+      attendance: file.attendance,
       blob: file.blob,
     },
   ]);

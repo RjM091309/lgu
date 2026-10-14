@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { mockAttendanceMarks, mockAttendanceSessions, mockCommitteeAssignments, mockMembers, mockPastSessions, mockSeededSessions, mockSessions, type Session } from '@/lib/mock-data';
 import { isNativeApp } from '@/lib/native';
+import type { AttendanceSummary } from '@/lib/session-files';
 
 // E-Session state shared by the web calendar and the mobile app (/m): attendance responses, sessions
 // scheduled during the demo, and reminders. The local server (server/esession-sync.mjs) keeps one copy
@@ -71,6 +72,7 @@ export interface ServerFile {
   version?: number;
   changeNote?: string;
   note?: string;
+  attendance?: AttendanceSummary;
   src?: string;
 }
 

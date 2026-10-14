@@ -6,7 +6,7 @@ import { deleteServerFile, serverUrl, uploadServerFile, useCalendarSessions, use
 
 export type FileKind = 'pdf' | 'audio' | 'video' | 'image' | 'other';
 
-export const FILE_CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Resolution', 'Supporting Document'] as const;
+export const FILE_CATEGORIES = ['Agenda', 'Order of Business', 'Minutes', 'Audio Recording', 'Video Recording', 'Enacted Ordinance', 'Resolution', 'Attendance Record', 'Supporting Document'] as const;
 export type FileCategory = (typeof FILE_CATEGORIES)[number];
 
 export interface SessionFile {
@@ -33,6 +33,21 @@ export interface SessionFile {
   version?: number;
   /** What the amendment changed, entered when a new version is uploaded. */
   changeNote?: string;
+  /** An e-session's attendance record: what it says, for listing it on the Attendance page. */
+  attendance?: AttendanceSummary;
+}
+
+export interface AttendanceSummary {
+  title: string;
+  /** Scheduled date of the session. */
+  date: string;
+  type: string;
+  /** Members who attended, the members the quorum counts from, and the quorum. */
+  present: number;
+  total: number;
+  quorum: number;
+  /** When it started (ms). */
+  heldAt: number;
 }
 
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
@@ -79,6 +94,7 @@ export const suggestCategory = (kind: FileKind, name: string): FileCategory => {
   if (lower.includes('order of business')) return 'Order of Business';
   if (lower.includes('agenda')) return 'Agenda';
   if (lower.includes('minutes')) return 'Minutes';
+  if (lower.includes('attendance')) return 'Attendance Record';
   // Scanned copies of ordinances passed during the session.
   if (/\bord(inance)?\b/.test(lower)) return 'Enacted Ordinance';
   if (/\bres(o|olution)?\b/.test(lower)) return 'Resolution';
@@ -280,6 +296,7 @@ const fromServer = (entry: ServerFile, base?: SessionFile): SessionFile => ({
   versionOf: entry.versionOf,
   version: entry.version,
   changeNote: entry.changeNote,
+  attendance: entry.attendance,
   blob: null,
   src: entry.src ? serverUrl(entry.src) : undefined,
   // A sample recording keeps its prepared captions when its media is attached.
@@ -327,6 +344,7 @@ const metaOf = (file: Omit<SessionFile, 'id'>) => ({
   versionOf: file.versionOf,
   version: file.version,
   changeNote: file.changeNote,
+  attendance: file.attendance,
 });
 
 // Each change goes to the server first and shows on every device once it is saved there. Resolves to an error
