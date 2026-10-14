@@ -17,7 +17,9 @@ const isSupported = () => !!(doc().fullscreenEnabled || doc().webkitFullscreenEn
 const request = async () => {
   const root = document.documentElement as WebkitElement;
   try {
-    if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'hide' });
+    // Android keeps its navigation bar: hidden, the keyboard brings it back and closing the keyboard hides it again,
+    // which blacks out the screen for a moment (up to a second or more on some tablets).
+    if (root.requestFullscreen) await root.requestFullscreen({ navigationUI: 'show' });
     else if (root.webkitRequestFullscreen) await root.webkitRequestFullscreen();
   } catch {
     // Refused (no tap, or not allowed here): the page simply stays as it is.
