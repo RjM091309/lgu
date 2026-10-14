@@ -358,13 +358,15 @@ export interface JoinResult {
 export const joinRoom = (roomId: string, account: MobileAccount, options: { device: string; audio: boolean; video: boolean }) =>
   post<JoinResult>(`/api/es/rooms/${encodeURIComponent(roomId)}/join`, { account: toRoomAccount(account), ...options });
 
+/** A room's record, or null when the server has none; throws a RoomError ('offline' or 'timeout') when it cannot be asked. */
 export const fetchAudit = async (roomId: string): Promise<RoomAudit | null> => {
+  let res: Response;
   try {
-    const res = await fetch(`/api/es/rooms/${encodeURIComponent(roomId)}/audit`, { cache: 'no-store' });
-    return res.ok ? ((await res.json()) as RoomAudit) : null;
-  } catch {
-    return null;
+    res = await fetchWithTimeout(`/api/es/rooms/${encodeURIComponent(roomId)}/audit`, { cache: 'no-store' });
+  } catch (error) {
+    throw new RoomError(error instanceof DOMException && error.name === 'AbortError' ? 'timeout' : 'offline', 0);
   }
+  return res.ok ? ((await res.json().catch(() => null)) as RoomAudit | null) : null;
 };
 
 // ---- Lobby: every live and ended room on this server -------------------------------------------

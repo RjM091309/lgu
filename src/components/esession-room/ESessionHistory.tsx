@@ -11,7 +11,7 @@ import { useCalendarSessions } from '@/lib/esession-sync';
 import type { MobileAccount } from '@/lib/mobile-accounts';
 import { formatLongDate } from '@/lib/sessions';
 import { cn } from '@/lib/utils';
-import { ROLE_LABEL, clockTime, clockTimeWithSeconds, dateTime, durationText, fetchAudit, timeInRoom, useLobby, type RoomAudit, type RoomSummary } from '@/lib/esession-room';
+import { ROLE_LABEL, clockTime, clockTimeWithSeconds, dateTime, durationText, fetchAudit, roomErrorMessage, timeInRoom, useLobby, type RoomAudit, type RoomSummary } from '@/lib/esession-room';
 import { EVENT_GROUP, EVENT_GROUP_LABEL, attendanceRecordName, attendanceRecordPdf, eventText, exportAuditCsv, type EventGroup } from '@/lib/esession-records';
 import { EsHeader, LiveBadge, PersonAvatar, TypeBadge, useNow } from '@/components/esession-room/es-ui';
 
@@ -77,6 +77,8 @@ const FILTERS: ('all' | EventGroup)[] = ['all', 'attendance', 'floor', 'moderati
 export function ESessionRecord({ account, onSignOut }: { account: MobileAccount; onSignOut: () => void }) {
   const { roomId = '' } = useParams();
   const [audit, setAudit] = useState<RoomAudit | null | 'loading'>('loading');
+  // Why the first load failed (the server could not be asked), shown instead of "not available".
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all');
   const isLive = audit !== null && audit !== 'loading' && audit.room.status === 'live';
   const now = useNow(isLive ? 15_000 : null);
@@ -87,7 +89,23 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
   // A live e-session's record keeps filling in, so it is refreshed while open.
   useEffect(() => {
     let cancelled = false;
-    const load = () => void fetchAudit(roomId).then((result) => !cancelled && setAudit(result));
+    let inFlight = false;
+    const load = () => {
+      // A slow answer is waited for, not stacked up behind more requests.
+      if (inFlight) return;
+      inFlight = true;
+      fetchAudit(roomId)
+        .then((result) => {
+          if (cancelled) return;
+          setAudit(result);
+          setLoadError(null);
+        })
+        // A failed refresh keeps what is on screen; only a first load that failed says why.
+        .catch((error: unknown) => !cancelled && setLoadError(roomErrorMessage(error)))
+        .finally(() => {
+          inFlight = false;
+        });
+    };
     load();
     const timer = setInterval(load, 10_000);
     return () => {
@@ -98,7 +116,7 @@ export function ESessionRecord({ account, onSignOut }: { account: MobileAccount;
 
   const events = useMemo(() => (audit && audit !== 'loading' ? [...audit.events].reverse().filter((event) => filter === 'all' || EVENT_GROUP[event.type] === filter) : []), [audit, filter]);
 
-  if (audit === 'loading') return <RecordShell account={account} onSignOut={onSignOut} message="Loading the record…" />;
+  if (audit === 'loading') return <RecordShell account={account} onSignOut={onSignOut} message={loadError ? `${loadError} The record keeps trying to load.` : 'Loading the record…'} />;
   if (!audit || !canSee(account, audit.room)) return <RecordShell account={account} onSignOut={onSignOut} message="This record is not available. Records are kept until the LIMS server restarts; the attendance record stays in Session Files." />;
 
   const { room } = audit;

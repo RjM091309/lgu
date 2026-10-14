@@ -639,7 +639,12 @@ export function ESessionRoom({ account }: { account: MobileAccount }) {
     }
     finish('ended', account.name);
     if (!roomId) return;
-    const audit = await fetchAudit(roomId);
+    let audit: Awaited<ReturnType<typeof fetchAudit>>;
+    try {
+      audit = await fetchAudit(roomId);
+    } catch (error) {
+      return toast('Attendance record not saved', `${roomErrorMessage(error)} It can still be downloaded from the e-session's record in History.`, 'error');
+    }
     if (!audit) return;
     const error = await saveToSessionFiles({ name: attendanceRecordName(audit), blob: attendanceRecordPdf(audit, session ? inviteesFor(session, users) : []), kind: 'pdf', category: 'Supporting Document', sessionId: audit.room.sessionId }, account);
     logActivity({ user: account.username, module: 'E-Session', action: 'Updated', summary: `Ended the e-session: ${audit.room.title}`, detail: `${audit.attendance.length} attendees` });
